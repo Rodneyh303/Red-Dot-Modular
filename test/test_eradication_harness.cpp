@@ -142,7 +142,7 @@ int main() {
             uint64_t h = 1469598103934665603ULL;  // FNV-1a offset basis
             for (int v = 0; v < 16; ++v) {
                 for (int lane = 0; lane < SequencerEngine::PL_LANES; ++lane) {
-                    const std::array<float, 16>& arr = pe.polyRandom(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{lane});
+                    const std::array<float, dotModular::kStepStorage>& arr = pe.polyRandom(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{lane});
                     for (int s = 0; s < 16; ++s) {
                         uint32_t bits;
                         std::memcpy(&bits, &arr[s], sizeof(bits));
@@ -177,7 +177,7 @@ int main() {
             uint64_t h = 1469598103934665603ULL;
             for (int v = 0; v < 16; ++v)
                 for (int lane = 0; lane < SequencerEngine::PL_LANES; ++lane) {
-                    const std::array<float, 16>& arr = pe.polyRandom(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{lane});
+                    const std::array<float, dotModular::kStepStorage>& arr = pe.polyRandom(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{lane});
                     for (int s = 0; s < 16; ++s) {
                         uint32_t bits;
                         std::memcpy(&bits, &arr[s], sizeof(bits));

@@ -24,6 +24,12 @@
 //      is per-voice, and the DELEGATED branch scales too).
 //   9. SEND PERSISTENCE: the DistSend key round-trips; a bank without the key
 //      loads at the identity default.
+//  10. THE GAP PARAMS (PHASE_DISTRIBUTION_SPEC): the APPENDED fold indices 6/7 reach
+//      the cell's gapLoc/gapSize through the same glob/own/send algebra (WARP stays
+//      index 5 — the pre-gap indices are untouched, the patch-compat law), and the
+//      PERSISTED DistSend STRIDE MIGRATION: a pre-gap patch's 6-param layout (672
+//      entries) loads with the group values on indices 0..5 and the gap sends at
+//      the identity default.
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -212,7 +218,7 @@ int main() {
                   "identity sends == the pre-subpanel delegated-branch fold");
         // the direct fold: nullptr send == a pointer at 1.0s (bit-exact)
         const auto cellNull = dotModular::resolveWarpCell(b, V0, L, false);
-        const float ones[WarpBank::DPARS] = {1.f, 1.f, 1.f, 1.f, 1.f, 1.f};
+        const float ones[WarpBank::DPARS] = {1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f};
         WarpBank b2 = b;
         for (int p = 0; p < WarpBank::DPARS; ++p) b2.distSend[V0][L][p] = ones[p];
         const auto cellOnes = dotModular::resolveWarpCell(b2, V0, L, false);
@@ -272,6 +278,61 @@ int main() {
                 for (int p = 0; p < WarpBank::DPARS; ++p)
                     if (fresh.distSend[v][l][p] != WarpBank::kDistSendDefault) idAll = false;
         check(idAll, "a patch without the DistSend key loads at the identity default");
+    }
+
+    // 10. THE GAP PARAMS: appended fold indices reach the cell; the old DistSend
+    //     layout migrates per-group ─────────────────────────────────────────
+    {
+        // (a) the APPENDED axis: WARP stays index 5 (a pre-gap plane file would read
+        //     identically); GAPLOC/GAPSIZE are 6/7 and fold like the stage params.
+        WarpBank b = ref;
+        b.distDeltasActive = true;
+        b.distGlobalDelta[L][6] = -0.1f;   // GAPLOC: 0.5 → 0.4
+        b.distGlobalDelta[L][7] = 0.25f;   // GAPSIZE: 0 → 0.25
+        b.distOwnDelta[V0][L][7] = 0.05f;  // own size adds too
+        const auto cell = dotModular::resolveWarpCell(b, V0, L, false);
+        checkBits(cell.gapLoc, 0.4f, "global gapLoc delta folds (appended index 6)");
+        checkBits(cell.gapSize, 0.3f, "glob+own gapSize deltas fold (appended index 7)");
+        // and a live gap SIZE audibly opens the gap (the fold is not cosmetic)
+        bool audible = false;
+        for (int i = 0; i <= 64; ++i)
+            if (b.warpedValue(V0, L, i / 64.0, false) != ref.warpedValue(V0, L, i / 64.0, false))
+                audible = true;
+        check(audible, "a nonzero gapSize delta changes the composed quantile");
+        // the delegated branch folds the gap into Macro's default, own ignored
+        const auto del  = dotModular::resolveWarpCell(b, V0, L, true);
+        checkBits(del.gapLoc, ref.globalWarpGapLoc[L] + (-0.1f + 0.f),
+                  "delegated cell folds ONLY the global gap delta");
+        checkBits(del.gapSize, ref.globalWarpGapSize[L] + (0.25f + 0.f),
+                  "delegated gapSize takes the global term (own ignored)");
+        // (b) THE STRIDE MIGRATION: serialize a bank, then REWRITE the DistSend key
+        //     into the pre-gap 6-param layout and reload — the group values must land
+        //     on indices 0..5 with the gap sends at the identity default.
+        WarpBank src = ref;
+        src.distSend[V0][L][3] = 0.25f;   // LEVEL send
+        src.distSend[V0][L][5] = 0.f;     // WARP send
+        json_t* root = json_object();
+        WarpBank::serialize(src, root, "editor");
+        json_t* js = json_object_get(root, "editorDistSend");
+        json_t* old = json_array();
+        {   // project the 8-param flat onto the old 6-param flat (drop 6,7 per group)
+            for (int v = 0; v < WarpBank::VOICES; ++v)
+                for (int l = 0; l < WarpBank::LANES; ++l)
+                    for (int p = 0; p < 6; ++p)
+                        json_array_append_new(old,
+                            json_incref(json_array_get(js, ((size_t)v * WarpBank::LANES + l) * WarpBank::DPARS + p)));
+        }
+        json_object_set_new(root, "editorDistSend", old);
+        WarpBank dst;
+        WarpBank::parse(root, "editor", dst);
+        json_decref(root);
+        check(dst.distSend[V0][L][3] == 0.25f && dst.distSend[V0][L][5] == 0.f,
+              "the OLD 6-param DistSend layout migrates onto indices 0..5");
+        check(dst.distSend[V0][L][6] == WarpBank::kDistSendDefault
+           && dst.distSend[V0][L][7] == WarpBank::kDistSendDefault,
+              "the migrated gap sends (6,7) stay at the identity default");
+        check(dst.distSend[V1][L][2] == WarpBank::kDistSendDefault,
+              "a sibling group's untouched sends survive the migration");
     }
 
     if (g_fail == 0) { std::printf("ALL PASS (%d checks)\n", g_pass); return 0; }

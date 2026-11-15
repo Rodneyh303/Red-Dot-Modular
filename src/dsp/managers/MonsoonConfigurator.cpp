@@ -27,8 +27,15 @@ void MonsoonConfigurator::setup(Monsoon* m) {
     m->configParam(TRANSPOSE_PARAM,  -12.f, 12.f, 0.f, "Transpose (semitones)");
     
     // Main window controls (Always present)
-    m->configParam(PATTERN_LENGTH_PARAM, 1.f, 16.f, 16.f, "Pattern length");
-    m->configParam(PATTERN_OFFSET_PARAM, 0.f, 15.f, 0.f, "Pattern offset");
+    // STEPS_32 Stage 1 close-out (Rodney's PR #310 review): the length control's range derives
+    // from kPatternLengthCap — the USABLE bound — not the ceiling, so the knob never offers an
+    // undeliverable length and Stage 2's cap flip moves the range with it (one constant).
+    // Defaults stay 16 (the MODE LAW). STEPS_32 Stage 2b: the offset param rides the cap too
+    // (0..cap-1, derived not literal — the class-B item the revised Stage 2 plan resolves here:
+    // "The offset param: 0..15 becomes 0..(cap-1), derived not literal"); the default 0 and the
+    // wrap semantics are unchanged.
+    m->configParam(PATTERN_LENGTH_PARAM, 1.f, (float)dotModular::kPatternLengthCap, 16.f, "Pattern length");
+    m->configParam(PATTERN_OFFSET_PARAM, 0.f, (float)(dotModular::kPatternLengthCap - 1), 0.f, "Pattern offset");
 
     // DNA Action Buttons (Main module only configures these if no expander)
 
@@ -67,6 +74,11 @@ void MonsoonConfigurator::setup(Monsoon* m) {
     // Mode E manual phase (full range = one upward ramp = one bar). Fallback when CV1
     // is unpatched; automatable by a host to drive Mode E from a DAW phase modulator.
     m->configParam(PHASE_PARAM, 0.f, 1.f, 0.f, "Mode E phase (when CV1 unpatched)", "%", 0.f, 100.f);
+    // PHASE TIER Stage 2: the SUBPHASE CALIBRATION — the regionSize the transport phase is
+    // quantised to when CV3 (the subphase input) is patched. Quarter .. bar, CONTINUOUS
+    // (the design doc: "anything between (quarter-note → bar)"). Knob 0..1 →
+    // regionSixteenths = 4 + 12·v; default 1.0 = one bar. Unpatched CV3 ignores it (Stage 1).
+    m->configParam(SUBPHASE_CAL_PARAM, 0.f, 1.f, 1.f, "Subphase calibration (region: quarter .. bar)", "%", 0.f, 100.f);
     m->configButton(LOCK_PARAM,   "Lock");
     m->configButton(MUTE_PARAM,   "Mute");
     m->configButton(MODE_PARAM,   "Mode (Cycle Clock-Gate-Phase)");

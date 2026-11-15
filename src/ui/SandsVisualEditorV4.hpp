@@ -5,6 +5,8 @@
 #include <deque>
 #include <cstring>
 #include "../dsp/LaneMapping.hpp"   // canonical editor lane order — the Lane enum below is guarded against it
+#include "../dsp/engines/PatternEngine.hpp"   // dotModular::kMaskLenMask — the STEPS_32 Stage 2a mask-constant authority
+#include "SandsLaneWindowCore.hpp"   // STEPS_32 Stage 3: the lane window's display math (rack-free, verbatim) — ProbabilityLane's base
 
 namespace redDot {
 
@@ -25,7 +27,16 @@ using namespace rack;  // widget::Widget::DrawArgs, event::*, math::*
  */
 
 struct SandsVisualEditorV4 : rack::TransparentWidget {
- inline static constexpr int STEP_COUNT = 16;  // 16 probability values per lane
+ // STEPS_32 Stage 3 — the column-count parameterisation (the plan: "design the grid to be
+ // column-count-parameterised rather than hardcoded 16"): the phrase domain IS the engine's
+ // usable cap (32 since the 2b flip) via SandsLaneWindowCore's authority. The grid now draws
+ // ALL phrase columns — the lane window math (inherited from SandsLaneWindowCore) runs on the
+ // same domain, so a 32-step lane pattern is fully visible and authorable (the horizontal
+ // cells halve — the plan's accepted cost, "the first 64-step blocker": a later 64 cap is a
+ // CONSTANT change from here, not a sweep). Every loop and array below derives from this
+ // constant; the hosts' push loops iterate it, so bars/pushes widen with it automatically.
+ inline static constexpr int STEP_COUNT = dotModular::kPatternLengthCap;
+ static_assert(STEP_COUNT == 32, "STEPS_32 Stage 3: the Sands grid draws the 32-step phrase (the 2b cap)");
  // Max editor lanes = EAST_LANES (MEL/OCT/QMIX/REST/ACC/VAR/LEG). Backing arrays are sized to
  // this; MONO shows 7, POLY 5. Was 6 pre-QMIX — the East step() writing lane index 6 into a
  // 6-element array was the QMIX add-crash (out-of-bounds write corrupting adjacent memory).
@@ -117,26 +128,12 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
   }
 
   // Per-lane probability distribution
-  struct ProbabilityLane {
-    std::array<float, STEP_COUNT> probabilities;  // 16 values
-    int length = STEP_COUNT;    // How many steps active  (EDIT value)
-    int offset = 0;             // Window start            (EDIT value)
-    int rotation = 0;           // Rotation within window  (EDIT value)
-
-    // Display-only L/O/R: what the user SEES. With no CV these equal the edit
-    // values; when L/O/R CV is patched, the owning module overwrites them each
-    // frame with the engine's CV-applied values via setDisplayLOR(), so the
-    // window + markers track modulation. Editing/drag use the EDIT values
-    // (editStartBar/editEndBar), so display is non-destructive.
-    int dispLength   = STEP_COUNT;
-    int dispOffset   = 0;
-    int dispRotation = 0;
-    void setDisplayLOR(int len, int off, int rot) {
-      dispLength   = std::max(1, std::min(len, STEP_COUNT));
-      dispOffset   = ((off % STEP_COUNT) + STEP_COUNT) % STEP_COUNT;
-      dispRotation = ((rot % STEP_COUNT) + STEP_COUNT) % STEP_COUNT;
-    }
-    void syncDisplayToEdit() { setDisplayLOR(length, offset, rotation); }
+  // STEPS_32 Stage 3: the L/O/R FIELDS and the window/display MATH live in
+  // SandsLaneWindowCore (moved VERBATIM — rack-free, the dimming-rule pin's testable
+  // surface); this struct adds the per-cell probabilities and the two accessors that
+  // read/write them.
+  struct ProbabilityLane : SandsLaneWindowCore {
+    std::array<float, STEP_COUNT> probabilities;  // one value per phrase cell (32 since the 2b flip)
 
     // Get effective probability at sequencer step (EDIT values — playback index)
     float getEffectiveProb(int step) const {
@@ -144,43 +141,12 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
       int idx = (offset + step + rotation) % STEP_COUNT;
       return probabilities[idx];
     }
-    
+
     void setProbability(int step, float value) {
       if (step >= 0 && step < STEP_COUNT) {
         probabilities[step] = rack::math::clamp(value, 0.f, 1.f);
       }
     }
-
-    // ── Single source of truth for "which physical bars are in the window" ──
-    // Reads the DISPLAY L/O/R so the visible window reflects CV modulation; with
-    // no CV these equal the edit values (kept in sync via syncDisplayToEdit()).
-    int startBar() const { return ((dispOffset % STEP_COUNT) + STEP_COUNT) % STEP_COUNT; }
-    int endBar()   const { return (startBar() + std::max(1, std::min(dispLength, STEP_COUNT)) - 1) % STEP_COUNT; }
-    bool barInWindow(int bar) const {
-      int s = startBar(), e = endBar();
-      bar = ((bar % STEP_COUNT) + STEP_COUNT) % STEP_COUNT;
-      return (e >= s) ? (bar >= s && bar <= e)        // contiguous
-                      : (bar >= s || bar <= e);       // wrapped
-    }
-    // window-relative index of a physical bar (0 = start cell), or -1 if outside
-    int windowIndexOf(int bar) const {
-      if (!barInWindow(bar)) return -1;
-      return (((bar - startBar()) % STEP_COUNT) + STEP_COUNT) % STEP_COUNT;
-    }
-    // EDIT-value window edges — for hit-testing and drag resize, which must act on
-    // the user's actual (un-modulated) window, not the CV-display window.
-    int editStartBar() const { return ((offset % STEP_COUNT) + STEP_COUNT) % STEP_COUNT; }
-    int editEndBar()   const { return (editStartBar() + std::max(1, std::min(length, STEP_COUNT)) - 1) % STEP_COUNT; }
-    // Edit-window membership (mirrors barInWindow but on the EDIT L/O = the live handle position,
-    // not the CV/committed display). Used under lock to render the live window as the solid one.
-    bool editBarInWindow(int bar) const {
-      int s = editStartBar(), e = editEndBar();
-      bar = ((bar % STEP_COUNT) + STEP_COUNT) % STEP_COUNT;
-      return (e >= s) ? (bar >= s && bar <= e) : (bar >= s || bar <= e);
-    }
-    // True when the live edit window differs from the committed/display window -- i.e. the user has
-    // moved LOR (under lock, this is the divergence that triggers the ghost echo).
-    bool lorDiverged() const { return editStartBar() != startBar() || dispLength != std::max(1, std::min(length, STEP_COUNT)); }
   };
   
   struct VoiceState {
@@ -327,18 +293,22 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
   // the window (press->move = window gesture; press->release = paint). The host
   // pushes the EFFECTIVE pattern (delegation-resolved) each frame; edits are
   // blocked while the row follows Macro (the delegation discipline).
+  // STEPS_32 Stage 2a: the plane is the DECIDED uint64 integer representation,
+  // ring-masked (the display cells stay STEP_COUNT = the visible 16 — class C —
+  // while the PLANE already holds the ring-wide pattern; the Stage-2b flip widens
+  // what the host pushes with no widget change beyond the constant).
   bool     maskActive  = false;
-  unsigned maskPattern = 0xFFFFu;
+  uint64_t maskPattern = dotModular::kMaskLenMask;
   std::function<void(int cell, bool play)> onMaskToggle;
   // The stroke's end (release) — the host pushes ONE Rack history action for the
   // whole stroke (click or drag); onMaskToggle applied the cells live.
   std::function<void()> onMaskStrokeEnd;
-  void setRangeMask(bool active, unsigned pattern) {
+  void setRangeMask(bool active, uint64_t pattern) {
     maskActive  = active;
-    maskPattern = pattern & 0xFFFFu;
+    maskPattern = pattern & dotModular::kMaskLenMask;
   }
   bool maskCellPlays(int cell) const {
-    return (cell >= 0 && cell < STEP_COUNT) && ((maskPattern >> cell) & 1u) != 0u;
+    return (cell >= 0 && cell < STEP_COUNT) && ((maskPattern >> cell) & 1ULL) != 0ULL;
   }
   // Per-frame display push (host). While a drag is live the window L/O/R stays the
   // DRAG's local values (the store push lags one control block; overwriting would

@@ -157,8 +157,8 @@ MODULES = {
         "widget": ["src/SandsDistributionExpander.cpp"],
         "panel": "res/panels/SandsDistribution_dark.svg",
         "counts": {
-            "param_dexp_": 42,      # 7 lanes x 6 distribution knobs (store-backed)
-            "input_dexpmod_": 42,   # 7 lanes x 6 mod jacks (the dynamic-MO surface)
+            "param_dexp_": 56,      # 7 lanes x 8 distribution knobs (store-backed; the gap pair appended, PHASE_DISTRIBUTION_SPEC)
+            "input_dexpmod_": 56,   # 7 lanes x 8 mod jacks (the dynamic-MO surface; ids 0..41 frozen, gap jacks 42..55 appended)
             "param_dfocus_": 7,     # the lane-focus buttons (which lane the editor shows)
             "light_connect": 1,
         },
@@ -173,7 +173,7 @@ MODULES = {
         "counts": {
             "param_msend_": 28,     # 7 lanes x 4 mix-in items (editor.macroSend)
             "param_mtap_": 14,      # 7 lanes x 2 tap kinds (editor.macroTap)
-            "param_mdist_": 42,     # 7 lanes x 6 distribution params (editor.warp.distSend)
+            "param_mdist_": 56,     # 7 lanes x 8 distribution params (editor.warp.distSend; the gap pair appended)
             "light_connect": 1,
         },
     },
@@ -212,6 +212,20 @@ MODULES = {
         "panel": "res/panels/StraitsSubgatePanel_ratchet_rest_dark.svg",
         "counts": {
             "param_sgv_": 16,       # 16 voices x ONE decision (the lane bank)
+            "light_connect": 1,
+        },
+    },
+    "straits_qmix_oct_panel": {
+        # StraitsQmixOctPanel (QMIX_OCTAVE Stage 3, CC_PROMPT_QMIX_OCTAVE): the
+        # qmix-octave per-voice panel — the subgate build reused (ONE panel; the
+        # qmix violet family hue, no lightness stepping; the SAME tint-neutral
+        # param_sgv_ anchor family, one binding idiom). 17 anchors = 16 per-voice
+        # knobs (param_sgv_0..15, col-major v0=mono) + the connect mark. NO mod
+        # jack (modulation is Causeway — the subgate panels' law carried over).
+        "widget": ["src/StraitsQmixOctPanel.cpp"],
+        "panel": "res/panels/StraitsQmixOctPanel_dark.svg",
+        "counts": {
+            "param_sgv_": 16,       # 16 voices x ONE threshold (the octave axis)
             "light_connect": 1,
         },
     },

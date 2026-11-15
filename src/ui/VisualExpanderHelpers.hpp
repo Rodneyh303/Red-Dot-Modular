@@ -78,14 +78,16 @@ inline bool isConnectedAndClaimed(rack::Module* self) {
 // Returns the PHYSICAL bar (0..15) the sequencer actually reads after LOR, to
 // match SequencerEngine::getStrandIdx exactly:
 //     timelineIdx = (globalStep + rotation) mod length
-//     physicalBar = (timelineIdx + offset) mod 16
+//     physicalBar = (timelineIdx + offset) mod ring
 // so the highlight lands on the real active block, not a window-relative index.
 // Returns -1 if globalStep < 0 (sequencer not running).
+// STEPS_32 Stage 2a: the ring landing derives from kMaskRing (was literal 16) —
+// identical at the 16 bound; the Stage-2b flip moves it with the ring.
 inline int calcPlayhead(int globalStep, int length, int offset, int rotation) {
     if (globalStep < 0) return -1;
-    length = std::max(1, std::min(length, 16));
+    length = std::max(1, std::min(length, dotModular::kMaskRing));
     int timelineIdx = ((globalStep + rotation) % length + length) % length;
-    return (timelineIdx + offset) % 16;
+    return (timelineIdx + offset) % dotModular::kMaskRing;
 }
 
 // CC_PROMPT_VARIATION_SCAN_DISPLAY — the VARIATION lane's chevron position: the

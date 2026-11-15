@@ -277,23 +277,27 @@ int main() {
         rise(eng, 0.f, 0.5f, 7.f);
         EXPECT(eng.pendingCheckpointArrivalV_[0] == false);
     });
-    TEST("BACKWARD: at Variation=-1 the fall walks the playhead back exactly one (wrap 0 -> 15)", {
+    TEST("BACKWARD: at Variation=-1 the fall walks the playhead back exactly one (wrap 0 -> 31 — the ring; was 15 at the 16 bound)", {
         SequencerEngine eng; eng.numPolyVoices = 0;
         eng.tieAcrossRests = true; eng.advanceOnTieIntoRest = true;
         rise(eng, 0.f, 1.0f, 7.f);               // A commits slurForward; stepIndex 0
         eng.voices[dotModular::VoiceResolver::slot(0 + 1)].variationProb = -1.0f; // p=-1: always BACKWARD
         int before = eng.stepIndex;
         eng.legatoCheckpointOnFall();
-        EXPECT(eng.stepIndex == ((before - 1 + 16) & 0xF));   // exactly -1 (the wrap)
+        // STEPS_32 Stage 2b: the wrap rides the RING (kMaskRing, cap-derived — was a
+        // literal & 0xF; the flip moved the ring 16 -> 32 so the backward wrap from
+        // cell 0 lands on 31, exactly advancePlayhead's reverse traversal).
+        EXPECT(eng.stepIndex == ((before - 1 + dotModular::kMaskRing) & (dotModular::kMaskRing - 1)));   // exactly -1 (the ring wrap)
         EXPECT(eng.pendingCheckpointArrivalV_[0] == true);          // direction-agnostic arrival
     });
     TEST("MID-RANGE: the fall decides by the INCOMING step's r_vary (seeded 0.3)", {
         // The whole variation ring seeded to 0.3 (identity warp): u_t = 0.3 at the
         // incoming-rest step regardless of addressing — deterministic mid-range.
+        // (STEPS_32 2b: the loop rides the RING so "whole ring" stays true at 32.)
         SequencerEngine eng; eng.numPolyVoices = 0;
         eng.tieAcrossRests = true; eng.advanceOnTieIntoRest = true;
         rise(eng, 0.f, 1.0f, 7.f);               // A commits slurForward
-        for (int i = 0; i < 16; ++i) eng.pe.variationRandom[i] = 0.3f;
+        for (int i = 0; i < dotModular::kMaskRing; ++i) eng.pe.variationRandom[i] = 0.3f;
         int before = eng.stepIndex;
         // p=0.5 > 0.3 -> FORWARD: the fall advances into the rest.
         eng.voices[dotModular::VoiceResolver::slot(0 + 1)].variationProb = 0.5f;

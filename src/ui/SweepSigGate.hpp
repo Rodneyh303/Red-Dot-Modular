@@ -54,10 +54,12 @@
 #include "../dsp/engines/SequencerEngine.hpp"   // macroOwnSpread + .pe (PatternEngine)
 #include "../dsp/WarpF.hpp"                     // WarpBank's GLOBAL cells + WarpF
 
-// Lane → that lane's pubSlewed twin, flattened ([voiceSlot*16 + step]). The same
+// Lane → that lane's pubSlewed twin, flattened ([voiceSlot*kStepStorage + step]). The same
 // lane dispatch the published-snapshot accessor switches on, hoisted so the gate
 // can walk the exact cells the resolve reads without a switch per cell.
-// (Restored verbatim from the pre-70dd837 StraitsSandsMacroVisual.cpp.)
+// (Restored verbatim from the pre-70dd837 StraitsSandsMacroVisual.cpp; the flat STRIDE
+// rides the engine's STORAGE width — STEPS_32 Stage 2a: the rows widened 16 → kStepStorage,
+// so the flat index must too. The step dim itself stays ring-masked (≤16 today).)
 inline const float* pubSlewedLane_(const PatternEngine& pe, int lane) {
     switch (lane) {
         case PatternEngine::PL_MELODY:    return &pe.pubSlewedPolyMelody[0][0];
@@ -103,9 +105,9 @@ inline bool sweepSigChanged(const SweepSig& sig, const SequencerEngine& eng,
     if (0 != std::memcmp(eng.macroOwnSpread.data(), sig.macroOwnSpread.data(), sizeof sig.macroOwnSpread)) return true;
     const PatternEngine& pe = eng.pe;
     for (int l = 0; l < 7; ++l) {
-        const float* p = pubSlewedLane_(pe, l);   // flat [v*16 + step]
+        const float* p = pubSlewedLane_(pe, l);   // flat [v*kStepStorage + step]
         for (int v = 0; v <= nV; ++v)
-            if (0 != std::memcmp(&p[v * 16 + stepArr[l]], &sig.pub[l][v], sizeof(float)))
+            if (0 != std::memcmp(&p[v * dotModular::kStepStorage + stepArr[l]], &sig.pub[l][v], sizeof(float)))
                 return true;
     }
     if ((const void*)pe.warpBank_ != sig.bank) return true;
@@ -133,7 +135,7 @@ inline void sweepSigCapture(SweepSig& sig, const SequencerEngine& eng,
     for (int l = 0; l < 7; ++l) {
         const float* p = pubSlewedLane_(pe, l);
         for (int v = 0; v <= nV; ++v)
-            sig.pub[l][v] = p[v * 16 + stepArr[l]];
+            sig.pub[l][v] = p[v * dotModular::kStepStorage + stepArr[l]];
     }
     sig.bank = pe.warpBank_;
     if (pe.warpBank_) {
@@ -172,7 +174,7 @@ inline int sweepSigWhy(const SweepSig& sig, const SequencerEngine& eng,
     for (int l = 0; l < 7; ++l) {
         const float* p = pubSlewedLane_(pe, l);
         for (int v = 0; v <= nV; ++v)
-            if (0 != std::memcmp(&p[v * 16 + stepArr[l]], &sig.pub[l][v], sizeof(float)))
+            if (0 != std::memcmp(&p[v * dotModular::kStepStorage + stepArr[l]], &sig.pub[l][v], sizeof(float)))
                 return kWhyPub;
     }
     if ((const void*)pe.warpBank_ != sig.bank) return kWhyBank;

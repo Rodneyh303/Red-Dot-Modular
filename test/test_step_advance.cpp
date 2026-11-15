@@ -34,12 +34,24 @@
 //              the follow-main degenerate (subRes filled with the main value) is behaviourally
 //              identical to the ungated engine.
 //   STAGE2   : the bipolar sourcing — p<0 walks the playhead BACKWARD (exactly -1 per move,
-//              wrapping 0 -> 15 through advancePlayhead's reverse traversal); ghost CANDIDACY
+//              wrapping past 0 through advancePlayhead's reverse traversal); ghost CANDIDACY
 //              is the subgate REST decision (subRes[GHOST][REST]=0 → ghosts play; =1 → the
 //              gap stays empty) — variation no longer gates candidacy at all; a negative
 //              ghost-ADVANCE column walks the playhead backward in the gaps.
 //   SCOPE    : clock/phase (executeModeA) untouched — the playhead advances unconditionally there
 //              (Variation keeps its existing clock/phase meaning; p_advance is gate-mode only).
+//
+// STEPS_32 STAGE 2b RE-PIN (the cap flip 16 -> 32): the marches ride the FACTORY default
+// window, which rides the RING (reset(): windowMask = kMaskLenMask — commit-A's "the factory
+// window full-cap"), so the flip widened the default play field 16 -> 32 and three kinds of
+// pin moved WITH it, all documented flip behaviour (D3's boundary-vs-ring formulation — the
+// default window IS the boundary case that widens):
+//   1. the IDENTITY digests + the PV digest re-captured (the walk now visits cells 16..31
+//      and reads their reset()-seeded defaults — the step-addressed data moved);
+//   2. the backward-wrap EXPECTs re-derived from kMaskRing (0 -> 31, was 0 -> 15);
+//   3. the ≤16-window equivalence is NOT re-pinned here — GATE 1 (test_stage2b_pregates)
+//      owns it: its EQUIV section compares 260 digests at EVERY cap against the committed
+//      2a-tip oracle, zero differences (the AUTHORED ≤16 windows never moved).
 //
 // Build (see test/run_all.sh, entry "test_step_advance|$SE $GS $PE $CE").
 
@@ -189,18 +201,26 @@ struct GateStream {
     }
 };
 
-// ── IDENTITY marches (must byte-match the PRE-CHANGE capture — do not touch) ────
+// ── IDENTITY marches (byte-match the CURRENT capture; every re-pin is documented) ──
 // DOTTED BUILD re-pin: the capture records r.nvIdx — in gate mode the
 // NULLIFICATION SENTINEL's index (NV_GATE_NULLIFY), which moved 6 → 9 when 1/16
 // shifted. The normalization proof (differential, same discipline) shows the whole
 // stream byte-identical with that one byte mapped back — the gate-mode logic never
 // moved. OLD (pre-dotted): B=0x7fde9525731c67e2.
-static const uint64_t ADV_IDENTITY_B  = 0x3089df448e08e957ULL;
+// STEPS_32 2b RE-CAPTURE (the cap flip): the march rides the FACTORY default window,
+// which rides the RING — the flip widened it 16 -> 32 (reset(): windowMask =
+// kMaskLenMask; the probe diffed per-step captures 2a-tip vs the flip and the FIRST
+// difference is the walk landing on cell 16 — the new cells' reset()-seeded defaults,
+// exactly D3's default-widening, NOT an advance-rule change). The pre-2b values:
+// B=0x3089df448e08e957, BS=0x7c63400e804fe03e. The ≤16-window equivalence is GATE 1's
+// oracle (260 digests, zero differences at every cap); the advance FEATURE's own law
+// is the RULE/STAGE2 sections, which predict the trajectory exactly (not digest-pinned).
+static const uint64_t ADV_IDENTITY_B  = 0xe20688a53567d177ULL;   // re-pinned (STEPS_32 2b: the factory window rides the ring)
 // RE-CAPTURED for CC_PROMPT_STEP_ADVANCE_FIX_DRAW_SOURCE (the ghost-candidacy
-// deletion changes ghost outcomes at p=1; the plain-B digest above is the
-// ORIGINAL pre-change capture and still holds — u=r_vary < 1 crosses every
-// step, so the advance itself is byte-identical).
-static const uint64_t ADV_IDENTITY_BS = 0x7c63400e804fe03eULL;   // re-pinned (1/16T insert — UNMOVED)
+// deletion changes ghost outcomes at p=1; u=r_vary < 1 crosses every
+// step, so the advance itself is byte-identical) and again for STEPS_32 2b
+// (same default-window widening as B above).
+static const uint64_t ADV_IDENTITY_BS = 0xfcaca058f6d814aeULL;   // re-pinned (draw-source fix; then STEPS_32 2b)
 
 static void marchModeB_p1(int seed, Capture& cap) {
     PhiloxRng rng; rng.seed64((uint64_t)seed * 747796405u + 2891336453u + 1u);
@@ -380,9 +400,11 @@ static void ruleMarchInto(float p, int steps, Capture& cap, int* mismatches, int
 }
 
 // PER-VOICE STEP-ADVANCE Stage 2: the mixed-delegation march digest (positions +
-// offsets + scans, mono transport at a draw-dependent mid-range p). Re-pinned once —
-// this build's per-voice semantics (the counter-removal safety net).
-static const uint64_t PV_DIVERGENCE_DIGEST = 0xf7a320270f080f64;
+// offsets + scans, mono transport at a draw-dependent mid-range p). Re-pinned twice:
+// this build's per-voice semantics (the counter-removal safety net), then STEPS_32 2b
+// (the master walk rides the widened factory window — stepIndex now covers 0..31; the
+// LANE ticks stay on the lanes' own 16-length defaults, which did not move).
+static const uint64_t PV_DIVERGENCE_DIGEST = 0xbd2b063d27f28214;
 
 int main() {
     std::printf("test_step_advance — the gate-mode step-advance feature (Stages 1+3)\n");
@@ -570,7 +592,7 @@ int main() {
         seedEngine(eng, rng, 0.0f);
         const PatternInput in = makeInput(0.5f);
         redDot::RateManager rm;
-        bool alwaysMoved = true;   // the ring wraps every 16 — assert MOVEMENT, not monotonicity
+        bool alwaysMoved = true;   // the ring wraps (32 since 2b) — assert MOVEMENT, not monotonicity
         for (int step = 0; step < 20; ++step) {
             const int before = eng.stepIndex;
             rm.advance(redDot::Rate::Step, true);
@@ -586,11 +608,12 @@ int main() {
     // ModeController writes variationProb bipolar; the rectified twin is retired),
     // the ADVANCE resolver range widened to [-1,+1] (follow-main carries the sign;
     // REST/LEGATO/ACCENT stay [0,1]), and the rise sites map BACKWARD ->
-    // advancePlayhead(-1) — the reverse traversal, which wraps past step 0 to 15.
+    // advancePlayhead(-1) — the reverse traversal, which wraps past step 0 to the
+    // ring's last cell (15 at the 16 bound; 31 since the STEPS_32 2b flip).
     {
         // BACKWARD WALK (rack-free, plain Mode B, the RULE discipline incl. the
         // SCAN mirror): the |p| SCHEDULE — stochastic -0.35 first, then -1.0 (the
-        // deterministic walker that guarantees the 0 -> 15 wrap). Every decision
+        // deterministic walker that guarantees the backward wrap past 0). Every decision
         // rise moves EXACTLY -1 iff the SCANNED draw < |p|, else holds (the scan
         // then accrues — the freeze fix works backward too: the window is scanned
         // IN THE TRAVEL DIRECTION (backward travel reads drawAt(-scanOfs_)).
@@ -616,9 +639,12 @@ int main() {
             (void)r;
             if (!rise || before == -1) continue;   // the seed advances forward, no decision
             const bool moved     = (eng.stepIndex != before);
-            const bool movedBack = moved && (eng.stepIndex == ((before - 1 + 16) & 0xF));
+            // STEPS_32 2b: the wrap rides the RING (kMaskRing, cap-derived — was a
+            // literal 16; the backward wrap from cell 0 lands on 31 post-flip).
+            const bool movedBack = moved && (eng.stepIndex
+                                   == ((before - 1 + dotModular::kMaskRing) & (dotModular::kMaskRing - 1)));
             if (moved != expectBackward) ++mismatches;
-            if (moved && !movedBack) ++mismatches;   // backward moves are EXACTLY -1 (mod 16)
+            if (moved && !movedBack) ++mismatches;   // backward moves are EXACTLY -1 (mod the ring)
             if (movedBack) { ++backwardMoves; if (before == 0) crossedWrap = true; }
             if (!moved) { ++heldRises; ++mirrorScan; }   // held: the scan accrues
             else mirrorScan = 0;                          // moved: re-anchored
@@ -626,7 +652,7 @@ int main() {
         check(mismatches == 0, "STAGE2: p<0 walk == the mirrored BACKWARD rule, exactly -1 per move");
         check(backwardMoves > 0, "STAGE2: the march actually exercised backward moves");
         check(heldRises > 0, "STAGE2: the march actually exercised held (repeat) rises");
-        check(crossedWrap, "STAGE2: backward wrap verified (step 0 -> step 15)");
+        check(crossedWrap, "STAGE2: backward wrap verified (step 0 -> step 31 — the ring; was 15 at the 16 bound)");
     }
     {
         // CANDIDACY = THE SUBGATE REST (CC_PROMPT_STEP_ADVANCE_FIX_DRAW_SOURCE, the
@@ -660,7 +686,7 @@ int main() {
                                                       ghostRise, ghostRise);
             if (ghostRise && !mainRise && r.decision != MonoDecision::Rest) ++ghostPlays;
             if (before == -1 || !(mainRise || ghostRise)) continue;
-            if (eng.stepIndex == ((before - 1 + 16) & 0xF)) {
+            if (eng.stepIndex == ((before - 1 + dotModular::kMaskRing) & (dotModular::kMaskRing - 1))) {   // STEPS_32 2b: the ring wrap
                 ++backward;
                 if (ghostRise && !mainRise) ghostMoved = true;
             }

@@ -141,7 +141,8 @@ int main() {
         int stepArr[7] = {0, 1, 2, 3, 4, 5, 6};
         const int nV = 3;
         // The flat-walk helper's indexing IS the 2D array (restored verbatim — pin it).
-        EXPECT(sameBits(pubSlewedLane_(se.pe, PatternEngine::PL_MELODY)[1 * 16 + 3],
+        // STEPS_32 Stage 2a: the flat STRIDE rides kStepStorage (the rows widened).
+        EXPECT(sameBits(pubSlewedLane_(se.pe, PatternEngine::PL_MELODY)[1 * dotModular::kStepStorage + 3],
                         se.pe.pubSlewedPolyMelody[1][3]));
         SweepSig sig{};
         EXPECT(sweepSigChanged(sig, se, stepArr, nV));          // first run (!valid)

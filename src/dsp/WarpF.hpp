@@ -53,6 +53,7 @@
 #include <algorithm>
 #include <cassert>
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
 #include <memory>
 #include <string>
@@ -193,48 +194,179 @@ struct DrawnWarp {
     friend bool operator==(const DrawnWarp& a, const DrawnWarp& b) { return a.idx == b.idx; }
 };
 
-// ── The variant ────────────────────────────────────────────────────────────────────────────────
+// ── The parametric variant ── (the BASE palette — the dual's member type) ──
 // IdentityWarp FIRST: alternative 0 is the default-constructed state — the no-warp
 // bank. Trivially copyable (all alternatives are plain doubles/uint16_t), so the bank
 // is a flat, memcpy-persistable array like spread[112].
-using WarpF = std::variant<
+// (the BASE palette — the dual's member type) — named ParamF so the dual below can hold
+// it BY VALUE without recursion (a variant cannot contain itself; ParamF is the same
+// list MINUS the dual alternative).
+using ParamF = std::variant<
     IdentityWarp,              // index 0 = default = uniform / no warp
     TriangularWarp, PowerWarp, KumaraswamyWarp, LogitNormalWarp,
     LogitSigmoidWarp, MobiusWarp, TruncNormalWarp, ReversedPowerWarp,  // NB reversed-power:
     DrawnWarp>;                //   added by CC_PROMPT_P1 (PR #287) — wrapped like the rest
 
-// ── The thin forwarders ────────────────────────────────────────────────────────────────────────
+// ── DualWarp — THE DUAL READING (PHASE_DISTRIBUTION_SPEC §1/§6, Rodney: "For each of our
+// distributions ... add the dual ... So we double the number of distribution choices") ──
+// ONE implementation: the same curve object read with CDF and quantile swapped —
+//   dual.cdf(x)    = member.invCDF(x)      (the member's quantile, read as a CDF)
+//   dual.invCDF(u) = member.cdf(u)         (the member's CDF, read as a quantile)
+//   dual.pdf(x)    = 1 / member.pdf(dual.cdf(x))   (the reciprocal density; the finite
+//                    DIST_EDGE_EPS proxy where the member's density vanishes — the
+//                    house divergent-edge rule, mirrored inward)
+// The menu entry fixes the reading (the spec's "a single class with a reading parameter
+// fixed by the menu entry"); the chain stages (tilt/gap/atom) live OUTSIDE the curve on
+// the WarpCell, and the DUAL SWAPS THE COMPOSED PAIR at eval time (WarpBank::warpedValue),
+// so an atom on K reads as a gap on DK and vice versa (spec §6/§8.8 — Rodney: "Atom dual
+// is a gap and vice versa"). The member is a ParamF — NEVER a WarpF — so duals cannot
+// nest (dual∘dual = the original reading; the menu just flips between K and DK), and the
+// type stays trivially copyable (a flat ParamF value inside).
+struct DualWarp;
+
+// The FULL variant: the base palette with the dual reading appended LAST — indices 0..9
+// are UNTOUCHED (the fold's kind dispatch, warpParamSpec's tables, the test pin on
+// "IdentityWarp is alternative 0" all keep their numbers; the dual is index 10).
+using WarpF = std::variant<
+    IdentityWarp,              // index 0 = default = uniform / no warp
+    TriangularWarp, PowerWarp, KumaraswamyWarp, LogitNormalWarp,
+    LogitSigmoidWarp, MobiusWarp, TruncNormalWarp, ReversedPowerWarp,
+    DrawnWarp,
+    DualWarp>;                 // index 10 = the dual reading (PHASE_DISTRIBUTION_SPEC)
+
+// The member-level dispatch the DualWarp swap forwards to (defined beside the thin
+// forwarders, below — the ParamF visitors the WarpF visitors delegate into).
+inline double invCDFOf(const ParamF& m, double u, const MonotoneCurve* pool);
+inline double cdfOf  (const ParamF& m, double x, const MonotoneCurve* pool);
+inline double pdfOf  (const ParamF& m, double x, const MonotoneCurve* pool);
+
+// DualWarp — the reading swap, pool-threaded exactly like DrawnWarp (a drawn member
+// evaluates through the SAME pool pointer the outer call received).
+struct DualWarp {
+    ParamF member;   // the wrapped curve (never a DualWarp — no nesting, by construction)
+    double invCDF(double u, const MonotoneCurve* pool) const { return cdfOf(member, u, pool); }
+    double cdf  (double x, const MonotoneCurve* pool) const { return invCDFOf(member, x, pool); }
+    double pdf  (double x, const MonotoneCurve* pool) const;
+    const char* typeName() const { return "dual"; }
+    friend bool operator==(const DualWarp& a, const DualWarp& b) { return a.member == b.member; }
+};
+
+// ── the ParamF ↔ WarpF seams ───────────────────────────────────────────────────────────
+// Lift a base-palette value into the full variant (one visit, one copy); and the narrow
+// direction used when BUILDING a dual's member: a plain alternative copies, a DualWarp
+// input is DEFENSIVE (callers never build members from full-variant values) and falls
+// back to the safe identity.
+inline WarpF toWarpF(const ParamF& m) {
+    return std::visit([](const auto& d) -> WarpF { return WarpF(d); }, m);
+}
+inline ParamF toParamF(const WarpF& f) {
+    return std::visit([](const auto& d) -> ParamF {
+        using T = std::decay_t<decltype(d)>;
+        if constexpr (std::is_same_v<T, DualWarp>) return ParamF{IdentityWarp{}};
+        else return ParamF(d);
+    }, f);
+}
+// Wrap a (base-palette) curve as the dual reading — the menu's commit path. An IdentityWarp
+// member is refused (the uniform IS its own dual; the menu never offers it) and returns
+// the member untouched, so a stray wrap can never manufacture a second uniform entry.
+inline WarpF dualWrap(const WarpF& member) {
+    if (std::holds_alternative<IdentityWarp>(member)) return member;
+    return WarpF{DualWarp{toParamF(member)}};
+}
+inline bool isDualWarp(const WarpF& f) { return std::holds_alternative<DualWarp>(f); }
+// The member as a full-variant value (the eval/display paths need the bare curve to
+// compose the stages over — the dual's swap happens AROUND the chain, not inside it).
+inline WarpF dualMember(const WarpF& f) {
+    if (const auto* d = std::get_if<DualWarp>(&f)) return toWarpF(d->member);
+    return f;
+}
+// The EFFECTIVE param kind for the per-kind spec tables: a dual's params are the
+// MEMBER's params (the popup's p1/p2 knobs and the mod-jack fold re-mint the member,
+// then the dual re-wraps) — so every kind-keyed table lookup resolves through here.
+inline int warpEffKind(const WarpF& f) {
+    if (const auto* d = std::get_if<DualWarp>(&f)) return (int)d->member.index();
+    return (int)f.index();
+}
+
+// ── The thin forwarders ────────────────────────────────────────────────────────
 // Dispatch to the ONE implementation each alternative owns (the subclass body /
 // MonotoneCurve). std::visit over value types is non-allocating; the ONLY branch is the
-// compile-time one that hands DrawnWarp its pool — there is no second copy of any
-// formula, so this forwarder cannot diverge. `pool` is only read for drawn slots
-// (null is fine elsewhere).
-inline double invCDF(const WarpF& f, double u, const MonotoneCurve* pool) {
+// compile-time one that hands DrawnWarp — directly, or as a DUAL's member — its pool;
+// there is no second copy of any formula, so this forwarder cannot diverge. `pool` is
+// only read for drawn slots (null is fine elsewhere). The ParamF-level trio is the
+// member dispatch the DUAL's swap calls (§6: dual.invCDF = member.cdf, dual.cdf =
+// member.invCDF); the WarpF-level trio adds the DualWarp branches on top.
+inline double invCDFOf(const ParamF& m, double u, const MonotoneCurve* pool) {
     return std::visit([u, pool](const auto& d) -> double {
         if constexpr (std::is_same_v<std::decay_t<decltype(d)>, DrawnWarp>)
             return d.invCDF(u, pool);
         else
             return d.invCDF(u);
-    }, f);
+    }, m);
 }
-inline double cdf(const WarpF& f, double x, const MonotoneCurve* pool) {
+inline double cdfOf(const ParamF& m, double x, const MonotoneCurve* pool) {
     return std::visit([x, pool](const auto& d) -> double {
         if constexpr (std::is_same_v<std::decay_t<decltype(d)>, DrawnWarp>)
             return d.cdf(x, pool);
         else
             return d.cdf(x);
-    }, f);
+    }, m);
 }
-inline double pdf(const WarpF& f, double x, const MonotoneCurve* pool) {
+inline double pdfOf(const ParamF& m, double x, const MonotoneCurve* pool) {
     return std::visit([x, pool](const auto& d) -> double {
         if constexpr (std::is_same_v<std::decay_t<decltype(d)>, DrawnWarp>)
             return d.pdf(x, pool);
         else
             return d.pdf(x);
+    }, m);
+}
+// DualWarp::pdf — defined here (pdfOf is complete above): the reciprocal density
+// 1/f(F⁻¹(x)) with the house finite proxy. Where the member's density vanishes the
+// dual's density DIVERGES (the interior mirror of a divergent rail edge); the proxy
+// keeps callers finite exactly like the palette's edge handling.
+inline double DualWarp::pdf(double x, const MonotoneCurve* pool) const {
+    const double y = invCDFOf(member, x, pool);      // = dual.cdf(x) = F⁻¹(x)
+    const double d = pdfOf(member, y, pool);         // f(F⁻¹(x))
+    return 1.0 / (d < DIST_EDGE_EPS ? DIST_EDGE_EPS : d);
+}
+inline double invCDF(const WarpF& f, double u, const MonotoneCurve* pool) {
+    return std::visit([u, pool](const auto& d) -> double {
+        using T = std::decay_t<decltype(d)>;
+        if constexpr (std::is_same_v<T, DrawnWarp>)     return d.invCDF(u, pool);
+        else if constexpr (std::is_same_v<T, DualWarp>) return d.invCDF(u, pool);
+        else                                            return d.invCDF(u);
+    }, f);
+}
+inline double cdf(const WarpF& f, double x, const MonotoneCurve* pool) {
+    return std::visit([x, pool](const auto& d) -> double {
+        using T = std::decay_t<decltype(d)>;
+        if constexpr (std::is_same_v<T, DrawnWarp>)     return d.cdf(x, pool);
+        else if constexpr (std::is_same_v<T, DualWarp>) return d.cdf(x, pool);
+        else                                            return d.cdf(x);
+    }, f);
+}
+inline double pdf(const WarpF& f, double x, const MonotoneCurve* pool) {
+    return std::visit([x, pool](const auto& d) -> double {
+        using T = std::decay_t<decltype(d)>;
+        if constexpr (std::is_same_v<T, DrawnWarp>)     return d.pdf(x, pool);
+        else if constexpr (std::is_same_v<T, DualWarp>) return d.pdf(x, pool);
+        else                                            return d.pdf(x);
     }, f);
 }
 inline const char* warpTypeName(const WarpF& f) {
     return std::visit([](const auto& d) { return d.typeName(); }, f);
+}
+// The display name: a dual reads as "dual-<member>" (the popup header's "%s" slot —
+// a static-string return cannot compose, so the caller's buffer is threaded; a null
+// buf or a non-dual falls back to warpTypeName).
+inline const char* warpDisplayName(const WarpF& f, char* buf, size_t cap) {
+    if (buf && std::get_if<DualWarp>(&f)) {
+        std::snprintf(buf, cap, "dual-%s",
+                      std::visit([](const auto& m) { return m.typeName(); },
+                                 std::get<DualWarp>(f).member));
+        return buf;
+    }
+    return warpTypeName(f);
 }
 
 // ── The lowering seam: authored (polymorphic) → bank (value) ────────────────────────────────────
@@ -317,6 +449,13 @@ inline WarpParamSpec warpParamSpec(int kind, int which) {
 inline double warpParamValue(const WarpF& f, int which) {
     return std::visit([which](const auto& d) -> double {
         using T = std::decay_t<decltype(d)>;
+        if constexpr (std::is_same_v<T, DualWarp>) {
+            // A dual's params are the MEMBER's params (the reading swap doesn't touch
+            // the shape) — read through the member (toWarpF lift; the member is never
+            // a dual, so this recurses exactly one level).
+            return warpParamValue(toWarpF(d.member), which);
+        }
+        else if constexpr (std::is_same_v<T, TriangularWarp>)        return which == 0 ? d.mode : 0.0;
         if constexpr (std::is_same_v<T, TriangularWarp>)        return which == 0 ? d.mode : 0.0;
         else if constexpr (std::is_same_v<T, PowerWarp>)        return which == 0 ? d.k : 0.0;
         else if constexpr (std::is_same_v<T, ReversedPowerWarp>)return which == 0 ? d.theta : 0.0;
@@ -341,7 +480,14 @@ inline double warpParamValue(const WarpF& f, int which) {
 inline WarpF warpWithParam(const WarpF& f, int which, double v) {
     return std::visit([&f, which, v](const auto& d) -> WarpF {
         using T = std::decay_t<decltype(d)>;
-        if constexpr (std::is_same_v<T, TriangularWarp>)
+        if constexpr (std::is_same_v<T, DualWarp>) {
+            // Re-mint the MEMBER with the param replaced, then re-wrap the reading —
+            // ONE re-mint implementation (the member path below), no parallel mint.
+            // dualWrap refuses an identity member (dual-of-uniform = uniform), which
+            // is unreachable here: a dual's member is never identity by construction.
+            return dualWrap(warpWithParam(toWarpF(d.member), which, v));
+        }
+        else if constexpr (std::is_same_v<T, TriangularWarp>)
             return lowerWarp(TriangularDistribution(which == 0 ? v : d.mode));
         else if constexpr (std::is_same_v<T, PowerWarp>)
             return lowerWarp(PowerDistribution(which == 0 ? v : d.k));
@@ -390,6 +536,16 @@ inline json_t* warpToJson(const WarpF& f) {
             json_object_set_new(root, "type", json_string("drawn"));
             json_object_set_new(root, "pool", json_integer(d.idx));
             return root;
+        } else if constexpr (std::is_same_v<T, DualWarp>) {
+            // PHASE_DISTRIBUTION_SPEC: the dual persists as its member's own codec
+            // wrapped in a "dual" envelope (the member is a ParamF — the nested call
+            // can never emit a nested dual; no recursion hazard).
+            json_t* root = json_object();
+            json_object_set_new(root, "format", json_string("dmcurve"));
+            json_object_set_new(root, "version", json_integer(1));
+            json_object_set_new(root, "type", json_string("dual"));
+            json_object_set_new(root, "member", warpToJson(toWarpF(d.member)));
+            return root;
         } else {
             return d.dist().toJson();   // the ONE serializer: the subclass's own
         }
@@ -405,6 +561,16 @@ inline WarpF warpFromJson(json_t* j) {
             if (idx >= 0 && idx < (long long)kWarpPoolCap) return DrawnWarp{(uint16_t)idx};
         }
         return IdentityWarp{};   // bad/missing pool ref
+    }
+    if (json_is_string(jt) && std::strcmp(json_string_value(jt), "dual") == 0) {
+        // The dual envelope: parse the member with the SAME codec (it may be a drawn
+        // pool reference). A member that fails to load (or is the IDENTITY — a
+        // dual-of-uniform IS the uniform) collapses to the member; a hand-nested
+        // dual collapses by the dual∘dual = original reading law.
+        const WarpF member = warpFromJson(json_object_get(j, "member"));
+        if (std::holds_alternative<IdentityWarp>(member)) return member;
+        if (const auto* nested = std::get_if<DualWarp>(&member)) return toWarpF(nested->member);
+        return WarpF{DualWarp{toParamF(member)}};
     }
     std::unique_ptr<Distribution> d = loadDistribution(j);   // the ONE loader + validation
     return d ? lowerWarp(*d) : IdentityWarp{};
@@ -454,6 +620,22 @@ struct WarpBank {
     float globalWarpAtomLevel[LANES] = {};     // Macro's delegated-default atom location
     float globalWarpAtomMass[LANES] = {};      // Macro's delegated-default atom mass
 
+    // ── THE GAP STAGE (PHASE_DISTRIBUTION_SPEC §4/§9 — Rodney: "We also add zero
+    // density gaps with controls and modulation similar to atoms"): the gap's
+    // AUTHORED (location, size) per (voice,lane), the atom arrays' twin in the SAME
+    // block shape, plus Macro's global delegation defaults. NEUTRAL default: size 0
+    // (width zero IS the neutral body — the gap's own p=0 early-out); the LOCATION's
+    // interior default (0.5) is only reachable while size > 0 — the location store is
+    // inert at width zero, exactly like the atom level at mass 0. Eval-side clamps
+    // (clamp01 bounds + the 1−ε mass cap) live in WarpStages.hpp (the STORE trusts
+    // its writer). The dual reading swaps the COMPOSED pair at eval time, so these
+    // same params drive the dual's gap (the atom↔gap exchange is the reading's
+    // property, not a second store).
+    float warpGapLoc[N]        = {};   // gap location a (interior default 0.5 via the ctor; inert at size 0)
+    float warpGapSize[N]       = {};   // gap size b−a (neutral 0; authored ≤ 1, eval clamps b ≤ 1)
+    float globalWarpGapLoc[LANES]  = {};   // Macro's delegated-default gap location
+    float globalWarpGapSize[LANES] = {};   // Macro's delegated-default gap size
+
     // ── THE DISTRIBUTION SEND-BUS PLANES (CC_PROMPT_SANDS_DISTRIBUTION_EXPANDER_SPEC:
     // "Macro distribution mods flow through per-voice sends; East blends
     // global+per-voice") — NOT store state, NOT persisted (the JSON codec below is
@@ -492,7 +674,15 @@ struct WarpBank {
     //     patch without the subpanel never writes the store). 0 = the voice receives
     //     none of the global distribution mod. The OWN component is NOT scaled — it
     //     is already per-voice by construction (the receiving side's own expander).
-    static constexpr int DPARS = 6;
+    // PHASE_DISTRIBUTION_SPEC §9 (Rodney: "zero density gaps with controls and
+    // modulation similar to atoms"): the two gap params APPENDED to the fold axis —
+    // 0 P1, 1 P2, 2 TILT, 3 LEVEL, 4 MASS, 5 WARP (the pre-gap order UNTOUCHED: the
+    // delta planes' indices, the expander's mod-jack ids 0..41 and every pinned fold
+    // test keep their meaning), 6 GAPLOC, 7 GAPSIZE. The only legacy surface is the
+    // PERSISTED DistSend stride (6 -> 8 per (voice,lane) group) — WarpBank::parse
+    // detects the old 672-entry layout and maps it per-group (identity on 0..5,
+    // identity defaults on 6,7).
+    static constexpr int DPARS = 8;
     static constexpr float kDistSendDefault = 1.0f;
     float    distGlobalDelta[LANES][DPARS]          = {};
     float    distOwnDelta[VOICES][LANES][DPARS]     = {};
@@ -510,6 +700,10 @@ struct WarpBank {
     WarpBank() {
         for (int i = 0; i < N; ++i)     warpAtomLevel[i]     = (float)warpStages::kAtomLevelDefault;
         for (int l = 0; l < LANES; ++l) globalWarpAtomLevel[l] = (float)warpStages::kAtomLevelDefault;
+        // the gap LOCATION's interior default (the atom level's twin; the SIZE stays
+        // 0 = the neutral body, so a fresh bank is bit-identically gap-free):
+        for (int i = 0; i < N; ++i)     warpGapLoc[i]     = (float)warpStages::kGapLocDefault;
+        for (int l = 0; l < LANES; ++l) globalWarpGapLoc[l] = (float)warpStages::kGapLocDefault;
         // the send amounts' IDENTITY default (see the distSend block above): every
         // construction path — Monsoon's editor slice, parse's reset, the tests —
         // starts at full send, so the fold is the pre-subpanel fold until authored.
@@ -630,6 +824,20 @@ struct WarpBank {
         json_t* gm = json_array();
         for (int l = 0; l < LANES; ++l) json_array_append_new(gm, json_real((double)b.globalWarpAtomMass[l]));
         json_object_set_new(root, (pfx + "GlobalWarpAtomMass").c_str(), gm);
+        // THE GAP STAGE (additive, the same missing-key-⟹-defaults contract): the
+        // authored (location, size) per voice/lane + Macro's global defaults.
+        json_t* jgl = json_array();
+        for (int i = 0; i < N; ++i) json_array_append_new(jgl, json_real((double)b.warpGapLoc[i]));
+        json_object_set_new(root, (pfx + "WarpGapLoc").c_str(), jgl);
+        json_t* jgs = json_array();
+        for (int i = 0; i < N; ++i) json_array_append_new(jgs, json_real((double)b.warpGapSize[i]));
+        json_object_set_new(root, (pfx + "WarpGapSize").c_str(), jgs);
+        json_t* ggl = json_array();
+        for (int l = 0; l < LANES; ++l) json_array_append_new(ggl, json_real((double)b.globalWarpGapLoc[l]));
+        json_object_set_new(root, (pfx + "GlobalWarpGapLoc").c_str(), ggl);
+        json_t* ggs = json_array();
+        for (int l = 0; l < LANES; ++l) json_array_append_new(ggs, json_real((double)b.globalWarpGapSize[l]));
+        json_object_set_new(root, (pfx + "GlobalWarpGapSize").c_str(), ggs);
         // THE MACRO SEND SUBPANEL's per-voice send amounts (additive, the same
         // missing-key-⟹-defaults contract): flat VOICES×LANES×DPARS, index
         // (v*LANES + lane)*DPARS + p — the bank's own stride convention.
@@ -745,20 +953,53 @@ struct WarpBank {
         loadGlobalStage("GlobalWarpTilt", out.globalWarpTilt);
         loadGlobalStage("GlobalWarpAtomLevel", out.globalWarpAtomLevel);
         loadGlobalStage("GlobalWarpAtomMass", out.globalWarpAtomMass);
+        auto loadStage112 = [&](const char* key, float* a) {
+            if (json_t* j = json_object_get(root, (pfx + key).c_str())) {
+                if (json_is_array(j)) {
+                    const size_t n = json_array_size(j);
+                    for (int i = 0; i < N && (size_t)i < n; ++i) {
+                        json_t* jv = json_array_get(j, (size_t)i);
+                        if (json_is_number(jv)) a[i] = (float)json_number_value(jv);
+                    }
+                }
+            }
+        };
+        loadStage112("WarpGapLoc", out.warpGapLoc);        // additive: short array keeps the
+        loadStage112("WarpGapSize", out.warpGapSize);      // default tail; absent key leaves
+        loadGlobalStage("GlobalWarpGapLoc", out.globalWarpGapLoc);   // the ctor's neutral state
+        loadGlobalStage("GlobalWarpGapSize", out.globalWarpGapSize);
         // DistSend (additive): short array keeps the identity tail; absent key leaves
         // the ctor's 1.0 fill. Does NOT participate in `full` (the two 112-banks'
         // contract — additive keys never change an old patch's verdict).
+        // THE STRIDE MIGRATION (PHASE_DISTRIBUTION_SPEC, gap params appended): a
+        // pre-gap patch stores the OLD 6-param layout — flat (v*LANES + lane)*6 + p.
+        // Detected by the exact old length (112 groups x 6); each group's six values
+        // map onto the new group's indices 0..5 IDENTITY (the appended axis kept
+        // 0..5 untouched ON PURPOSE) and the gap sends (6,7) keep the ctor's
+        // identity default. Anything else reads the new layout (short keeps tail).
         if (json_t* js = json_object_get(root, (pfx + "DistSend").c_str())) {
             if (json_is_array(js)) {
                 const size_t n = json_array_size(js);
-                size_t i = 0;
-                for (int v = 0; v < VOICES; ++v)
-                    for (int l = 0; l < LANES; ++l)
-                        for (int p = 0; p < DPARS; ++p, ++i) {
-                            if (i >= n) break;
-                            json_t* jv = json_array_get(js, i);
-                            if (json_is_number(jv)) out.distSend[v][l][p] = (float)json_number_value(jv);
+                constexpr size_t kGroups = (size_t)VOICES * LANES;
+                const size_t oldLen = kGroups * 6, newLen = kGroups * DPARS;
+                if (n == oldLen && oldLen != newLen) {
+                    for (size_t g = 0; g < kGroups; ++g)
+                        for (int p = 0; p < 6; ++p) {
+                            json_t* jv = json_array_get(js, g * 6 + (size_t)p);
+                            if (json_is_number(jv))
+                                out.distSend[(int)(g / LANES)][(int)(g % LANES)][p]
+                                    = (float)json_number_value(jv);
                         }
+                } else {
+                    size_t i = 0;
+                    for (int v = 0; v < VOICES; ++v)
+                        for (int l = 0; l < LANES; ++l)
+                            for (int p = 0; p < DPARS; ++p, ++i) {
+                                if (i >= n) break;
+                                json_t* jv = json_array_get(js, i);
+                                if (json_is_number(jv)) out.distSend[v][l][p] = (float)json_number_value(jv);
+                            }
+                }
             }
         }
         return full;

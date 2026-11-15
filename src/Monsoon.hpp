@@ -39,6 +39,7 @@
 #include "dsp/managers/MonsoonOutputGenerator.hpp"
 #include "dsp/MacroTapBank.hpp"
 #include "dsp/SubgateKnobs.hpp"
+#include "dsp/QmixOctave.hpp"
 #include "dsp/VoiceResolver.hpp"   // the SUBGATE main-threshold mapping (mono()/slot()) — VoiceResolver is minted here, complete
 #include "ui/RateManager.hpp"   // THE compute-rate authority (CC_PROMPT_RATE_MANAGER_START) — rack-free core
 #include "dsp/WarpF.hpp"
@@ -70,6 +71,10 @@ static inline T clampv(T v, T lo, T hi) {
 struct InputState {
     float clk, gate1, gate2, gate3;
     float run, reset, cv1, cv2;
+    // PHASE TIER Stage 2: CV3 read at audio rate in the phase origin (modeSelect == 2),
+    // where it is the SUBPHASE input (Rodney: "Lets use cv3 in for subphase"). Outside
+    // Mode E CV3 keeps its assignable-modulation role and stays on its throttled read.
+    float cv3;
     bool  gate1Rise, gate2Rise;
     // subGate (ratchet) = Gate 2 (GATE mode B) / Gate 3 (Mode D).  The fine-grid clock INSIDE main
     // gates (ratchet/tie/rest/legato within gates).  Accepts a trigger OR gate (onset-only).
@@ -290,6 +295,14 @@ namespace MonsoonIds {
         // Only used when CV1 (the phase input) is UNPATCHED -- the DAW-automatable fallback.
         PHASE_PARAM,
 
+        // PHASE TIER Stage 2: the SUBPHASE CALIBRATION knob — regionSize, quarter .. bar,
+        // CONTINUOUS (the design doc: "anything between (quarter-note → bar)"). Knob 0..1
+        // maps to regionSixteenths = 4 + 12·v (4 = one quarter, 16 = one bar). Default 1.0
+        // = one bar (the showcase value: 2 regions at a 32-step pattern; "no jumps between
+        // bars" preserved by construction). Only read in the phase origin while CV3 (the
+        // subphase input) is PATCHED — unpatched CV3 is Stage 1 exactly.
+        SUBPHASE_CAL_PARAM,
+
         NUM_PARAMS
     };
 
@@ -500,7 +513,16 @@ namespace MonsoonIds {
         STEP_LIGHTS_START = 0,
         STEP_LIGHTS_END   = STEP_LIGHTS_START + 16,
 
-        // STEP_LIGHTS_END consumes slot 16; RHYTHM_DICE_LIGHT auto-follows at 17
+        // BAR 1/BAR 2 — the inner-disc bar indicator (D10 (2) as amended by D15): two
+        // LEDs INSIDE the ring's unused center (upper = bar 1, lower = bar 2 — the
+        // disc's hemisphere cut). Ride P5's offset-enum re-seat (append right after
+        // STEP_LIGHTS_END; downstream ids shift automatically — every consumer uses the
+        // symbolic ids and nothing persists a light index: brightnesses are recomputed
+        // every UI frame).
+        BAR1_LIGHT,
+        BAR2_LIGHT,
+
+        // STEP_LIGHTS_END consumes slots 16..18; RHYTHM_DICE_LIGHT auto-follows at 19
         RHYTHM_DICE_LIGHT,
         MELODY_DICE_LIGHT,
         LOCK_LIGHT,
@@ -563,8 +585,10 @@ struct MonsoonRightMessage {
 
     // Current pattern snapshot (useful for a pattern display expander)
     // (rhythmPattern[16] RETIRED — CC_PROMPT_RHYTHMPATTERN_DELETE_AND_POLARITY ITEM 1)
-    int   melodySemitone[16] = {};
-    float melodyPitchV[16]   = {};
+    // STEPS_32 Stage 2a: the mirrors ride the engine's STORAGE width (kStepStorage) —
+    // whole-row twins of PatternEngine's arrays; reads stay ring-bounded (≤16 today).
+    int   melodySemitone[dotModular::kStepStorage] = {};
+    float melodyPitchV[dotModular::kStepStorage]   = {};
 
     // Seed voltages
     float rhythmSeedV  = 0.f;  // 0..10V
@@ -916,6 +940,23 @@ struct Monsoon : Module {
         // follow main = byte-identical (the bank ctor). Kept at struct END (the
         // same ABI-hygiene note as warp).
         dotModular::SubgateKnobs::SubgateBank subgate;
+        // The QMIX-OCTAVE tier bank (QmixOctave — CC_PROMPT_QMIX_OCTAVE +
+        // QMIX_OCTAVE_PLAN.md Stages 2-3, the SubgateKnobs pattern minus the axes the
+        // octave decision lacks): the authored octave-threshold sources per voice —
+        // the GLOBAL knob (the Straits base's store-backed Qmix-octave knob), the
+        // FOLLOW-DEGREE switch (default: the octave threshold IS the voice's degree
+        // qmix level — "follow main qmix poly voice subpanel for both pitch and
+        // octave", today's behaviour), the OWN per-voice cells (the qmix-octave
+        // SUBPANEL's knobs, touch = claim — the most-flexible end state: per voice
+        // separate qmix probability for pitch-within-octave AND octave). NO MONSOON
+        // PANEL CHANGE — Monsoon only HOLDS the store the Straits surfaces address
+        // and the ModeController consumes into voices[].qmixOctLevel (the same
+        // EditorState law as subgate). NO delta planes (the spec asks a knob; the
+        // subgate panels carry none post-merge — modulation is Causeway, not in
+        // scope), hence no watchdog/heartbeat machinery. Defaults = follow-degree =
+        // byte-identical (the bank ctor). Kept at struct END (the same ABI-hygiene
+        // note as warp/subgate).
+        dotModular::QmixOctave::Bank qmixOctave;
         // The UNIFIED ADDRESSING voice-range authoring rows (Stage 2b —
         // CC_PROMPT_UNIFIED_ADDRESSING_SPEC on feat/unified-addressing): the Macro
         // (GLOBAL) voice range + the per-voice East rows, the SAME float-store
@@ -951,11 +992,12 @@ struct Monsoon : Module {
         // (the range-as-mask, derived from the row's O/L = absolute-1), 2 = PAINTED
         // (the fixed-rotatable pattern; followR picks the rotation source: 0 = static
         // absolute steps = absolute-2, !=0 = follows the row's R = absolute-3).
-        // Patterns are 16-bit play masks stored as ONE float holding the exact integer
-        // (bit c = phrase step c+1 plays; 65535 = all-on) — persistence/push friendly
-        // and exactly representable. Defaults are RANGE-driven (CC_PROMPT_UAS_MASK_UI_
-        // INCOMPLETE decision 1: the voice range drives the mask by default — a full
-        // range is all-on, so the default is byte-neutral; a windowed range gates).
+        // Patterns are the DECIDED uint64 play masks, LENGTH-MASKED on the frame RING
+        // (dotModular::kMaskLenMask — the STEPS_32 Stage 2a integer representation; bit c
+        // = phrase step c+1 plays; the ring's all-on = the default). The old float
+        // storage (a 16-bit integer in a float) is GONE — a mask above 16 bits does not
+        // round-trip a float's 24-bit mantissa (the float-precision wall the DECIDED
+        // block names); persistence moved to fresh integer keys (MonsoonPersistenceManager).
         // CYCLE (0) is the base default (the corrected model: "Cycle (default = as if
         // no mask)" — the read cycles within the LOR, no output gate); ABS1 (1) is a
         // CHOICE (the read runs the full phrase; the output plays the LOR window
@@ -963,11 +1005,13 @@ struct Monsoon : Module {
         // RANGE-driven default (decision 1) is superseded by the corrected model.
         // Saved patches load their own kinds verbatim. Kept at struct END (ABI hygiene).
         float maskMacroKind        = 0.f;     // CYCLE (the corrected model's default base)
-        float maskMacroPatternBits = 65535.f;
+        uint64_t maskMacroPatternBits = dotModular::kMaskLenMask;
         float maskMacroFollowR     = 0.f;     // the painted kind's rotation source
         float maskEastKind[16]         = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};   // per-voice kind (CYCLE default)
-        float maskEastPatternBits[16]  = {65535.f,65535.f,65535.f,65535.f, 65535.f,65535.f,65535.f,65535.f,
-                                          65535.f,65535.f,65535.f,65535.f, 65535.f,65535.f,65535.f,65535.f};
+        uint64_t maskEastPatternBits[16] = {dotModular::kMaskLenMask,dotModular::kMaskLenMask,dotModular::kMaskLenMask,dotModular::kMaskLenMask,
+                                            dotModular::kMaskLenMask,dotModular::kMaskLenMask,dotModular::kMaskLenMask,dotModular::kMaskLenMask,
+                                            dotModular::kMaskLenMask,dotModular::kMaskLenMask,dotModular::kMaskLenMask,dotModular::kMaskLenMask,
+                                            dotModular::kMaskLenMask,dotModular::kMaskLenMask,dotModular::kMaskLenMask,dotModular::kMaskLenMask};
         float maskEastFollowR[16]      = {};
         float maskLocalEastMask[16]    = {};   // 0 = follow the MACRO mask (default)
     } editor;
@@ -1044,43 +1088,47 @@ struct Monsoon : Module {
         if (vLorOk(v) && c >= 0 && c < 3) editor.voiceLorAttenEast[v*3 + c] = x; }
 
     // ── UNIFIED ADDRESSING Stage 4: the output-mask row accessors (the vLorOk idiom:
-    // bounds-guarded, a bad index reads 0 / writes nothing — audio-path reads) ──
+    // bounds-guarded, a bad index reads 0 / writes nothing — audio-path reads).
+    // STEPS_32 Stage 2a: the patterns ARE the DECIDED uint64 integer representation —
+    // the setters clamp on the RING (the store boundary, same law the engine push
+    // applies); the cell guards ride kMaskRing. The float getters/setters are gone
+    // (the float wall they bridged no longer exists).
     float getMaskMacroKind() const        { return editor.maskMacroKind; }
     void  setMaskMacroKind(float x)       { editor.maskMacroKind = x; }
-    float getMaskMacroPatternBits() const { return editor.maskMacroPatternBits; }
-    void  setMaskMacroPatternBits(float x){ editor.maskMacroPatternBits = std::clamp(x, 0.f, 65535.f); }
+    uint64_t getMaskMacroPatternBits() const { return editor.maskMacroPatternBits; }
+    void  setMaskMacroPatternBits(uint64_t x){ editor.maskMacroPatternBits = x & dotModular::kMaskLenMask; }
     float getMaskMacroFollowR() const     { return editor.maskMacroFollowR; }
     void  setMaskMacroFollowR(float x)    { editor.maskMacroFollowR = x; }
     // per-cell view over the bit pattern (the paint surface reads/writes cells)
     bool  getMaskMacroCell(int c) const {
-        return (c >= 0 && c < 16) && ((((int)editor.maskMacroPatternBits) >> c) & 1) != 0; }
+        return (c >= 0 && c < dotModular::kMaskRing) && (((editor.maskMacroPatternBits >> c) & 1ULL) != 0); }
     void  setMaskMacroCell(int c, bool play) {
-        if (c < 0 || c >= 16) return;
-        const int b = (int)editor.maskMacroPatternBits;
-        editor.maskMacroPatternBits = (float)(play ? (b | (1 << c)) : (b & ~(1 << c))); }
+        if (c < 0 || c >= dotModular::kMaskRing) return;
+        if (play) editor.maskMacroPatternBits |= (uint64_t(1) << c);
+        else      editor.maskMacroPatternBits &= ~(uint64_t(1) << c); }
     float getMaskEastKind(int v) const        { return vLorOk(v) ? editor.maskEastKind[v] : 0.f; }
     void  setMaskEastKind(int v, float x)     { if (vLorOk(v)) editor.maskEastKind[v] = x; }
-    float getMaskEastPatternBits(int v) const { return vLorOk(v) ? editor.maskEastPatternBits[v] : 0.f; }
-    void  setMaskEastPatternBits(int v, float x) {
-        if (vLorOk(v)) editor.maskEastPatternBits[v] = std::clamp(x, 0.f, 65535.f); }
+    uint64_t getMaskEastPatternBits(int v) const { return vLorOk(v) ? editor.maskEastPatternBits[v] : 0ULL; }
+    void  setMaskEastPatternBits(int v, uint64_t x) {
+        if (vLorOk(v)) editor.maskEastPatternBits[v] = x & dotModular::kMaskLenMask; }
     float getMaskEastFollowR(int v) const     { return vLorOk(v) ? editor.maskEastFollowR[v] : 0.f; }
     void  setMaskEastFollowR(int v, float x)  { if (vLorOk(v)) editor.maskEastFollowR[v] = x; }
     bool  getMaskEastCell(int v, int c) const {
-        return (vLorOk(v) && c >= 0 && c < 16) && ((((int)editor.maskEastPatternBits[v]) >> c) & 1) != 0; }
+        return (vLorOk(v) && c >= 0 && c < dotModular::kMaskRing) && (((editor.maskEastPatternBits[v] >> c) & 1ULL) != 0); }
     void  setMaskEastCell(int v, int c, bool play) {
-        if (!vLorOk(v) || c < 0 || c >= 16) return;
-        const int b = (int)editor.maskEastPatternBits[v];
-        editor.maskEastPatternBits[v] = (float)(play ? (b | (1 << c)) : (b & ~(1 << c))); }
+        if (!vLorOk(v) || c < 0 || c >= dotModular::kMaskRing) return;
+        if (play) editor.maskEastPatternBits[v] |= (uint64_t(1) << c);
+        else      editor.maskEastPatternBits[v] &= ~(uint64_t(1) << c); }
     float getMaskLocalEastMask(int v) const   { return vLorOk(v) ? editor.maskLocalEastMask[v] : 0.f; }
     void  setMaskLocalEastMask(int v, float x){ if (vLorOk(v)) editor.maskLocalEastMask[v] = x; }
     // Reset a mask row to the CYCLE base + all-on (the as-if-no-mask escape hatch;
     // the abs1 region is the voice LOR — no separate mask range exists).
     void resetMaskMacro() {
-        editor.maskMacroKind = 0.f; editor.maskMacroPatternBits = 65535.f;
+        editor.maskMacroKind = 0.f; editor.maskMacroPatternBits = dotModular::kMaskLenMask;
         editor.maskMacroFollowR = 0.f; }
     void resetMaskEast(int v) {
         if (!vLorOk(v)) return;
-        editor.maskEastKind[v] = 0.f; editor.maskEastPatternBits[v] = 65535.f;
+        editor.maskEastKind[v] = 0.f; editor.maskEastPatternBits[v] = dotModular::kMaskLenMask;
         editor.maskEastFollowR[v] = 0.f; }
 
     //  MONO slice accessors (Mono Sands de-param) 
@@ -1132,6 +1180,20 @@ struct Monsoon : Module {
     void  setGlobalWarpAtomLevel(int lane, float x) { if (gLaneOk(lane)) editor.warp.globalWarpAtomLevel[lane] = x; }
     float getGlobalWarpAtomMass(int lane) const { return gLaneOk(lane) ? editor.warp.globalWarpAtomMass[lane] : 0.f; }
     void  setGlobalWarpAtomMass(int lane, float x) { if (gLaneOk(lane)) editor.warp.globalWarpAtomMass[lane] = x; }
+
+    // ── THE GAP STAGE (PHASE_DISTRIBUTION_SPEC §4/§9): the atom twins — the authored
+    //    (location, size) per voice/lane + Macro's global defaults. Neutral: size 0
+    //    (width zero IS the neutral body; the location's interior default is inert at
+    //    size 0, exactly like the atom level at mass 0). Eval-side clamps live in
+    //    WarpStages.hpp, NOT here.
+    float getWarpGapLoc(int slot, int lane) const { return editor.warp.warpGapLoc[slot*7 + lane]; }
+    void  setWarpGapLoc(int slot, int lane, float x) { editor.warp.warpGapLoc[slot*7 + lane] = x; }
+    float getWarpGapSize(int slot, int lane) const { return editor.warp.warpGapSize[slot*7 + lane]; }
+    void  setWarpGapSize(int slot, int lane, float x) { editor.warp.warpGapSize[slot*7 + lane] = x; }
+    float getGlobalWarpGapLoc(int lane) const { return gLaneOk(lane) ? editor.warp.globalWarpGapLoc[lane] : 0.5f; }
+    void  setGlobalWarpGapLoc(int lane, float x) { if (gLaneOk(lane)) editor.warp.globalWarpGapLoc[lane] = x; }
+    float getGlobalWarpGapSize(int lane) const { return gLaneOk(lane) ? editor.warp.globalWarpGapSize[lane] : 0.f; }
+    void  setGlobalWarpGapSize(int lane, float x) { if (gLaneOk(lane)) editor.warp.globalWarpGapSize[lane] = x; }
 
     // ── CC_PROMPT_04 (warp UI): UI-thread warp edits → scoped mirror rebuild ─────
     // The panel StoreKnob setters / the curve popup write the warp stores above on the
@@ -1357,6 +1419,66 @@ struct Monsoon : Module {
                            subgateMainThreshold(storageSlot, dec), d, dec);
     }
 
+    // ── the QMIX-OCTAVE tier bank (QmixOctave): authored-cell accessors (UI-thread
+    // writer — the Straits base's global store knob + source switch, the subpanel's
+    // per-voice knobs) — the subgate accessor block's shape minus the delta planes
+    // (this bank has none: no mod jack in scope, nothing publishes audio-side, no
+    // watchdog). A per-voice knob write CLAIMS the cell (ownActive = the touch-is-claim
+    // law — the tier-1 opt-in); "clear per-voice overrides" de-claims (the menu's
+    // un-claim path, BOTH banks — the item's semantic is all per-voice claims on this
+    // base's family). NO mirror rebuilds: ModeController copies the bank into the
+    // engine per block (voices[].qmixOctLevel + the qmixOctLive gate), so the next
+    // block sees any change (the controller is the engine's sole qmix-octave writer).
+    float getQmixOctGlobal() const { return editor.qmixOctave.globalTh; }
+    void  setQmixOctGlobal(float x) { editor.qmixOctave.globalTh = x; }
+    bool  isQmixOctFollowDegree() const { return editor.qmixOctave.followDegree; }
+    void  setQmixOctFollowDegree(bool follow) { editor.qmixOctave.followDegree = follow; }
+    bool  isQmixOctOwnActive(int v) const {
+        namespace QO = dotModular::QmixOctave;
+        return (v >= 0 && v < QO::VOICES) && editor.qmixOctave.ownActive[v];
+    }
+    void  setQmixOctOwn(int v, float x) {
+        namespace QO = dotModular::QmixOctave;
+        if (v < 0 || v >= QO::VOICES) return;
+        editor.qmixOctave.ownTh[v] = x;
+        editor.qmixOctave.ownActive[v] = true;   // touch = claim (tier 1)
+    }
+    void  clearQmixOctOwnAll() {
+        namespace QO = dotModular::QmixOctave;
+        for (int v = 0; v < QO::VOICES; ++v) editor.qmixOctave.ownActive[v] = false;
+    }
+    // The voice's DEGREE threshold for the octave decision (the follow-degree tier's
+    // source — the resolver reads the voice's qmixLevel, which ModeController writes
+    // JUST BEFORE the qmix-octave resolution in the same pass: the subgate resolver's
+    // order-dependency note applies verbatim). storageSlot is the 0..15 storage
+    // convention (0 = V1/mono).
+    float qmixOctDegreeValue(int storageSlot) const {
+        const dotModular::VoiceSlot vs = (storageSlot <= 0)
+            ? dotModular::VoiceResolver::mono()
+            : dotModular::VoiceResolver::slot(storageSlot + 1);
+        return engine.voices[vs].qmixLevel;
+    }
+    // The per-voice RESOLUTION the ModeController pushes (the one authority the engine
+    // consumes): own claim > { follow-degree (default) | global } by the switch, clamped
+    // [0,1]. BYTE-IDENTITY DEFAULT: with nothing authored this returns the voice's
+    // qmixLevel EXACTLY — the octave decision IS the degree decision (the Stage 1 split's
+    // default, today's behaviour).
+    float qmixOctaveThreshold(int storageSlot) const {
+        namespace QO = dotModular::QmixOctave;
+        if (storageSlot < 0 || storageSlot >= QO::VOICES)
+            return QO::resolve(false, 0.f, true, 0.f, 0.f);
+        return QO::resolve(editor.qmixOctave.ownActive[storageSlot],
+                           editor.qmixOctave.ownTh[storageSlot],
+                           editor.qmixOctave.followDegree,
+                           editor.qmixOctave.globalTh,
+                           qmixOctDegreeValue(storageSlot));
+    }
+    // The knob-display resolution: the SAME pure resolver the ModeController runs at the
+    // edge (one authority). Per-voice role shows what the selected voice actually plays.
+    float qmixOctaveDisplayThreshold(int storageSlot) const {
+        return qmixOctaveThreshold(storageSlot);
+    }
+
     // Spread target mode (0=Anchor V1, 1=Follow CA) per poly lane, UNIFIED PL_* order
     // (0=MEL,1=OCT,2=QMIX,3=REST,4=ACC,5=VAR,6=LEG — the menu indexes SandsLaneNames::
     // EDITOR_LONG, which is this order; pe.spreadTargetMode mirrors it 1:1).
@@ -1470,13 +1592,14 @@ struct Monsoon : Module {
     float bpm = 120.f;
 
     // (the rhythmPattern reference alias RETIRED — ITEM 1, with the member)
-    float (&melodyPitchV)[16] = engine.pe.melodyPitchV;
-    int (&melodySemitone)[16] = engine.pe.melodySemitone;
-    std::array<float, 16>& rhythmRandom = engine.pe.rhythmRandom;
-    std::array<float, 16>& variationRandom = engine.pe.variationRandom;
-    std::array<float, 16>& legatoRandom = engine.pe.legatoRandom;
-    std::array<float, 16>& melodyRandom = engine.pe.melodyRandom;
-    std::array<float, 16>& octaveRandom = engine.pe.octaveRandom;
+    // STEPS_32 Stage 2a: the mirrors and mono row views ride the engine's STORAGE width.
+    float (&melodyPitchV)[dotModular::kStepStorage] = engine.pe.melodyPitchV;
+    int (&melodySemitone)[dotModular::kStepStorage] = engine.pe.melodySemitone;
+    std::array<float, dotModular::kStepStorage>& rhythmRandom = engine.pe.rhythmRandom;
+    std::array<float, dotModular::kStepStorage>& variationRandom = engine.pe.variationRandom;
+    std::array<float, dotModular::kStepStorage>& legatoRandom = engine.pe.legatoRandom;
+    std::array<float, dotModular::kStepStorage>& melodyRandom = engine.pe.melodyRandom;
+    std::array<float, dotModular::kStepStorage>& octaveRandom = engine.pe.octaveRandom;
 
     dsp::PulseGenerator& gatePulse = engine.gs.gatePulse;
     bool& prevExtGate = engine.prevGate1High;
@@ -1493,7 +1616,7 @@ struct Monsoon : Module {
     bool& rhythmSeedCached = engine.pe.rhythmSeedCached;
     int& cachedMelodyStepIndex = engine.pe.cachedMelodyStepIndex;
     int& cachedMelodyLastStepIndex = engine.pe.cachedMelodyLastStepIndex;
-    float (&cachedMelodyPitchV)[16] = engine.pe.cachedMelodyPitchV;
+    float (&cachedMelodyPitchV)[dotModular::kStepStorage] = engine.pe.cachedMelodyPitchV;
     int& cachedRhythmStepIndex = engine.pe.cachedRhythmStepIndex;
     int& cachedRhythmLastStepIndex = engine.pe.cachedRhythmLastStepIndex;
     // (the cachedRhythmPattern reference alias RETIRED — ITEM 1, with the member)
@@ -1693,6 +1816,9 @@ extern Model* modelStraitsSubgatePanelGhostRest;
 extern Model* modelStraitsSubgatePanelGhostLegato;
 extern Model* modelStraitsSubgatePanelGhostAccent;
 extern Model* modelStraitsSubgatePanelGhostAdvance;
+extern Model* modelStraitsQmixOctPanel;   // qmix-octave per-voice panel — ONE panel, 16 voices x ONE octave
+                                          //   threshold (CC_PROMPT_QMIX_OCTAVE Stage 3; StraitsBase-spawned, hidden;
+                                          //   docked AFTER the subgate panels — the run's last tier)
 extern Model* modelMonsoonCausewayPolyExpander; // poly CV modulation expander
 extern Model* modelMonsoonChangiExpander; // per-voice output expander
 extern Model* modelMonsoonShophouseExpander; // scale expander (12th module)

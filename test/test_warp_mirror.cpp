@@ -261,8 +261,8 @@ int main() {
         pe.setWarpDelegated(3, lane, true);
         pe.setWarpDelegated(7, lane, true);
         pe.rebuildWarpMirrorAll();
-        static float snap[16][7][16];
-        std::memcpy(snap, pe.warped_.data(), sizeof snap);
+        static float snap[16][7][dotModular::kStepStorage];   // the STORAGE width (Stage 2a — the rows widened)
+        std::memcpy(snap, pe.warped_.data(), sizeof snap);   // the FULL array (shapes now agree)
         // The edit event: Macro's curve for the lane changes...
         bank.globalWarpF[lane] = dotModular::TriangularWarp{0.8};
         bank.globalWarpW[lane] = 1.f;
@@ -298,8 +298,8 @@ int main() {
         PatternEngine pe; fillRandomGolden(pe);
         WarpBank bank; pe.setWarpBank(&bank);
         pe.rebuildWarpMirrorAll();
-        static float snap[16][7][16];
-        std::memcpy(snap, pe.warped_.data(), sizeof snap);
+        static float snap[16][7][dotModular::kStepStorage];   // the STORAGE width (Stage 2a — the rows widened)
+        std::memcpy(snap, pe.warped_.data(), sizeof snap);   // the FULL array (shapes now agree)
         // The edit event: voice 5's melody slot gets a curve + a fresh draw on that lane.
         const int v = 5, lane = MEL;
         bank.warpF[WarpBank::index(v, lane)] = dotModular::TruncNormalWarp{0.3, 0.12};
@@ -326,8 +326,8 @@ int main() {
         PatternEngine pe; fillRandomGolden(pe);
         WarpBank bank; pe.setWarpBank(&bank);
         pe.rebuildWarpMirrorAll();
-        static float snap[16][7][16];
-        std::memcpy(snap, pe.warped_.data(), sizeof snap);
+        static float snap[16][7][dotModular::kStepStorage];   // the STORAGE width (Stage 2a — the rows widened)
+        std::memcpy(snap, pe.warped_.data(), sizeof snap);   // the FULL array (shapes now agree)
         const int v = 9, lane = OCT, step = 4;
         bank.warpW[WarpBank::index(v, lane)] = 1.f;
         pe.random_[v][lane][step] = 0.123456f;

@@ -69,6 +69,16 @@ struct DistributionCurveWidget : rack::widget::Widget {
     double atomLevel = 0.0;   // ℓ — where the bar sits (only drawn when atomMass > 0)
     double atomMass  = 0.0;   // m — the bar's height ∝ this; 0 = no atom = no bar
 
+    // ── THE GAP BAND (PHASE_DISTRIBUTION_SPEC — the atom bar's twin): the
+    // zero-density interval [gapLo, gapHi] shaded as a RECESS (a cool slate hatching
+    // stand-in: a faint fill + two edge ticks), visually the NEGATIVE of the ember
+    // atom bar — a hole in the density, not a lump. The hosts set the READING's
+    // markers (on a dual these are the EXCHANGED pair — an atom on K lands here as
+    // the dual's gap). Purely additive: gapHi <= gapLo draws NOTHING (width zero IS
+    // the neutral body); the CDF's flat renders through sampling regardless.
+    double gapLo = 0.0;   // a — the band's left edge (inert at width 0)
+    double gapHi = 0.0;   // b — the band's right edge; gapHi <= gapLo = no gap
+
     // ── feel (tuned in Rack via the dev host) ────────────────────────────────────────────
     float  grabRadius    = 12.f;          // px — control-point hit radius
     double doubleClickTime = 0.33;        // s  — double-click window for point removal
@@ -203,6 +213,34 @@ struct DistributionCurveWidget : rack::widget::Widget {
         pdfFill.a = 0.22f;
         nvgFillColor(vg, pdfFill);
         nvgFill(vg);
+
+        // THE GAP BAND — the zero-density interval drawn explicitly (the atom bar's
+        // twin: a hole, not a lump). A faint cool-slate fill between the edges + two
+        // edge ticks; the CDF's flat and the PDF's hole render through sampling, the
+        // band makes the WIDTH readable at small masses.
+        if (gapHi > gapLo) {
+            const double a = gapLo < 0.0 ? 0.0 : gapLo;
+            const double b = gapHi > 1.0 ? 1.0 : gapHi;
+            if (b > a) {
+                const float ax = px + (float)a * pw, bx = px + (float)b * pw;
+                NVGcolor gapCol = nvgRGB(0x5a, 0x6b, 0x7a);   // cool slate — the density's hole
+                gapCol.a = 0.16f;
+                nvgBeginPath(vg);
+                nvgRect(vg, ax, py, bx - ax, ph);
+                nvgFillColor(vg, gapCol);
+                nvgFill(vg);
+                NVGcolor tick = nvgRGB(0x8a, 0x9b, 0xaa);
+                tick.a = 0.85f;
+                nvgStrokeColor(vg, tick);
+                nvgStrokeWidth(vg, 1.1f);
+                for (float ex : {ax, bx}) {
+                    nvgBeginPath(vg);
+                    nvgMoveTo(vg, ex, py + 1.f);
+                    nvgLineTo(vg, ex, py + ph - 1.f);
+                    nvgStroke(vg);
+                }
+            }
+        }
 
         // The ATOM BAR — the Dirac drawn explicitly (see the atomLevel/atomMass binding
         // note above): a warm ember rectangle, visually distinct from both the teal

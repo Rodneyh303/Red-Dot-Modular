@@ -200,7 +200,7 @@ void SequencerEngine::reset() {
             polyLORRef(vs, LaneId{el}, LOR_ROT) = 0;
         }
     }
-    windowMask = 0xFFFF;
+    windowMask = kMaskLenMask;
     locked = false;
     muted = false;
     // UNIFIED ADDRESSING Stage 2: the voice LOR rows seed to IDENTITY (pass-through).
@@ -217,12 +217,12 @@ void SequencerEngine::reset() {
     // Stage 4: the output mask seeds to CYCLE everywhere (the all-on degenerate mask,
     // today's behaviour) — no gating at defaults, the goldens' output path untouched.
     for (int v = 0; v < kVoiceSlots; ++v) {
-        maskKind_[v] = MASK_CYCLE; maskPainted_[v] = 0xFFFF; maskFollowR_[v] = false;
-        maskLocalEast_[v] = false; maskAnchored_[v] = 0xFFFF; maskAnchorR_[v] = 0;
-        maskLastPushed_[v] = 0xFFFF;
+        maskKind_[v] = MASK_CYCLE; maskPainted_[v] = kMaskLenMask; maskFollowR_[v] = false;
+        maskLocalEast_[v] = false; maskAnchored_[v] = kMaskLenMask; maskAnchorR_[v] = 0;
+        maskLastPushed_[v] = kMaskLenMask;
     }
-    maskMacroKind_ = MASK_CYCLE; maskMacroPainted_ = 0xFFFF; maskMacroFollowR_ = false;
-    maskMacroAnchored_ = 0xFFFF; maskMacroAnchorR_ = 0; maskMacroLastPushed_ = 0xFFFF;
+    maskMacroKind_ = MASK_CYCLE; maskMacroPainted_ = kMaskLenMask; maskMacroFollowR_ = false;
+    maskMacroAnchored_ = kMaskLenMask; maskMacroAnchorR_ = 0; maskMacroLastPushed_ = kMaskLenMask;
     runGateActive = false;
     resetArmed = false;
     prevGate1High = false;
@@ -242,23 +242,23 @@ void SequencerEngine::reset() {
 }
 
 bool SequencerEngine::isStepInWindow(int idx) const {
-    return (windowMask & (1 << (idx & 0x0F))) != 0;
+    return (windowMask & (uint64_t(1) << (idx & (kMaskRing - 1)))) != 0;
 }
 
 void SequencerEngine::setWindow(int length, int offset) {
     cachedLength = length;
     cachedOffset = offset;
     startStep = offset;
-    endStep = (offset + length - 1) & 0x0F;
+    endStep = (offset + length - 1) & (kMaskRing - 1);
 
-    uint16_t mask = 0;
+    uint64_t mask = 0;
     for (int i = 0; i < length; ++i) {
-        mask |= (1 << ((offset + i) & 0x0F));
+        mask |= (uint64_t(1) << ((offset + i) & (kMaskRing - 1)));
     }
     windowMask = mask;
 
     if (stepIndex != -1 && !isStepInWindow(stepIndex)) {
-        stepIndex = (startStep - 1 + 16) % 16;
+        stepIndex = (startStep - 1 + kMaskRing) % kMaskRing;
     }
     // THE RE-AUTHOR ANCHOR (the holder law): the global walk's read coordinate re-bounds
     // to the NEW window — (tick−1) mod newLen, exactly the value the old f(counter)
@@ -279,19 +279,32 @@ void SequencerEngine::setWindow(int length, int offset) {
 void SequencerEngine::pushVoiceLorEditor(
     const float* macroLor, float macroDir,
     const float* eastLor, const float* eastDir, const float* localEast) {
+    // STEPS_32 Stage 3 — the clamp domains mirror the AUTHORING SURFACES they serve:
+    //   LEN  1..kPatternLengthCap — the plan's D-table row ("LOR_LEN value range | lane
+    //        lengths 1..16 authored via the editor pushes | range -> 1..32"): the Sands
+    //        grid draws the whole phrase, so a lane window may now span/land in bar 2.
+    //   OFF/ROT 0..kMaskRing-1 — the grid's drag domain is the phrase (the strip wraps
+    //        within STEP_COUNT == the cap); the old 0..15 clamp would SILENTLY DROP the
+    //        bar-2 offsets/rotations the 32-column grid authors (the Lantern bar-blind
+    //        write-path class — a display widening whose authoring path still truncated
+    //        at 16). The classification's "off/rot spans stay 0..15" decision governs the
+    //        KNOB/CV spans (applyMonoCV/applyMacroCV/eastDelta arguments) — a calibration
+    //        choice — not this push: the push is the editor's own path and must not
+    //        truncate what the editor's own surface can author. At <=16 windows the drags
+    //        produce 0..15 and every clamp here is a no-op (the GOLDEN LAW domain).
     auto lorInt = [](float x, float lo, float hi) -> int {
         return (int)std::lround(std::clamp(x, lo, hi));
     };
     // Row item order is the store's: LOR_LEN=0, LOR_OFF=1, LOR_ROT=2 — the editor rows
     // are authored {L,O,R} in the same order (documented at the EditorState arrays).
-    macroVoiceLor_[LOR_LEN] = lorInt(macroLor[LOR_LEN], 1.f, 16.f);
-    macroVoiceLor_[LOR_OFF] = lorInt(macroLor[LOR_OFF], 0.f, 15.f);
-    macroVoiceLor_[LOR_ROT] = lorInt(macroLor[LOR_ROT], 0.f, 15.f);
+    macroVoiceLor_[LOR_LEN] = lorInt(macroLor[LOR_LEN], 1.f, (float)dotModular::kPatternLengthCap);
+    macroVoiceLor_[LOR_OFF] = lorInt(macroLor[LOR_OFF], 0.f, (float)(dotModular::kMaskRing - 1));
+    macroVoiceLor_[LOR_ROT] = lorInt(macroLor[LOR_ROT], 0.f, (float)(dotModular::kMaskRing - 1));
     macroVoiceLorDir_       = (LaneDir)lorInt(macroDir, 0.f, 3.f);
     for (int v = 0; v < kVoiceSlots; ++v) {
-        voiceLorStore_[v][LOR_LEN] = lorInt(eastLor[v * 3 + LOR_LEN], 1.f, 16.f);
-        voiceLorStore_[v][LOR_OFF] = lorInt(eastLor[v * 3 + LOR_OFF], 0.f, 15.f);
-        voiceLorStore_[v][LOR_ROT] = lorInt(eastLor[v * 3 + LOR_ROT], 0.f, 15.f);
+        voiceLorStore_[v][LOR_LEN] = lorInt(eastLor[v * 3 + LOR_LEN], 1.f, (float)dotModular::kPatternLengthCap);
+        voiceLorStore_[v][LOR_OFF] = lorInt(eastLor[v * 3 + LOR_OFF], 0.f, (float)(dotModular::kMaskRing - 1));
+        voiceLorStore_[v][LOR_ROT] = lorInt(eastLor[v * 3 + LOR_ROT], 0.f, (float)(dotModular::kMaskRing - 1));
         voiceLorDir_[v]            = (LaneDir)lorInt(eastDir[v], 0.f, 3.f);
         voiceLorLocalEast_[v]      = (localEast[v] != 0.f);
     }
@@ -301,7 +314,8 @@ void SequencerEngine::pushVoiceLorEditor(
 // The EditorState mask rows are the single authoring authority; this ONE copy per
 // control block is the only path they reach the output layer through (the push
 // runs AFTER pushVoiceLorEditor so the base rotation it re-pins against is the
-// current one). Clamps: kind 0..2, pattern bits 0..65535 (an exact float integer),
+// current one). Clamps: kind 0..2; the pattern bits arrive as the DECIDED uint64
+// integer representation, ring-masked (the store boundary clamps on write).
 // followR/local != 0. The ALL-CYCLE default (kinds 0, patterns all-on) lands
 // byte-identically on the reset() seed — no gating anywhere, the goldens' output
 // path is untouched. The ANCHOR LAW lives here (the push IS the per-block
@@ -311,18 +325,18 @@ void SequencerEngine::pushVoiceLorEditor(
 // re-pins (rotates delta steps EARLIER, the content direction) so mask-step-1
 // stays pinned to the base rotation. followR-off rows (abs2) never re-pin.
 void SequencerEngine::pushMaskEditor(
-    const float* macroPatternBits, float macroKind, float macroFollowR,
-    const float* eastPatternBits, const float* eastKind,
+    const uint64_t* macroPatternBits, float macroKind, float macroFollowR,
+    const uint64_t* eastPatternBits, const float* eastKind,
     const float* eastFollowR, const float* localEast) {
     auto kindInt = [](float x) -> int {
         return (int)std::lround(std::clamp(x, 0.f, 2.f));
     };
-    auto bitsInt = [](float x) -> uint16_t {
-        return (uint16_t)std::lround(std::clamp(x, 0.f, 65535.f));
-    };
+    // STEPS_32 Stage 2a (the DECIDED block): the editor mask rows ARE the integer
+    // representation now (uint64, ring-masked at the store boundary) — the float clamp
+    // (0..65535 lround) is gone with the float wall it guarded.
     // Macro tier first (the GLOBAL mask every follower reads).
     {
-        const uint16_t painted = bitsInt(macroPatternBits[0]);
+        const uint64_t painted = macroPatternBits[0] & kMaskLenMask;
         const int kind         = kindInt(macroKind);
         const bool followR     = (macroFollowR != 0.f);
         const int  baseR       = macroVoiceLor_[LOR_ROT];
@@ -331,7 +345,7 @@ void SequencerEngine::pushMaskEditor(
             maskMacroAnchorR_     = baseR;
             maskMacroLastPushed_  = painted;
         } else if (followR && baseR != maskMacroAnchorR_) { // knob turn: re-pin
-            maskMacroAnchored_    = rotMask16(maskMacroAnchored_, baseR - maskMacroAnchorR_);
+            maskMacroAnchored_    = rotMaskRing(maskMacroAnchored_, baseR - maskMacroAnchorR_);
             maskMacroAnchorR_     = baseR;
         }
         maskMacroKind_    = kind;
@@ -339,7 +353,7 @@ void SequencerEngine::pushMaskEditor(
         maskMacroFollowR_ = followR;
     }
     for (int v = 0; v < kVoiceSlots; ++v) {
-        const uint16_t painted = bitsInt(eastPatternBits[v]);
+        const uint64_t painted = eastPatternBits[v] & kMaskLenMask;
         const int      kind    = kindInt(eastKind[v]);
         const bool     followR = (eastFollowR[v] != 0.f);
         maskLocalEast_[v]      = (localEast[v] != 0.f);
@@ -349,7 +363,7 @@ void SequencerEngine::pushMaskEditor(
             maskAnchorR_[v]     = baseR;
             maskLastPushed_[v]  = painted;
         } else if (followR && baseR != maskAnchorR_[v]) {       // knob turn: re-pin
-            maskAnchored_[v]    = rotMask16(maskAnchored_[v], baseR - maskAnchorR_[v]);
+            maskAnchored_[v]    = rotMaskRing(maskAnchored_[v], baseR - maskAnchorR_[v]);
             maskAnchorR_[v]     = baseR;
         }
         maskKind_[v]    = kind;
@@ -422,20 +436,20 @@ bool SequencerEngine::advancePlayhead(int dir, const int8_t* voiceMotion) {
         // From the "not started" state, seed just AFTER endStep so the first reverse
         // step lands on endStep (the symmetric counterpart of forward seeding before
         // startStep and stepping onto startStep).
-        if (stepIndex == -1) stepIndex = (endStep + 1) & 0x0F;
-        stepIndex = (stepIndex - 1 + 16) & 0x0F;
+        if (stepIndex == -1) stepIndex = (endStep + 1) & (kMaskRing - 1);
+        stepIndex = (stepIndex - 1 + kMaskRing) & (kMaskRing - 1);
         if (!isStepInWindow(stepIndex)) stepIndex = endStep;
-        for (int s = 0; s < 16 && !isStepInWindow(stepIndex); ++s)
-            stepIndex = (stepIndex - 1 + 16) & 0x0F;
+        for (int s = 0; s < kMaskRing && !isStepInWindow(stepIndex); ++s)
+            stepIndex = (stepIndex - 1 + kMaskRing) & (kMaskRing - 1);
         // Phrase boundary (reverse): wrapped back round to endStep.
         wrapped = (prevStep != -1 && stepIndex == endStep);
     } else {
         // ── Forward traversal (unchanged) ──
-        if (stepIndex == -1) stepIndex = (startStep - 1 + 16) % 16;
-        stepIndex = (stepIndex + 1) & 0x0F;
+        if (stepIndex == -1) stepIndex = (startStep - 1 + kMaskRing) % kMaskRing;
+        stepIndex = (stepIndex + 1) & (kMaskRing - 1);
         if (!isStepInWindow(stepIndex)) stepIndex = startStep;
-        for (int s = 0; s < 16 && !isStepInWindow(stepIndex); ++s)
-            stepIndex = (stepIndex + 1) & 0x0F;
+        for (int s = 0; s < kMaskRing && !isStepInWindow(stepIndex); ++s)
+            stepIndex = (stepIndex + 1) & (kMaskRing - 1);
         // Return true if wrapped to start (phrase boundary)
         wrapped = (prevStep != -1 && stepIndex == startStep);
     }
@@ -661,7 +675,7 @@ int64_t SequencerEngine::voiceFrameTickAt(int v, int64_t effTick1based,
     effectiveVoiceLor(v, L, O, R, vd);
     if (L < 1) L = 1;
     // (A6) ABS1: the window walk runs the FULL PHRASE — L→16 for the READ only.
-    if (voiceFrameReadsFullPhrase(v)) L = 16;
+    if (voiceFrameReadsFullPhrase(v)) L = kMaskRing;   // the FULL PHRASE = the ring
     const int64_t rho  = ((((int64_t)(R - O) % L) + L) % L);
     const int64_t wnow = ((((laneTickFor(vd, tNowV, L) + rho) % L) + L) % L);
     if (framePhaseOut) *framePhaseOut = wrapMod(tNowV - 1, walkPeriod(vd, L));
@@ -705,7 +719,7 @@ void SequencerEngine::anchorTransport(int64_t tick1based) {
             int L, O, R; LaneDir vd;
             effectiveVoiceLor(v, L, O, R, vd);
             if (L < 1) L = 1;
-            if (voiceFrameReadsFullPhrase(v)) L = 16;
+            if (voiceFrameReadsFullPhrase(v)) L = kMaskRing;   // the FULL PHRASE = the ring
             frameKey_[v] = walkKeyOf(vd, L);
         }
         for (int s = 0; s < dotModular::NUM_STRANDS; ++s) {
@@ -768,7 +782,7 @@ void SequencerEngine::tickHolders(int transportMotion, int signMotion, const int
             int L, O, R; LaneDir vd;
             effectiveVoiceLor(v, L, O, R, vd);
             if (L < 1) L = 1;
-            if (voiceFrameReadsFullPhrase(v)) L = 16;
+            if (voiceFrameReadsFullPhrase(v)) L = kMaskRing;   // the FULL PHRASE = the ring
             const int key = walkKeyOf(vd, L);
             voiceFramePhase_[v] = (frameKey_[v] != key)
                 ? wrapMod(t0EffNow, walkPeriod(vd, L))
@@ -847,7 +861,7 @@ void SequencerEngine::deriveHolders(int signMotion, const int8_t* voiceMotion) {
         int L, O, R; LaneDir vd;
         effectiveVoiceLor(v, L, O, R, vd);
         if (L < 1) L = 1;
-        if (voiceFrameReadsFullPhrase(v)) L = 16;
+        if (voiceFrameReadsFullPhrase(v)) L = kMaskRing;   // the FULL PHRASE = the ring
         const int64_t rho  = ((((int64_t)(R - O) % L) + L) % L);
         // The frame walk's t0 representative: the RAW effective-clock congruence under
         // the pass-through window (the frame phase), the bounded window walk under the
@@ -855,7 +869,7 @@ void SequencerEngine::deriveHolders(int signMotion, const int8_t* voiceMotion) {
         const int64_t ft0   = passG ? (int64_t)voiceFramePhase_[v] : (int64_t)(wGv + offG);
         const int64_t wnow = ((((laneTickFor(vd, ft0 + 1, L) + rho) % L) + L) % L);
         voiceDriver_[v] = wnow + 1;
-        voiceRead_[v]   = (int)((wnow + O) & 0x0F);
+        voiceRead_[v]   = (int)((wnow + O) & (kMaskRing - 1));
         // The RAW predecessor's walk value: the effective clock one motionV step back —
         // its t0 representative is (ft0 − frameBack), where frameBack is the true t0
         // gap (the raw clock: exactly motionV; the mapped window: the walk gap).
@@ -923,6 +937,33 @@ void SequencerEngine::recomputeLaneTicks(const int8_t* voiceMotion) {
     tickHolders(0, lastPlayDir, voiceMotion);
 }
 
+// PHASE TIER Stage 1 — THE PHASE-STEP RULE (one rule, both sites).
+// The phase addresses the pattern by its MUSICAL CYCLE position: the unwrapped absStep
+// (pulsePos/p16 — grows across span wraps) is reduced mod the ACTIVE length, then seated
+// in the window at startStep. This is the generalisation of the spec's hardcoded
+// `phaseStep = absStep % 16` (on the old 16-ring, ring == length == cycle and all three
+// reductions coincided; on the 32-ring they are three different numbers and the cycle
+// reduction is the one that closes the loop with the transport walk, which cycles the
+// window). Consequences, both pinned in test_phase_tier:
+//   - at the default window (16 / offset 0) this == absStep % 16 EXACTLY — bar-1
+//     landings bit-identical, and the drift check stays consistent with the walk
+//     advance in every bar (no per-sample re-snap);
+//   - at 32 the cycle runs 0..31 — the full-span sweep covers all 32 steps, period 32;
+//   - a bar-2+ jump lands on the MUSICAL step (cycle k -> window cell k) instead of
+//     parking at startStep — the pre-Stage-1 behaviour here was a steps-32 regression:
+//     the kMaskRing flip left snapToPhaseStep reducing mod 32, so a bar-2 landing fell
+//     outside a 16-window, the walk parked it at startStep, and the drift check (still
+//     mod 16) disagreed with the parked step every sample — an endless per-sample
+//     re-snap strobe. The cycle rule repairs it.
+// startStep + cycle is always in-window by construction (the window IS
+// [startStep, startStep+length) ring-wrapped); the caller's window walk below stays as
+// defence-in-depth and never fires.
+int SequencerEngine::phaseStepFor(long absStep) const {
+    const int len = cachedLength > 0 ? cachedLength : 1;
+    int cycle = (int)(((absStep % len) + len) % len);      // the musical cycle position
+    return (startStep + cycle) & (kMaskRing - 1);          // seated in the window (ring is a power of two)
+}
+
 void SequencerEngine::snapToPhaseStep(long pulsePos, int p16) {
     // Snap the transport (stepIndex + the holder congruences) to the phase-derived
     // pulse position, then re-derive the lane caches from the anchor. Used after a Mode
@@ -930,33 +971,44 @@ void SequencerEngine::snapToPhaseStep(long pulsePos, int p16) {
     // advances by the ROUNDED step count, but the actual phase position is at
     // pulsePos/p16 (which may be fractional). Without this snap, each sweep of the
     // phase knob lands on a different step.
-    long absStep = pulsePos / p16;               // absolute step (can be negative, 0-based)
-    int phaseStep = (int)(((absStep % 16) + 16) % 16);
+    long absStep = pulsePos / p16;               // absolute step (unwrapped, 0-based; grows across span wraps)
+    // PHASE TIER Stage 1: the landing step resolves through THE PHASE-STEP RULE (above)
+    // — the musical cycle position seated in the window. Was absStep % kMaskRing + the
+    // window walk (which parked any out-of-window landing at startStep — the bar-2
+    // strobe regression the cycle rule repairs).
+    int phaseStep = phaseStepFor(absStep);
     // THE ANCHOR: the phase-derived tick is 1-based (the old counter was; the walks'
     // t0 = tick − 1). The per-voice offsets ride THROUGH the snap (the anchor seeds each
     // voice's phase at tick + offset — the divergence persists, exactly as f(t+offset) did).
     anchorTransport((int64_t)absStep + 1);
     stepIndex = phaseStep;
-    // Apply window checking (match advancePlayhead's behavior)
+    // Apply window checking (match advancePlayhead's behavior) — defence-in-depth;
+    // phaseStepFor is in-window by construction, so this never fires.
     if (!isStepInWindow(stepIndex)) {
         stepIndex = startStep;
-        for (int s = 0; s < 16 && !isStepInWindow(stepIndex); ++s)
-            stepIndex = (stepIndex + 1) & 0x0F;
+        for (int s = 0; s < kMaskRing && !isStepInWindow(stepIndex); ++s)
+            stepIndex = (stepIndex + 1) & (kMaskRing - 1);
     }
     deriveHolders(lastPlayDir, nullptr);
 }
 
 void SequencerEngine::updateWindow(float lenParam, float lenCv, bool lenPatched, float offParam, float offCv, bool offPatched) {
-    int length = pe_clamp<int>((int)std::round(lenParam), 1, 16);
-    int offset = (int)std::round(offParam) & 0x0F;
+    // STEPS_32 Stage 1 close-out (Rodney's PR #310 review): the knob's range derives from
+    // kPatternLengthCap (the USABLE bound — MonsoonConfigurator configures 1..cap), so every
+    // request is deliverable; the clamp stays as defence-in-depth for the CV path and any
+    // future caller. Identical at cap 16.
+    int length = pe_clamp<int>((int)std::round(lenParam), 1, dotModular::kPatternLengthCap);
+    int offset = (int)std::round(offParam) & (kMaskRing - 1);   // Stage 2a: the offset domain derives from the ring (0..ring-1)
 
     if (lenPatched) {
         float cv = pe_clamp(lenCv, 0.f, 10.f);
-        length = pe_clamp<int>((int)std::round(cv / 10.f * 15.f) + 1, 1, 16);
+        // STEPS_32 Stage 1: cap-derived — *15 at the storage bound 16 (bit-identical mapping);
+        // D1's *31 rescale lands automatically when Stage 2 flips kPatternLengthCap.
+        length = pe_clamp<int>((int)std::round(cv / 10.f * (dotModular::kPatternLengthCap - 1)) + 1, 1, dotModular::kPatternLengthCap);
     }
     if (offPatched) {
         float cv = pe_clamp(offCv, 0.f, 10.f);
-        offset = ((int)std::round(cv / 10.f * 15.f)) & 0x0F;
+        offset = ((int)std::round(cv / 10.f * (float)(kMaskRing - 1))) & (kMaskRing - 1);   // cap-derived (was *15)
     }
     setWindow(length, offset);
 }
@@ -994,13 +1046,25 @@ void SequencerEngine::rebuildScaleCache(const float weights[], int n) {
 }
 
 float SequencerEngine::getStepLightBrightness(int lightIdx) const {
-    bool inWindow = isStepInWindow(lightIdx);
+    // ── STEPS_32 Stage 3 — the twice-around-16 display lap (D10 as amended by D15) ──
+    // lightIdx is the LAMP index (0..15 — the panel's 16 ring lamps STAY, the D15
+    // 16-stay form). Lamp k carries masters k and k+16, and the rendered master is the
+    // CURRENT LAP's: the lap is D10's split test on the playhead itself (stepIndex >= 16),
+    // the SAME variable the BAR LEDs consume — one gate, two surfaces, no second lap
+    // source exists. At a ≤16 pattern the playhead never leaves bar 1, so lapBase is 0
+    // and master == lightIdx — bit-identical to the pre-twice-around read (the GOLDEN
+    // LAW's display face).
+    const int lapBase = (stepIndex >= 16) ? 16 : 0;
+    const int master  = lapBase + lightIdx;
+    bool inWindow = isStepInWindow(master);
     float baseActive = 0.0f;
-    
+
     if (inWindow) {
         // Calculate distance from current playhead to map physical LED to drifting DNA content
-        int relCurrent = (stepIndex - startStep + 16) % 16;
-        int relLight = (lightIdx - startStep + 16) % 16;
+        int relCurrent = (stepIndex - startStep + kMaskRing) % kMaskRing;
+        // relLight reads the CURRENT-LAP master (was lightIdx — the D15 re-scope: the
+        // lamp shows the content of the master it carries on the lap being rendered).
+        int relLight = (master - startStep + kMaskRing) % kMaskRing;
         // POSITION_HOLDER_MODEL: the light's DNA-content tick is the GLOBAL window
         // walk's t0 shifted by the phrase offsets — a congruence no mod-16 walk
         // carries (the RHYTHM lane's own length need not divide 16), so it has its
@@ -1027,6 +1091,16 @@ float SequencerEngine::getStepLightBrightness(int lightIdx) const {
         const VoiceSlot dispV = pe.displayedVoice();
         bool isNote = pe.warpRow(dispV, LaneId{PL_REST})[dnaIdx] >= voices[dispV].restProb;
         baseActive = isNote ? 0.35f : 0.07f;
+    } else {
+        // THE GHOST ARC (D10 (1)): an out-of-window lamp lights a dim ghost instead of
+        // the dead 0.0. The four standing levels keep their values VERBATIM — playhead
+        // 1.0 > comet trail 0.5 > in-window note 0.35 > in-window rest 0.07 — and the
+        // ghost pins STRICTLY BELOW the in-window rest, so a ghost can never read as a
+        // rest (the hierarchy is the law; the exact value is a P5 calibration lever).
+        // Live/post-CV for free: windowMask is rebuilt by setWindow from updateWindow's
+        // post-CV values, and the ring feed re-renders every UI frame — knob, CV and
+        // D3-wrap windows all render the same way.
+        baseActive = kStepGhostBrightness;
     }
 
     // The moving playhead should always follow the global timeline index. Shown for
@@ -1034,18 +1108,46 @@ float SequencerEngine::getStepLightBrightness(int lightIdx) const {
     // (no discrete playhead step). Mode F (5, Q3b) is a phase-1/16 stepped quantiser, so it
     // has a discrete playhead exactly like the phase origin.
     bool steppedMode = (modeSelect == 0 || modeSelect == 1 || modeSelect == 2);  // clock/gate/phase (collapse)
-    float current = (steppedMode && lightIdx == stepIndex) ? 1.0f : 0.0f;
+    // Playhead lamp: lightIdx == stepIndex % 16 — the ONE sanctioned display-path % 16
+    // (the D15 ring-feed law). The stepIndex >= 0 guard keeps the pre-start park (-1)
+    // dark: the old `lightIdx == stepIndex` comparison was accidentally -1-safe, the
+    // & 15 landing is not (-1 & 15 == 15 would light lamp 15 before the first tick).
+    float current = (steppedMode && stepIndex >= 0 && lightIdx == (stepIndex % 16)) ? 1.0f : 0.0f;
 
     // Direction cue (Mode E especially): a one-LED comet trail BEHIND the playhead in
     // the travel direction, so forward vs reverse is visibly distinct. The trailing
-    // LED is the step the playhead just left: stepIndex - lastPlayDir.
-    if (steppedMode && current < 1.0f) {
-        int trailIdx = ((stepIndex - lastPlayDir) % 16 + 16) % 16;
-        if (lightIdx == trailIdx && isStepInWindow(lightIdx))
+    // LED is the step the playhead just left: master (stepIndex - lastPlayDir) on the
+    // ring; its LAMP is that master & 15 (twice-around), and its window test reads the
+    // TRAIL MASTER itself — crossing the bar line backwards, the step just left belongs
+    // to the other lap, whose master is not the lamp's current-lap one. (The 2b flip
+    // widened kMaskRing to 32 and silently killed the trail on the whole second bar —
+    // `lightIdx == trailIdx` could never match a 16..31 trailIdx; the lamp landing
+    // repairs it. The stepIndex >= 0 guard makes the pre-start park deterministic.)
+    if (steppedMode && stepIndex >= 0 && current < 1.0f) {
+        int trailMaster = ((stepIndex - lastPlayDir) % kMaskRing + kMaskRing) % kMaskRing;
+        if (lightIdx == (trailMaster % 16) && isStepInWindow(trailMaster))
             baseActive = std::max(baseActive, 0.5f);
     }
 
     return std::max(baseActive, current);
+}
+
+// ── STEPS_32 Stage 3 — the BAR 1/BAR 2 LEDs (D10 (2) as amended by D15) ──────────
+// The inner-disc bar indicator's two lamps INSIDE the ring's unused center (upper =
+// bar 1, lower = bar 2 — the disc's hemisphere cut; 16-step patterns keep the disc
+// dark-except-when-playing: the playhead never leaves bar 1, so BAR 2 stays dim and
+// BAR 1 carries the light — the "hidden disc" lean's two-LED form). Lit EXCLUSIVELY
+// from the playhead's own gate and variable — the same steppedMode expression and the
+// same stepIndex the ring's current-step lamp consumes (one gate, two surfaces — the
+// sync must never fork). Where no discrete playhead exists (mode D, 3) — and before
+// the first tick (stepIndex -1) — BOTH are silent. The inactive bar's LED DIMS, never
+// dark: the disc's "every other segment dims" law, clearly distinct from both the lit
+// state and the unlit ring lamps. The exact dim is a P5 calibration lever.
+float SequencerEngine::getBarLightBrightness(int bar) const {
+    bool steppedMode = (modeSelect == 0 || modeSelect == 1 || modeSelect == 2);
+    if (!steppedMode || stepIndex < 0) return 0.f;
+    const bool bar2 = stepIndex >= 16;   // D10's split test — reads the bar layer, wraps nothing
+    return ((bar == 1) == bar2) ? 1.f : kBarIndicatorDimBrightness;
 }
 
 int SequencerEngine::getOffsetStep() const {
@@ -1058,7 +1160,7 @@ bool SequencerEngine::shouldTriggerStep(int ppqn) const {
     if (stepIndex == -1) return false;
     if (ppqn <= 1) {
         // Only trigger on main 4 beats relative to startStep + offset
-        int relative = (stepIndex - startStep + 16) % 16;
+        int relative = (stepIndex - startStep + kMaskRing) % kMaskRing;
         return (relative & 0x03) == 0;
     }
     return true; 
@@ -1152,6 +1254,13 @@ StepResult SequencerEngine::executeStep(int nvIdx, float r_rest, float r_legato_
     // (r >= level → use generated), so level 0 forces generated, level 1 forces quantised. (Pre-collapse
     // this was r < level, i.e. high q-mix = generated — the opposite.)
     const bool qmixUseGenerated = quantiserPitchSource && (r_qmix >= voices[monoSlot].qmixLevel);
+    // QMIX_OCTAVE Stage 1 (CC_PROMPT_QMIX_OCTAVE): the SECOND read of the SAME r_qmix draw —
+    // the octave axis's own threshold (the subgate pattern: multiple reads of one stream,
+    // different thresholds). qmixOctResolved() == qmixLevel while the qmixOctLive gate is
+    // closed (default, and Monsoon-alone), so this comparison IS the one above — bit-identical.
+    // With the Straits qmix-octave bank live (Stage 2) the resolved level diverges and the
+    // mixed rows (one axis generated, one external) become reachable per voice.
+    const bool qmixOctUseGenerated = quantiserPitchSource && (r_qmix >= voices[monoSlot].qmixOctResolved());
     // QUANTISER (Q1): mono/voice-0 pitch = quantised external CV when in a quantiser mode, else the
     // internal melody+octave draw. voicePitch bypasses genPitchLive (no RNG/lane perturbation) when
     // quantiserPitchSource is set; off = byte-identical legacy path. qmixUseGenerated forces the
@@ -1166,7 +1275,8 @@ StepResult SequencerEngine::executeStep(int nvIdx, float r_rest, float r_legato_
                               // row when no warp is authored — byte-identical legacy).
                               pe.warpRow(monoSlot, LaneId{PL_MELODY})[getMelodyStep()],
                               pe.warpRow(monoSlot, LaneId{PL_OCTAVE})[getOctaveStep()],
-                              /*forceGenerated=*/qmixUseGenerated);
+                              /*forceGenerated(degree)=*/qmixUseGenerated,
+                              /*octForceGenerated=*/qmixOctUseGenerated);
 
     // ── Leading-edge legato (STEP 2, the only legato model) ──
     // The PREVIOUS starting note recorded, at its own onset, whether it intends to hold
@@ -1813,14 +1923,14 @@ void SequencerEngine::refreshPolyRandomCell(VoiceSlot voice, LaneId engLane, int
         default: return;
     }
     if (!pe.cachedSpreadInitialized || !live) return;   // not yet cached or frozen — leave existing value
-    pe.polyRandom(voice, engLane)[step & 0x0F] =
-        redDot::SpreadInterp::applyPoly(pe, engLane.l, voice.v, step & 0x0F,
+    pe.polyRandom(voice, engLane)[step & (kMaskRing - 1)] =
+        redDot::SpreadInterp::applyPoly(pe, engLane.l, voice.v, step & (kMaskRing - 1),
                                         pe.cachedPolySpread[voice.v][engLane.l]);
     // Warp mirror (CC_PROMPT_03/05): this cell of random_ just moved — refresh exactly
     // that mirror cell so the next warpRow read (the same call sequence in
     // executePolyVoice) sees the effective w-mixture of the CURRENT value. One
     // warpedValue eval per step per lane; no-op without a bank.
-    pe.rebuildWarpMirrorCell(voice.v, engLane.l, step & 0x0F);
+    pe.rebuildWarpMirrorCell(voice.v, engLane.l, step & (kMaskRing - 1));
 }
 
 // Phase B (see the header): reset newly-activated voices' stale gs state. Definition
@@ -1929,7 +2039,7 @@ void SequencerEngine::executePolyVoice(VoiceSlot voiceIdx, const PatternInput& i
                                              // return early on the rested-ghost path).
     // Stage 2a: refresh VARIATION cell before nvIdxForVoice reads it (nvIdxForVoice
     // reads the uniform via pe.warpRow at the voice's variation step to pick the note length).
-    refreshPolyRandomCell(voiceIdx, LaneId{PL_VARIATION}, getVariationStepForVoice(voiceIdx) & 0x0F);
+    refreshPolyRandomCell(voiceIdx, LaneId{PL_VARIATION}, getVariationStepForVoice(voiceIdx) & (kMaskRing - 1));
     // Stage 2: this voice's note length. Identical to lastStepResult.nvIdx when the voice's VAR
     // LOR is identity (delegated → reads mono's step). Clamped so the voice can never hold past
     // mono's next event — articulation is subtractive.
@@ -2019,6 +2129,13 @@ void SequencerEngine::executePolyVoice(VoiceSlot voiceIdx, const PatternInput& i
         refreshPolyRandomCell(voiceIdx, LaneId{PL_QMIX}, qmixIdx);
         float r_qmix_voice = pe.warpRow(voiceIdx, LaneId{PL_QMIX})[qmixIdx];
         bool qmixUseGenerated = quantiserPitchSource && (r_qmix_voice >= v.qmixLevel);
+        // QMIX_OCTAVE Stage 1 (CC_PROMPT_QMIX_OCTAVE): the SECOND read of the SAME r_qmix_voice
+        // draw — the octave axis's own threshold (the subgate pattern: multiple reads of one
+        // stream, different thresholds). qmixOctResolved() == qmixLevel while the qmixOctLive
+        // gate is closed (default, and Monsoon-alone) — bit-identical; with the Straits
+        // qmix-octave bank live (Stage 2) the resolved level diverges per voice and the mixed
+        // rows (one axis generated, one external) become reachable per voice.
+        const bool qmixOctUseGenerated = quantiserPitchSource && (r_qmix_voice >= v.qmixOctResolved());
         const bool isQuant = quantiserPitchSource && !qmixUseGenerated;   // FADER_SEQ_QUANT_COLOURS (green flash)
         // QUANTISER (Q1): this voice's pitch = quantised external CV (its own channel) in quantiser
         // mode, else the internal melody+octave draw. voiceIdx is the voiceSlot (1..15 = V2..V16;
@@ -2029,7 +2146,8 @@ void SequencerEngine::executePolyVoice(VoiceSlot voiceIdx, const PatternInput& i
         float pitchV = voicePitch(voiceIdx, sem, input,
                                   (refreshPolyRandomCell(voiceIdx, LaneId{PL_MELODY}, melIdx), pe.warpRow(voiceIdx, LaneId{PL_MELODY})[melIdx]),
                                   (refreshPolyRandomCell(voiceIdx, LaneId{PL_OCTAVE}, octIdx), pe.warpRow(voiceIdx, LaneId{PL_OCTAVE})[octIdx]),
-                                  qmixUseGenerated);
+                                  /*forceGenerated(degree)=*/qmixUseGenerated,
+                                  /*octForceGenerated=*/qmixOctUseGenerated);
         // Accent as a poly lane (modelled after rest): this voice draws its OWN accent at
         // its own accent LOR and compares to its own accentProb — not shared from mono.
         int accIdx = getStrandIdx(polyLaneTick(voiceIdx, LaneId{PL_ACCENT}), polyLenE(voiceIdx, LaneId{PL_ACCENT}), polyOffE(voiceIdx, LaneId{PL_ACCENT}), polyRotE(voiceIdx, LaneId{PL_ACCENT}));
@@ -2335,7 +2453,7 @@ int SequencerEngine::getStrandIdx(int tickCount, int len, int off, int mutation)
     // Wrap properly for negative ticks (used by LED distance logic)
     int timelineIdx = ((tickCount + mutation) % safeLen + safeLen) % safeLen;
     // 2. ... + off                     => Slide the entire DNA window across the source buffer
-    return (timelineIdx + off) % 16;
+    return (timelineIdx + off) % kMaskRing;
 }
 
 // ── EAST_EXTRA_LANES stage 2 ──────────────────────────────────────────────────────────────────
@@ -2373,7 +2491,7 @@ int SequencerEngine::getLegatoStepForVoice(VoiceSlot bank) const {
 int SequencerEngine::nvIdxForVoice(VoiceSlot bank, const PatternInput& input) const {
     if (bank.v < 1 || bank.v >= 16) return monoParentView().nvIdx;
     // The probability array stays MONO (one shared shape); only the reading position is per-voice.
-    const int idx = getVariationStepForVoice(bank) & 0x0F;
+    const int idx = getVariationStepForVoice(bank) & (kMaskRing - 1);
     const float r = pe.warpRow(bank, LaneId{PL_VARIATION})[idx];
     const int nv  = const_cast<SequencerEngine*>(this)->getNoteLenIdx(lastNoteVal_, input, r);
     // CLAMP to the parents' event grid (C3 lengthCeiling, F-1: the REAL fold over the staged

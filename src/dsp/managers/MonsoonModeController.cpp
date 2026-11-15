@@ -54,6 +54,17 @@ void ModeController::updatePolyVoiceRest_() {
         // the slot's qmixLevel per-step in executePolyVoice's source-select. getEffectivePolyQmix
         // is the single resolver (Straits knob; no Causeway q-mix CV yet).
         engine.voices[vs].qmixLevel  = mainModule->getEffectivePolyQmix(i - 1);
+        // QMIX_OCTAVE Stage 2 (CC_PROMPT_QMIX_OCTAVE + QMIX_OCTAVE_PLAN.md): the octave axis's
+        // resolved threshold, from the Straits qmix-octave bank through QmixOctave::resolve —
+        // own-subpanel claim (tier 1) > {global | follow-degree} by the switch. The follow
+        // tier reads the qmixLevel JUST written above (the subgate resolver's
+        // order-dependency note applies verbatim) — so with nothing authored the resolved
+        // value == the degree level EXACTLY (bit-identity default: the octave decision IS
+        // the degree decision, today's behaviour). Same BigFive latch class as the main
+        // probs (the early-return above gates the whole loop). The qmixOctLive flip is the
+        // Stage 1 gate opening: from here the engine's second read consumes THIS value.
+        engine.voices[vs].qmixOctLevel = mainModule->qmixOctaveThreshold(i);
+        engine.voices[vs].qmixOctLive  = true;
         // VAR/LEG per-voice knobs — mirror rest/accent/q-mix. The engine reads these in
         // executePolyVoice to threshold the per-voice VAR/LEG draws (which already exist
         // as slewedPolyVariation/Legato → polyRandom(PL_VARIATION/PL_LEGATO)).
@@ -154,6 +165,16 @@ void ModeController::updatePatternInput() {
                                              : paramManager.getAccent();
         monoVoice.qmixLevel    = mainModule ? mainModule->getEffectiveMonoQmix(paramManager.getQmixLevel())
                                              : paramManager.getQmixLevel();
+        // QMIX_OCTAVE Stage 2 (CC_PROMPT_QMIX_OCTAVE): V1's octave threshold (storageSlot 0 =
+        // the mono row of the bank), the same three-way law as the poly rows above. Without a
+        // mainModule the bank is unreachable — the fields are never written and qmixOctLive
+        // stays false, which is the follow-degree identity from the mono qmixLevel just
+        // written (exactly what the resolver would return with nothing authored — the Stage 1
+        // gate stays closed, Monsoon alone plays exactly as before).
+        if (mainModule) {
+            monoVoice.qmixOctLevel = mainModule->qmixOctaveThreshold(0);
+            monoVoice.qmixOctLive  = true;
+        }
         // STEP-ADVANCE VALUE (CC_PROMPT_STEP_ADVANCE_CONSUMPTION Stage 2; the rectified
         // twin RETIRED — see the poly note above; the BIPOLAR SCOPE per
         // CC_PROMPT_STEP_ADVANCE_FREEZE_AND_BIPOLAR): GATE MODE reinterprets the knob

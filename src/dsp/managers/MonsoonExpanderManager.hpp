@@ -64,6 +64,7 @@ extern rack::Model* modelStraitsSubgatePanelGhostRest;
 extern rack::Model* modelStraitsSubgatePanelGhostLegato;
 extern rack::Model* modelStraitsSubgatePanelGhostAccent;
 extern rack::Model* modelStraitsSubgatePanelGhostAdvance;
+extern rack::Model* modelStraitsQmixOctPanel;   // qmix-octave per-voice panel (hop-through; docked after the subgate panels)
 extern rack::Model* modelMonsoonCausewayPolyExpander;
 extern rack::Model* modelMonsoonChangiExpander;
 extern rack::Model* modelMonsoonChangiT2Expander;
@@ -271,6 +272,10 @@ struct MonsoonExpanderManager {
                         || curr->model == modelStraitsSubgatePanelGhostLegato
                         || curr->model == modelStraitsSubgatePanelGhostAccent
                         || curr->model == modelStraitsSubgatePanelGhostAdvance
+                        || curr->model == modelStraitsQmixOctPanel   // QMIX_OCTAVE Stage 3: the qmix-oct per-voice panel
+                                                                     //   (docks after the subgate panels — hop-through,
+                                                                     //   the same law: mid-chain it must NOT act as a
+                                                                     //   foreign boundary)
                         || curr->model == modelSandsDistributionExpander
                         || curr->model == modelMonsoonShophouseMicro) {
                     // Hop-through modules (no cache slot): observer/follower suite modules (Lantern;

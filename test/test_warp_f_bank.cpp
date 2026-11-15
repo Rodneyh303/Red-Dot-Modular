@@ -537,6 +537,88 @@ int main() {
         }
     }
 
+    std::printf("[S8] THE DUAL READING (PHASE_DISTRIBUTION_SPEC): trivial copyability, the\n"
+                "      swap through the bank, slot persistence, and the Sklar-safety of the\n"
+                "      dual mix (the composed CDF is a CDF — monotone by construction)\n");
+    {
+        using Idx = dotModular::WarpBank;
+        // (a) the DUAL ALTERNATIVE keeps the flat-bank contract (the file-top
+        //     static_asserts now cover DualWarp too; these pin the member plumbing).
+        static_assert(std::is_trivially_copyable_v<dotModular::DualWarp>,
+                      "DualWarp must be trivially copyable (a flat ParamF value inside)");
+        static_assert(std::is_trivially_copyable_v<dotModular::ParamF>,
+                      "ParamF must be trivially copyable");
+        check((int)dotModular::WarpF{dotModular::DualWarp{}}.index() == 10,
+              "DualWarp is alternative 10 (indices 0..9 untouched)");
+        // (b) the BANK composes the dual's swap: at w=1 a dual cell's warpedValue ==
+        //     member.cdf(u) BIT-EXACTLY (the reading swap through the ONE mix).
+        {
+            dotModular::WarpBank b;
+            const int i = Idx::index(3, 1);
+            b.warpF[i] = dotModular::dualWrap(dotModular::PowerWarp{2.0});
+            b.warpW[i] = 1.f;
+            const dotModular::PowerWarp member{2.0};
+            bool swapOK = true;
+            for (int k = 0; k <= 1000; ++k) {
+                const double u = (double)k / 1000.0;
+                if (b.warpedValue(3, 1, u) != member.dist().cdf(u)) swapOK = false;
+            }
+            check(swapOK, "bank dual at w=1 == member.cdf BIT-EXACT (the reading swap)");
+            // the DELEGATED branch resolves the dual from Macro's default the same way
+            dotModular::WarpBank g;
+            g.globalWarpF[1] = dotModular::dualWrap(dotModular::TriangularWarp{0.4});
+            g.globalWarpW[1] = 1.f;
+            const dotModular::TriangularWarp tm{0.4};
+            bool delOK = true;
+            for (int k = 0; k <= 1000; ++k) {
+                const double u = (double)k / 1000.0;
+                if (g.warpedValue(3, 1, u, /*delegated=*/true) != tm.dist().cdf(u)) delOK = false;
+            }
+            check(delOK, "delegated dual cell (Macro's default) swaps the same way");
+        }
+        // (c) a dual slot round-trips the bank codec (the "dual" envelope).
+        {
+            dotModular::WarpBank src;
+            src.warpF[Idx::index(2, 2)] = dotModular::dualWrap(dotModular::KumaraswamyWarp{2.0, 3.0});
+            src.warpW[Idx::index(2, 2)] = 0.7f;
+            json_t* root = json_object();
+            dotModular::WarpBank::serialize(src, root, "editor");
+            dotModular::WarpBank dst;
+            dotModular::WarpBank::parse(root, "editor", dst);
+            json_decref(root);
+            const dotModular::WarpF want =
+                dotModular::dualWrap(dotModular::KumaraswamyWarp{2.0, 3.0});
+            check(dst.warpF[Idx::index(2, 2)] == want && dst.warpW[Idx::index(2, 2)] == 0.7f,
+                  "a dual slot round-trips (envelope + member + depth exact)");
+        }
+        // (d) SKLAR-SAFETY of the dual mix: the composed CDF is a CDF — the dual mix
+        //     (1-w)u + w·G(u) is monotone in u for the whole w range (the GAPPED dual
+        //     included — the gap's flat is a legal non-strict stretch... on the STEEP
+        //     member with an interior gap the mix stays STRICT; the flat lives in x,
+        //     not in G(u)).
+        {
+            const float ws2[3] = {0.f, 0.5f, 1.f};
+            for (float w : ws2) {
+                dotModular::WarpBank b;
+                const int i = Idx::index(8, 3);
+                b.warpF[i] = dotModular::dualWrap(dotModular::PowerWarp{5.0});
+                b.warpW[i] = w;
+                b.warpGapLoc[i] = 0.4f; b.warpGapSize[i] = 0.25f;   // a live gap
+                bool monoD = true;
+                double prevD = b.warpedValue(8, 3, 0.0);
+                for (int k = 1; k < 8000; ++k) {
+                    const double u = (double)k / 7999.0;
+                    const double d = b.warpedValue(8, 3, u);
+                    if (!(prevD <= d)) monoD = false;   // non-decreasing (G is a CDF)
+                    prevD = d;
+                }
+                char buf[128];
+                std::snprintf(buf, sizeof buf, "gapped dual (Power 5) at w=%g: non-decreasing in u", (double)w);
+                check(monoD, buf);
+            }
+        }
+    }
+
     std::printf("%s: %d passed, %d failed\n", (g_fail == 0 ? "ALL OK" : "FAILURES"), g_pass, g_fail);
     return g_fail == 0 ? 0 : 1;
 }

@@ -42,7 +42,7 @@ struct OUBridgeCoeffs {
 // the poly writes can MINT VoiceSlots (the header cannot include VoiceResolver.hpp).
 // Byte-identical to the inline loops it replaces (same writes, same order).
 void PatternEngine::promoteRemappedDraws_(bool doR, bool doM, bool doQ) {
-    for (int i = 0; i < 16; ++i) {
+    for (int i = 0; i < kStepStorage; ++i) {
         if (doR) {
             rhythmRandom[i]=slewedRhythm[0][i]; accentRandom[i]=slewedAccent[0][i];
             variationRandom[i]=slewedVariation[0][i]; legatoRandom[i]=slewedLegato[0][i];
@@ -91,8 +91,16 @@ void PatternEngine::reset() {
     seedBridgeMelodyPhilox(melodySeedFloat);
     seedBridgeQmixPhilox(qmixSeedFloat);
 
-    // strands must not be all-zero or module is silent until dice/phrase
-    for (int i = 0; i < 16; ++i) {
+    // strands must not be all-zero or module is silent until dice/phrase.
+    // STEPS_32 Stage 2b GATE 2 (the beyond-ring zero-fill pin): the default pattern's
+    // length IS the cap (the factory window is full-cap), so the seed rides the RING
+    // (kPatternLengthCap) — cells ≥ the ring stay ZERO while the cap is 16 (a
+    // storage-wide fill leaked 0.5/1.0 defaults past the ring and the GATE 2 walk
+    // caught it on its maiden run: 1536 nonzero cells in random_/the Source rows).
+    // The 2b flip widens this loop with the cap (the factory default becomes the
+    // 32-step pattern); a stale-stride consumer that walks past a row boundary now
+    // reads 0.0 — audible + pinned — instead of a plausible 0.5.
+    for (int i = 0; i < kPatternLengthCap; ++i) {
         rhythmRandom[i] = 1.0f;     // Mono triggers by default
         variationRandom[i] = 0.5f;  // No variation bias
         legatoRandom[i] = 0.0f;     // No legato/ties
@@ -140,8 +148,9 @@ void PatternEngine::reset() {
     rhythmSlewApplied=melodySlewApplied=qmixSlewApplied=-1.f;   // force first recompute
     rhythmFirstDraw=melodyFirstDraw=qmixFirstDraw=true;
     sandsActive=false;
-    // Mirror defaults into slewedDraw too (final == slewed at reset)
-    for (int i=0;i<16;i++){
+    // Mirror defaults into slewedDraw too (final == slewed at reset) — RING-bounded
+    // (GATE 2: beyond-ring cells stay zero; see the seed loop above).
+    for (int i=0;i<kPatternLengthCap;i++){
         slewedRhythm[0][i]=rhythmRandom[i]; slewedVariation[0][i]=variationRandom[i];
         slewedLegato[0][i]=legatoRandom[i]; slewedAccent[0][i]=accentRandom[i];
         slewedMelody[0][i]=melodyRandom[i]; slewedOctave[0][i]=octaveRandom[i];
@@ -198,7 +207,7 @@ void PatternEngine::rebuildWarpMirrorAll() {
     if (!warpBank_) return;   // no bank ⇒ nothing to mix; consumers fall back to random_
     for (int v = 0; v < 16; ++v)
         for (int l = 0; l < dotModular::NUM_STRANDS; ++l)
-            for (int s = 0; s < 16; ++s)
+            for (int s = 0; s < kStepStorage; ++s)
                 warped_[v][l][s] = warpMixCell(v, l, s);
 }
 
@@ -214,7 +223,7 @@ void PatternEngine::rebuildWarpMirrorVoice(int v) {
     if (!warpBank_) return;
     const int vv = (v >= 0 && v < 16) ? v : 0;
     for (int l = 0; l < dotModular::NUM_STRANDS; ++l)
-        for (int s = 0; s < 16; ++s)
+        for (int s = 0; s < kStepStorage; ++s)
             warped_[vv][l][s] = warpMixCell(vv, l, s);
 }
 
@@ -223,7 +232,7 @@ void PatternEngine::rebuildWarpMirrorLaneDelegating(int lane) {
     const int l = (lane >= 0 && lane < dotModular::NUM_STRANDS) ? lane : 0;
     for (int v = 0; v < 16; ++v) {
         if (!warpDelegated_[v][l]) continue;   // own-slot voices: a Macro edit can't move them
-        for (int s = 0; s < 16; ++s)
+        for (int s = 0; s < kStepStorage; ++s)
             warped_[v][l][s] = warpMixCell(v, l, s);
     }
 }
@@ -235,7 +244,7 @@ void PatternEngine::rebuildWarpMirrorLane(int lane) {
     if (!warpBank_) return;
     const int l = (lane >= 0 && lane < dotModular::NUM_STRANDS) ? lane : 0;
     for (int v = 0; v < 16; ++v)
-        for (int s = 0; s < 16; ++s)
+        for (int s = 0; s < kStepStorage; ++s)
             warped_[v][l][s] = warpMixCell(v, l, s);
 }
 
@@ -243,7 +252,7 @@ void PatternEngine::rebuildWarpMirrorVoiceLane(int v, int lane) {
     if (!warpBank_) return;
     const int vv = (v >= 0 && v < 16) ? v : 0;
     const int l = (lane >= 0 && lane < dotModular::NUM_STRANDS) ? lane : 0;
-    for (int s = 0; s < 16; ++s)
+    for (int s = 0; s < kStepStorage; ++s)
         warped_[vv][l][s] = warpMixCell(vv, l, s);
 }
 
@@ -251,7 +260,7 @@ void PatternEngine::rebuildWarpMirrorCell(int v, int lane, int step) {
     if (!warpBank_) return;
     const int vv = (v >= 0 && v < 16) ? v : 0;
     const int l = (lane >= 0 && lane < dotModular::NUM_STRANDS) ? lane : 0;
-    warped_[vv][l][step & 0x0F] = warpMixCell(vv, l, step & 0x0F);
+    warped_[vv][l][step & (kPatternLengthCap - 1)] = warpMixCell(vv, l, step & (kPatternLengthCap - 1));   // the frame ring (Stage 2a: cap-derived; 0x0F at the 16 bound)
 }
 
 // ── Core generation ───────────────────────────────────────────────────────
@@ -279,14 +288,23 @@ float PatternEngine::genPitch(int& outSemitone, const PatternInput& in) {
     return genPitchLive(outSemitone, in, unitMelody(), unitMelody());
 }
 
-// Generate a pitch voltage using provided random floats for semitone and octave selection.
-float PatternEngine::genPitchLive(int& outSemitone, const PatternInput& in, float r_semi, float r_oct) {
+// QMIX_OCTAVE Stage 1 (CC_PROMPT_QMIX_OCTAVE + QMIX_OCTAVE_PLAN.md): genPitchLive's roll
+// prologue + its formula-grouped components, in ONE place. genPitchLive re-expressed on this
+// is BIT-IDENTICAL: same pickSemitone, same octave roll, and the sum keeps genPitchLive's own
+// left-to-right float-op association (see genPitchLive below). The QMIX_OCTAVE mixed rows
+// consume the components (OCT from one source, DEG from the other) at
+// SequencerEngine::voicePitch. picked=false = the failed pick (genPitchLive's 0.f early-out).
+PatternEngine::PitchSplit PatternEngine::genPitchSplit(const PatternInput& in, float r_semi, float r_oct) {
+    PitchSplit s;
     // Degree count from the shared tuning table (12 default; up to 24 for a Micro-24). pickSemitone is
     // N-bounded so the weighted walk only considers active degrees.
+    // A FAILED pick (sem<0) still rolls the octave: the QMIX_OCTAVE deg=ext mixed row composes
+    // the generated OCTAVE regardless of the degree axis's pick (the axes are independent reads).
+    // genPitchLive keeps the failed-pick RESULT unchanged (0.f, outSemitone 0) via its !picked
+    // early-out — the unused terms are never consumed there.
     int sem = pickSemitone(in.semiWeights, tuning.N, r_semi);
-    outSemitone = (sem < 0) ? 0 : sem;
-    if (sem < 0) return 0.f;
-
+    s.picked = (sem >= 0);
+    s.sem = (sem < 0) ? 0 : sem;
     float lo = in.octaveLo, hi = in.octaveHi;
     if (hi < lo) std::swap(lo, hi);
     int oL = (int)std::floor(lo);
@@ -294,26 +312,45 @@ float PatternEngine::genPitchLive(int& outSemitone, const PatternInput& in, floa
     // Ensure r_oct roll isn't exactly 1.0 to prevent oOB indexing
     float roll = pe_clamp(r_oct, 0.f, 0.9999f);
     int oct = oL + (int)std::floor(roll * float(oH - oL + 1));
+    s.octTerm = float(oct) - 4.f;
 
     // Degree -> voltage via the shared TuningTable (Sikit Phase 1). The octave integer and the
     // 12-TET transpose stay unchanged (Rodney's Phase-1 ruling: transpose remains 12-TET semitones);
     // only the WITHIN-OCTAVE degree term is table-driven. While the table is the equal-division
     // 12-TET default, take the EXACT legacy expression so this refactor is bit-identical; the cents
     // path activates only when a Sikit publishes non-default cents.
-    float v;
+    // The two formulas' own groupings:
+    //   12-TET: v = (oct-4) + (sem+transpose)/12   -> degTerm = (sem+transpose)/12, shiftTerm 0
+    //           (the transpose rides the DEGREE term — the formula's own placement);
+    //   Micro:  v = (oct-4) + degreeVolts(sem) + octShift -> degTerm = degreeVolts(sem),
+    //           shiftTerm = round(transpose/12) (TRANSPOSE IS OCTAVES-ONLY, Rodney — it rides
+    //           the OCTAVE term; a 12-TET semitone shift (/12) lands OFF the tuning grid, an
+    //           octave is +1V in ANY tuning; Monsoon's transpose knob is +-12 semitones -> snap
+    //           to the nearest whole octave and apply as whole volts, +-1 octave from this knob;
+    //           Intertropical's own per-output knobs cover +-2).
     if (tuning.isDefault12TET) {
-        v = float(oct) - 4.f + (sem + in.transpose) / 12.f;   // legacy path — byte-identical
+        s.degTerm   = (sem + in.transpose) / 12.f;   // legacy path — byte-identical
+        s.shiftTerm = 0.f;
     } else {
-        // Custom tuning (Micro): TRANSPOSE IS OCTAVES-ONLY (Rodney). A 12-TET semitone shift (/12)
-        // lands OFF the tuning grid; an octave is +1V in ANY tuning, so it's always tuning-native.
-        // Monsoon's transpose knob is ±12 semitones → snap to the nearest whole octave and apply as
-        // whole volts (±1 octave from this knob; Intertropical's own per-output knobs cover ±2).
-        const float octShift = std::round(in.transpose / 12.f);   // -1 / 0 / +1
-        v = float(oct) - 4.f + tuning.degreeVolts(sem) + octShift;
+        s.degTerm   = tuning.degreeVolts(sem);
+        s.shiftTerm = std::round(in.transpose / 12.f);   // -1 / 0 / +1
     }
-    // Allow full bipolar range for 1V/oct standard; clamping to 0V clips octaves 0-3
-    return pe_clamp(v, -5.f, 5.f);
+    return s;
 }
+
+// Generate a pitch voltage using provided random floats for semitone and octave selection.
+float PatternEngine::genPitchLive(int& outSemitone, const PatternInput& in, float r_semi, float r_oct) {
+    const PitchSplit s = genPitchSplit(in, r_semi, r_oct);
+    outSemitone = s.sem;
+    if (!s.picked) return 0.f;
+    // Allow full bipolar range for 1V/oct standard; clamping to 0V clips octaves 0-3.
+    // The sum keeps the two formulas' own left-to-right association: 12-TET
+    // (float(oct)-4) + ((sem+transpose)/12), with shiftTerm 0 — x + 0.f is an exact identity
+    // and the range admits no -0 (octTerm is a whole number; degTerm 0 only at +0); Micro is
+    // exactly ((float(oct)-4) + degreeVolts(sem)) + octShift == (octTerm + degTerm) + shiftTerm.
+    return pe_clamp((s.octTerm + s.degTerm) + s.shiftTerm, -5.f, 5.f);
+}
+
 
 // Apply variation bias to a note length index.
 int PatternEngine::varyNoteIndex(int baseIdx, const PatternInput& in, float r) {
@@ -428,7 +465,7 @@ void PatternEngine::redrawRhythm(const PatternInput& in) {
     recomputeEffectiveRhythm();
     // Cache source from the SLEWED draw (canonical draw; final may be rewritten
     // by Sands later this cycle). UI pattern previews the no-Sands final.
-    for (int i = 0; i < 16; ++i) {
+    for (int i = 0; i < kStepStorage; ++i) {
         rhythmSource[0][i]=slewedRhythm[0][i]; variationSource[0][i]=slewedVariation[0][i];
         legatoSource[0][i]=slewedLegato[0][i]; accentSource[0][i]=slewedAccent[0][i];
         for (int v=1;v<=numPolyVoicesHint;v++) rhythmSource[v][i]=slewedRhythm[v][i];
@@ -492,7 +529,7 @@ void PatternEngine::recomputeEffectiveRhythm() {
             return (float)redDot::copula::PhiFast(ouBC.blend(z0, z1));
         };
         int fi = 0;
-        for (int i = 0; i < 16; ++i) {
+        for (int i = 0; i < kPatternLengthCap; ++i) {   // the ring (copula compute)
             slewedRhythm[0][i]    = blend(i, [](const CachedRhythmDraw* c, int i){ return c->zRhythm[0][i]; }, fi++);
             slewedVariation[0][i] = blend(i, [](const CachedRhythmDraw* c, int i){ return c->zVariation[0][i]; }, fi++);
             slewedLegato[0][i]    = blend(i, [](const CachedRhythmDraw* c, int i){ return c->zLegato[0][i]; }, fi++);
@@ -514,7 +551,7 @@ void PatternEngine::recomputeEffectiveRhythm() {
         patternRhythmAt(N - f,     slew, d0);
         patternRhythmAt(N - f - 1, slew, d1);
         auto bl = [frac](float a, float b){ return a + frac*(b-a); };
-        for (int i = 0; i < 16; ++i) {
+        for (int i = 0; i < kPatternLengthCap; ++i) {   // the ring (copula compute)
             slewedRhythm[0][i]=bl(d0.rhythm[0][i],d1.rhythm[0][i]);
             slewedVariation[0][i]=bl(d0.variation[0][i],d1.variation[0][i]);
             slewedLegato[0][i]=bl(d0.legato[0][i],d1.legato[0][i]);
@@ -536,7 +573,7 @@ void PatternEngine::recomputeEffectiveRhythm() {
     // spread refresh for random_[0]).
     if (!sandsActive) {
         const bool applyR = cachedSpreadInitialized && cachedSpreadLiveR;
-        for (int i = 0; i < 16; ++i) {
+        for (int i = 0; i < kPatternLengthCap; ++i) {   // the ring (the spread-apply term is compute)
             rhythmRandom[i]=slewedRhythm[0][i]; variationRandom[i]=slewedVariation[0][i];
             legatoRandom[i]=slewedLegato[0][i]; accentRandom[i]=slewedAccent[0][i];
             // v = voiceSlot; slot(V) takes the VOICE number (= v+1)
@@ -601,7 +638,7 @@ void PatternEngine::recomputeEffectiveMelody() {
             return (float)redDot::copula::PhiFast(ouBC.blend(z0, z1));
         };
         int fi = 0;
-        for (int i = 0; i < 16; ++i) {
+        for (int i = 0; i < kPatternLengthCap; ++i) {   // the ring (copula compute)
             slewedMelody[0][i] = blend(i, [](const CachedMelodyDraw* c, int i){ return c->zMelody[0][i]; }, fi++);
             slewedOctave[0][i] = blend(i, [](const CachedMelodyDraw* c, int i){ return c->zOctave[0][i]; }, fi++);
             for (int v = 1; v <= numPolyVoicesHint; v++) {
@@ -618,7 +655,7 @@ void PatternEngine::recomputeEffectiveMelody() {
         patternMelodyAt(N - f,     slew, d0);
         patternMelodyAt(N - f - 1, slew, d1);
         auto bl = [frac](float a, float b){ return a + frac*(b-a); };
-        for (int i = 0; i < 16; ++i) {
+        for (int i = 0; i < kPatternLengthCap; ++i) {   // the ring (copula compute)
             slewedMelody[0][i]=bl(d0.melody[0][i],d1.melody[0][i]);
             slewedOctave[0][i]=bl(d0.octave[0][i],d1.octave[0][i]);
             for (int v = 1; v <= numPolyVoicesHint; v++) {
@@ -629,7 +666,7 @@ void PatternEngine::recomputeEffectiveMelody() {
     }
     if (!sandsActive) {
         const bool applyM = cachedSpreadInitialized && cachedSpreadLiveM;
-        for (int i = 0; i < 16; ++i) {
+        for (int i = 0; i < kPatternLengthCap; ++i) {   // the ring (the spread-apply term is compute)
             melodyRandom[i]=slewedMelody[0][i]; octaveRandom[i]=slewedOctave[0][i];
             // v = voiceSlot; slot(V) takes the VOICE number (= v+1)
             for (int v=1;v<=numPolyVoicesHint;v++){ const VoiceSlot vs = VoiceResolver::slot(v + 1);
@@ -687,7 +724,7 @@ void PatternEngine::recomputeEffectiveQmix() {
             return (float)redDot::copula::PhiFast(ouBC.blend(z0, z1));
         };
         int fi = 0;
-        for (int i = 0; i < 16; ++i) {
+        for (int i = 0; i < kPatternLengthCap; ++i) {   // the ring (copula compute)
             slewedQmix[0][i] = blend(i, [](const CachedQmixDraw* c, int i){ return c->zQmix[0][i]; }, fi++);
             for (int v = 1; v <= numPolyVoicesHint; v++) {
                 slewedQmix[v][i] = blend(i, [v](const CachedQmixDraw* c, int i){ return c->zQmix[v][i]; }, fi++);
@@ -702,7 +739,7 @@ void PatternEngine::recomputeEffectiveQmix() {
         patternQmixAt(N - f,     slew, d0);
         patternQmixAt(N - f - 1, slew, d1);
         auto bl = [frac](float a, float b){ return a + frac*(b-a); };
-        for (int i = 0; i < 16; ++i) {
+        for (int i = 0; i < kPatternLengthCap; ++i) {   // the ring (copula compute)
             slewedQmix[0][i]=bl(d0.qmix[0][i],d1.qmix[0][i]);
             for (int v = 1; v <= numPolyVoicesHint; v++) {
                 slewedQmix[v][i]=bl(d0.qmix[v][i],d1.qmix[v][i]);
@@ -711,7 +748,7 @@ void PatternEngine::recomputeEffectiveQmix() {
     }
     if (!sandsActive) {
         const bool applyQ = cachedSpreadInitialized && cachedSpreadLiveQ;
-        for (int i = 0; i < 16; ++i) {
+        for (int i = 0; i < kPatternLengthCap; ++i) {   // the ring (the spread-apply term is compute)
             qmixRandom[i]=slewedQmix[0][i];
             // v = voiceSlot; slot(V) takes the VOICE number (= v+1)
             for (int v=1;v<=numPolyVoicesHint;v++){ const VoiceSlot vs = VoiceResolver::slot(v + 1);
@@ -744,19 +781,19 @@ void PatternEngine::recomputeEffectiveRhythmForVoice(VoiceSlot voice) {
         return (float)redDot::copula::PhiFast(ouBC.blend(rhythmZCache_.z0[fi], rhythmZCache_.z1[fi]));
     };
     if (voice == VoiceResolver::mono()) {
-        for (int i = 0; i < 16; ++i) {
+        for (int i = 0; i < kPatternLengthCap; ++i) {   // the ring (copula compute)
             int b = i * stride;
             slewedRhythm[0][i]    = bl(b); slewedVariation[0][i] = bl(b+1);
             slewedLegato[0][i]    = bl(b+2); slewedAccent[0][i]   = bl(b+3);
         }
-        for (int i = 0; i < 16; ++i) {
+        for (int i = 0; i < kStepStorage; ++i) {
             rhythmRandom[i]=slewedRhythm[0][i]; variationRandom[i]=slewedVariation[0][i];
             legatoRandom[i]=slewedLegato[0][i]; accentRandom[i]=slewedAccent[0][i];
         }
     } else {
         if (voice.v > numPolyVoicesHint) return;
         int off = 4 + (voice.v - 1) * 4;  // z-cache field offset: V2 at field 4
-        for (int i = 0; i < 16; ++i) {
+        for (int i = 0; i < kPatternLengthCap; ++i) {   // the ring (copula compute)
             int b = i * stride + off;
             slewedRhythm[voice.v][i]    = bl(b); slewedAccent[voice.v][i]    = bl(b+1);
             slewedVariation[voice.v][i] = bl(b+2); slewedLegato[voice.v][i]    = bl(b+3);
@@ -764,7 +801,7 @@ void PatternEngine::recomputeEffectiveRhythmForVoice(VoiceSlot voice) {
         // Always write random_[voice] — V1's path writes random_[0]; poly must too (no !sandsActive guard)
         {
             const bool applyR = cachedSpreadInitialized && cachedSpreadLiveR;
-            for (int i = 0; i < 16; ++i) {
+            for (int i = 0; i < kPatternLengthCap; ++i) {   // the ring (the spread-apply term is compute)
                 polyRandom(voice, LaneId{PL_REST})[i]=applyR?
                     redDot::SpreadInterp::applyPoly(*this,PL_REST,voice.v,i,cachedPolySpread[voice.v][PL_REST]):slewedRhythm[voice.v][i];
                 polyRandom(voice, LaneId{PL_ACCENT})[i]=applyR?
@@ -797,23 +834,23 @@ void PatternEngine::recomputeEffectiveMelodyForVoice(VoiceSlot voice) {
         return (float)redDot::copula::PhiFast(ouBC.blend(melodyZCache_.z0[fi], melodyZCache_.z1[fi]));
     };
     if (voice == VoiceResolver::mono()) {
-        for (int i = 0; i < 16; ++i) {
+        for (int i = 0; i < kPatternLengthCap; ++i) {   // the ring (copula compute)
             int b = i * stride;
             slewedMelody[0][i] = bl(b); slewedOctave[0][i] = bl(b+1);
         }
-        for (int i = 0; i < 16; ++i) {
+        for (int i = 0; i < kStepStorage; ++i) {
             melodyRandom[i]=slewedMelody[0][i]; octaveRandom[i]=slewedOctave[0][i];
         }
     } else {
         if (voice.v > numPolyVoicesHint) return;
         int off = 2 + (voice.v - 1) * 2;
-        for (int i = 0; i < 16; ++i) {
+        for (int i = 0; i < kPatternLengthCap; ++i) {   // the ring (copula compute)
             int b = i * stride + off;
             slewedMelody[voice.v][i] = bl(b); slewedOctave[voice.v][i] = bl(b+1);
         }
         {
             const bool applyM = cachedSpreadInitialized && cachedSpreadLiveM;
-            for (int i = 0; i < 16; ++i) {
+            for (int i = 0; i < kPatternLengthCap; ++i) {   // the ring (the spread-apply term is compute)
                 polyRandom(voice, LaneId{PL_MELODY})[i]=applyM?
                     redDot::SpreadInterp::applyPoly(*this,PL_MELODY,voice.v,i,cachedPolySpread[voice.v][PL_MELODY]):slewedMelody[voice.v][i];
                 polyRandom(voice, LaneId{PL_OCTAVE})[i]=applyM?
@@ -841,14 +878,14 @@ void PatternEngine::recomputeEffectiveQmixForVoice(VoiceSlot voice) {
         return (float)redDot::copula::PhiFast(ouBC.blend(qmixZCache_.z0[fi], qmixZCache_.z1[fi]));
     };
     if (voice == VoiceResolver::mono()) {
-        for (int i = 0; i < 16; ++i) slewedQmix[0][i] = bl(i * stride);
-        for (int i = 0; i < 16; ++i) qmixRandom[i]=slewedQmix[0][i];
+        for (int i = 0; i < kPatternLengthCap; ++i) slewedQmix[0][i] = bl(i * stride);   // the ring (copula compute)
+        for (int i = 0; i < kStepStorage; ++i) qmixRandom[i]=slewedQmix[0][i];   // whole-row copy
     } else {
         if (voice.v > numPolyVoicesHint) return;
-        for (int i = 0; i < 16; ++i) slewedQmix[voice.v][i] = bl(i * stride + 1 + (voice.v - 1));
+        for (int i = 0; i < kPatternLengthCap; ++i) slewedQmix[voice.v][i] = bl(i * stride + 1 + (voice.v - 1));   // the ring (copula compute)
         {
             const bool applyQ = cachedSpreadInitialized && cachedSpreadLiveQ;
-            for (int i = 0; i < 16; ++i) polyRandom(voice, LaneId{PL_QMIX})[i]=applyQ?
+            for (int i = 0; i < kPatternLengthCap; ++i) polyRandom(voice, LaneId{PL_QMIX})[i]=applyQ?   // the ring (the spread-apply term is compute)
                 redDot::SpreadInterp::applyPoly(*this,PL_QMIX,voice.v,i,cachedPolySpread[voice.v][PL_QMIX]):slewedQmix[voice.v][i];
         }
     }
@@ -873,7 +910,7 @@ void PatternEngine::redrawMelody(const PatternInput& in) {
     (void)first;
     melodySlewApplied = -1.f;
     recomputeEffectiveMelody();
-    for (int i = 0; i < 16; ++i) {
+    for (int i = 0; i < kPatternLengthCap; ++i) {   // the ring (the pitch-compute term; the source copy is same-index — beyond-ring cells stay zero)
         melodySource[0][i]=slewedMelody[0][i]; octaveSource[0][i]=slewedOctave[0][i];
         for (int v=1;v<=numPolyVoicesHint;v++){ melodySource[v][i]=slewedMelody[v][i];
                                 octaveSource[v][i]=slewedOctave[v][i]; }
@@ -909,7 +946,7 @@ void PatternEngine::redrawQmix(const PatternInput& in) {
     (void)first;
     qmixSlewApplied = -1.f;
     recomputeEffectiveQmix();
-    for (int i = 0; i < 16; ++i) {
+    for (int i = 0; i < kStepStorage; ++i) {
         qmixSource[0][i]=slewedQmix[0][i];
         for (int v=1;v<=numPolyVoicesHint;v++){ qmixSource[v][i]=slewedQmix[v][i]; }
     }
@@ -980,7 +1017,7 @@ void PatternEngine::refreshVisualCache(const PatternInput& in) {
     // the live row now; the flag had no other consumer. The melody half of the
     // rhythmmix_leaks_melody_bars split stays: read the DISPLAYED VOICE's array below.)
     if (melodyChanged) {
-        for (int i = 0; i < 16; ++i) {
+        for (int i = 0; i < kPatternLengthCap; ++i) {   // the ring (pitch compute)
             // Warp mirror (CC_PROMPT_03 STEP 4b — the DISPLAY site): the bars derive
             // from the SAME effective w-mixture the sounding path consumes, keyed to
             // displayedVoice_ (warpRow(mono,·) degenerates to the mono row — the ternary
@@ -1107,7 +1144,7 @@ void PatternEngine::applyPendingSeedsAndRedraw(const PatternInput& in) {
     else if (drawAllowedM && melodySlewApplied != -1.f
              && rack::math::clamp(melodySlewLatched, -1.f, 1.f) != melodySlewApplied) {
         recomputeEffectiveMelody();   // slew-boundary consumption (see rhythm block above)
-        for (int i = 0; i < 16; ++i) {   // preview follows (refreshVisualCache's melodyChanged writer)
+        for (int i = 0; i < kPatternLengthCap; ++i) {   // the ring (pitch compute) — preview follows (refreshVisualCache's melodyChanged writer)
             float mVal = warpRow(displayedVoice_, LaneId{PL_MELODY})[i];
             float oVal = warpRow(displayedVoice_, LaneId{PL_OCTAVE})[i];
             int sem = 0;
@@ -1160,7 +1197,7 @@ void PatternEngine::switchMelodyMode(int& stepIndex, int& lastStepIndex) {
         cachedMelodySeedFloat = melodySeedPending
             ? melodySeedPendingFloat : melodySeedFloat;
         melodySeedCached = true;
-        for (int i = 0; i < 16; ++i) cachedMelodyPitchV[i] = melodyPitchV[i];
+        for (int i = 0; i < kStepStorage; ++i) cachedMelodyPitchV[i] = melodyPitchV[i];
         cachedMelodyStepIndex     = stepIndex;
         cachedMelodyLastStepIndex = lastStepIndex;
         // Scrub model: no A/B snapshot -- (counter, scrub, slew) is the morph position,
@@ -1168,7 +1205,7 @@ void PatternEngine::switchMelodyMode(int& stepIndex, int& lastStepIndex) {
     } else if (prev == 1 && next == 0 && melodySeedCached) {
         // Returning to dice: restore the exact A/B buffers (lossless — preserves
         // the slew morph position), NOT a reseed-to-A=B approximation.
-        for (int i = 0; i < 16; ++i) melodyPitchV[i] = cachedMelodyPitchV[i];
+        for (int i = 0; i < kStepStorage; ++i) melodyPitchV[i] = cachedMelodyPitchV[i];
         stepIndex     = cachedMelodyStepIndex;
         lastStepIndex = cachedMelodyLastStepIndex;
         // Scrub model: recompute effective from the (unchanged) counter -- exact pre-switch pattern.
