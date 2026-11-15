@@ -1232,4 +1232,23 @@ void PatternEngine::switchRhythmMode() {
     rhythmMode = next;
 }
 
+// (CC_PROMPT_SWITCH_QMIX_MODE_COMPLETE) the q-mix twin — PATTERN-ONLY, mirroring the
+// post-4-final melody/rhythm switches (NO position cache: the cached*StepIndex twins
+// are dead and must stay dead). Enter-realtime caches the seed + the q-mix row;
+// return-to-dice restores the row and re-derives the effective from the draw counter.
+void PatternEngine::switchQmixMode() {
+    int prev = qmixMode;
+    int next = 1 - prev;
+    if (prev == 0 && next == 1) {
+        cachedQmixSeedFloat = qmixSeedPending
+            ? qmixSeedPendingFloat : qmixSeedFloat;
+        qmixSeedCached = true;
+        for (int i = 0; i < kStepStorage; ++i) cachedQmix[i] = qmixRandom[i];
+    } else if (prev == 1 && next == 0 && qmixSeedCached) {
+        for (int i = 0; i < kStepStorage; ++i) qmixRandom[i] = cachedQmix[i];
+        recomputeEffectiveQmix();
+    }
+    qmixMode = next;
+}
+
 // ──── Composite Operations ──────────────────────────────────────────────

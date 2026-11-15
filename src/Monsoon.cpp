@@ -530,6 +530,9 @@ void Monsoon::switchMelodyMode() { engine.pe.switchMelodyMode(); }
 // --- switch melody/rhythm mode (dice/realtime), caching/restoring state as needed ---
 void Monsoon::switchRhythmMode() { engine.pe.switchRhythmMode(); }
 
+// --- switch q-mix mode (dice/realtime), caching/restoring state as needed ---
+void Monsoon::switchQmixMode() { engine.pe.switchQmixMode(); }
+
 
 // pick a semitone (0..11) using weighted random, or -1 if no semitone is selected
 // uses melody RNG
@@ -707,9 +710,12 @@ float Monsoon::semitoneToVolts(int semitone) {
             case DA_REDICE_R:      diceRhythm(); break;
             case DA_REDICE_M:      diceMelody(); break;
             case DA_REDICE_Q:      diceQmix(); break;
-            case DA_LIVESTATIC_R:  rhythmMode = 1 - rhythmMode; break;
-            case DA_LIVESTATIC_M:  melodyMode = 1 - melodyMode; break;
-            case DA_LIVESTATIC_Q:  qmixMode = 1 - qmixMode; break;
+            // (switch-qmix-mode) ONE path for every live/static toggle — the LOSSLESS
+            // switch (cache + restore), not a bare flag flip: Gate 3's assignable and
+            // Raffles's dedicated gates now behave identically to the context menu.
+            case DA_LIVESTATIC_R:  switchRhythmMode(); break;
+            case DA_LIVESTATIC_M:  switchMelodyMode(); break;
+            case DA_LIVESTATIC_Q:  switchQmixMode(); break;
             case DA_RESEED_RESTART:reseedOnRestart = !reseedOnRestart; break;
             case DA_LASTDICE_R:    rhythmMode = 0; engine.pe.setPendingRhythmLastRoll();  break;
             case DA_LASTDICE_M:    melodyMode = 0; engine.pe.setPendingMelodyLastRoll();  break;
