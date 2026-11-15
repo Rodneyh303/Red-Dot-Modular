@@ -5,9 +5,10 @@ slice 1. Branch: off fix/macro-voicelane-shared-frame.
 
 ADDENDUM (2026-11-15, OPEN): see "INPUT CADENCE / ACCEPTANCE MODEL" below — the RATE at
 which position's inputs (global range, LOR, direction, modulation) are recognised/accepted,
-and how that composes with the existing effect-timing ladder. C1 (rungs), C2 (keep-counting)
-and C4 (display cadence) DECIDED 2026-11-15; C3 (cross-level promote composition) still open.
-Design-ahead: this lands as its OWN slice AFTER S2, NOT slice 1.
+and how that composes with the existing effect-timing ladder. C1 (rungs), C2 (keep-counting),
+C4 (display cadence) and C3 (per-level direction, GATED on the position-holder migration) all
+DECIDED 2026-11-15. Design-ahead: C1/C2/C4 land as their OWN slice AFTER S2; C3 rides the
+counter-removal migration, not that slice. NOT slice 1.
 
 ## DECISIONS (Rodney, locked)
 1. SCOPE: ALL modes. NUANCE — in CLOCK mode the GLOBAL playhead is forward-only
@@ -88,9 +89,10 @@ that owns the transport position and is the ONE source every consumer reads:
 
 ## INPUT CADENCE / ACCEPTANCE MODEL — the resolver as the single owner of position-input acceptance
 
-STATUS: addendum (2026-11-15). C1 (rungs) + C2 (keep-counting) + C4 (display cadence) DECIDED
-by Rodney 2026-11-15 (recorded below; revisitable — the "arguably" stands). C3 (cross-level
-promote composition) still OPEN. Design-ahead; still NOT slice 1 (slice 1 keeps today's
+STATUS: addendum (2026-11-15). C1 (rungs) + C2 (keep-counting) + C4 (display cadence) + C3
+(per-level direction) DECIDED by Rodney 2026-11-15 (recorded below; revisitable). C3 is
+per-level but GATED on the position-holder migration (POSITION_HOLDER_MODEL.md) — it rides the
+counter removal, not the cadence slice. Design-ahead; still NOT slice 1 (slice 1 keeps today's
 cadence to stay golden-identical).
 
 ### Why this belongs in the resolver
@@ -137,8 +139,10 @@ Per EFFECT_TIMING_HIERARCHY's rungs (control / 1-16-step / phrase / unlock):
   hold still to be heard). TODAY step — this COARSENS it, deliberately.
 - global len + off → STEP, together (C1 — the MeloDicer-native "reposition/resize the whole
   pattern now" class). TODAY control-rate — this is a (small) coarsening/fix.
-- per-level direction → StepEdge or Phrase via laneFlipQuant (already correct); the resolver
-  reads the PROMOTED dir, never the pending one.
+- per-level direction → each level at its OWN edge (C3). TODAY laneFlipQuant is a SINGLE enum
+  (one edge for the whole engine, lock-scope picks which strands) — per-level EDGES are the
+  extension, coherent only on the holder model (see C3). The resolver reads each level's
+  PROMOTED dir, never the pending one.
 - modulation (CV) → NOT a rung of its own; it RIDES the target's rung (CV→LOR latches at the
   LOR rung, CV→direction at the direction rung). Nothing new to decide for modulation once
   the target rungs are set.
@@ -181,12 +185,33 @@ C2 (DECIDED — and SELECTED BY C1, not independent). phrasePos KEEPS COUNTING a
     start, until the next wrap tidies it. Re-seed's only virtue (always-clean-from-anchor) is
     precisely the anchor-re-fire we do NOT want, so the cost is worth paying.
 
-C3 (OPEN). COMPOSITION across levels with DIFFERENT promote edges — voice flips at StepEdge,
-    lane at Phrase: the multiplicative sign is coherent only at a COMMON latch. One promote
-    edge for the WHOLE composition (simpler, less flexible) OR per-level promoted values each
-    latched at its own edge (flexible, but risks a one-step HALF-PROMOTED product)? Direction
-    today derives SIGN from position each step (sidesteps this for sign), but the DIR enum
-    promotes per-level — so the question is real for the composed TRAVERSAL. STILL TO DECIDE.
+C3 (DECIDED — PER-LEVEL; GATED on the position-holder migration). Each level's direction
+    promotes at its OWN edge (voice StepEdge, lane Phrase, …); there is NO single common latch.
+    The "half-promoted product" worry is an ARTIFACT of the global-counter model
+    (dstep = signMotion × mdSign — a STORED product that can be half-updated). POSITION_HOLDER_
+    MODEL.md removes it: each (voice,lane) holder OWNS its position and updates LOCALLY
+    pos = wrap(pos ± dir), dir applied FRESH each advance — no shared composed sign exists to
+    half-promote, so every holder is always self-consistent with its own promoted dir.
+    COMPOSITION survives as NESTING, not multiplication: a child walk's phase driver IS its
+    parent's walk, so a parent flip drags its whole SUBTREE immediately (the driver reversed),
+    while each level's OWN flip lands at its OWN edge.
+    WORKED: voice (StepEdge) flips mid-phrase → lane's DRIVER reverses NOW → lane nets backward
+    (parent-back × own-forward) until the phrase → lane's own dir promotes at the phrase → nets
+    forward again (back × back). Coherent at EVERY step; it is the correct meaning of per-level
+    — a parent reversal is immediate and applies to everything under it; each level's own
+    reversal is its own choice at its own edge.
+    CONDITION (why GATED): this coherence DEPENDS on the holder model. On the CURRENT global
+    counter, per-level edges force the stored product and the half-promoted state is REAL —
+    there you would need the common latch as a stopgap. So C3 RIDES the counter-removal
+    migration (POSITION_HOLDER_MODEL.md sequencing: poly advance + divergence tests → counter
+    removal → 32 steps), NOT the C1/C2/C4 cadence slice. Gated on that migration, not on S2.
+    VERIFY (don't assume — the holder model is partly TARGET, not fully built): when a PARENT
+    flips mid-phrase the child must re-anchor to the LIVE parent wrap, not a stored stale one
+    (consistent with C2 keep-counting). Reproduce-first, a DIRECTION-divergence case of the
+    holder doc's per-voice divergence suite: voice reverses at a step edge while lane holds →
+    assert the lane reads the parent-dragged positions, then re-nets at the phrase. This is what
+    proves per-level composition is wired to the LIVE reference and not a cached product
+    creeping back in.
 
 C4 (DECIDED). DISPLAY cadence follows the INPUT rung — the Sands range IS the LOR mod display.
     There are NO knobs on the LOR, hence NO mod arcs (mod arcs belong on knobs, not on
@@ -209,6 +234,11 @@ range quantization (C4) ships in the SAME slice but is WIDGET — Rodney's Rack 
 range steps at the phrase boundary, not every step, and never disagrees with the engine.
 The engine↔display agreement is pinned structurally (both read the one latched LOR) the way
 test_variation_scan_display pins the VAR chevron.
+
+C3 (per-level direction) is NOT in this slice. It is coherent only on the position-holder
+model, so it rides the COUNTER-REMOVAL migration (POSITION_HOLDER_MODEL.md: poly advance +
+divergence tests → counter removal → 32 steps), with its own direction-divergence test (parent
+flips mid-phrase, child tracks the live parent wrap). Gated on that migration, not on S2.
 
 ## MIGRATION PLAN (incremental; goldens green at EVERY step — this is the whole risk)
 This touches transport timing; the goldens are the contract. Do it in landable slices,
