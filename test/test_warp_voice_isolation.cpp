@@ -343,16 +343,26 @@ int main() {
                 "Macro's V2 tab bars display V3's row");
     });
 
-    TEST("B3-NOV1SPECIAL (CC_FIX_MACRO_NO_VOICE1_SPECIAL): no V1/mono branch remains in the Macro strip's bar, playhead or read path — no tab-kind mono flag, no VoiceResolver::isMono, no mono-frame cache reads in StraitsSandsMacroVisual.cpp (every viewed voice V1..V16 takes the ONE slot expression slot(viewVoice + 1); slot(1) mints the mono slot)", {
+    TEST("B3-NOV1SPECIAL (CC_FIX_MACRO_NO_VOICE1_SPECIAL): no V1/mono branch remains in the Macro strip's bar, playhead or read path — no tab-kind mono flag, no VoiceResolver::isMono, and the row playhead reads the SHARED Macro frame (macroFrameRead/macroFrameSign, voice-independent), never a per-voice read-cell accessor (every viewed voice V1..V16 takes the ONE slot expression slot(viewVoice + 1); slot(1) mints the mono slot)", {
         const std::string src = slurp(repoRoot() + "/src/StraitsSandsMacroVisual.cpp");
         EXPECTF(!contains(src, "onMonoTab"),
                 "StraitsSandsMacroVisual.cpp still branches on onMonoTab — a V1 special case in the Macro strip "
                 "(all voices should follow the global per-voice range; nothing special about voice 1)");
         EXPECTF(!contains(src, "VoiceResolver::isMono"),
                 "StraitsSandsMacroVisual.cpp still branches on VoiceResolver::isMono — a V1 special case in the Macro strip");
-        EXPECTF(!contains(src, "macroFrameRead") && !contains(src, "macroFrameSign"),
-                "StraitsSandsMacroVisual.cpp still reads the mono-frame caches — the strip must show the displayed "
-                "voice's OWN read cell on every tab (the caches stay engine-side, pinned by the unified-addressing gates)");
+        // (CC_FIX_MACRO_STRIP_VOICE_PLAYHEAD + CC_FIX_MACRO_LANE_SEED re-aim) the row
+        // playhead IS the SHARED Macro frame: the amendment moved it off the displayed
+        // voice's own cell (the tab-tracking divergence — V1/V2/V3 read differently),
+        // and the lane-seed fix made the frame the MACRO ROW's walk so the cell runs
+        // inside the authored window. The pin now REQUIRES the shared-frame read and
+        // forbids every per-voice read-cell accessor in the strip (the V1-special class
+        // this gate exists for — the original clause pinned the pre-amendment law and
+        // failed the battery from a012ab54 on).
+        EXPECTF(contains(src, "macroFrameRead") && contains(src, "macroFrameSign")
+                && !contains(src, "voiceReadPosition") && !contains(src, "voiceReadSign"),
+                "StraitsSandsMacroVisual.cpp's row playhead must read the SHARED Macro frame "
+                "(macroFrameRead/macroFrameSign — one value for every tab, the authored row's walk) "
+                "and no per-voice read-cell accessor (the tab-tracking divergence the amendment killed)");
     });
 
     TEST("B3 East lock-topo off-by-one gone: no `eastPolyOwner[cv - 1]` in StraitsEastSandsVisual.cpp (cv is already the voiceSlot; -1 wrote the PREVIOUS voice's owner row)", {

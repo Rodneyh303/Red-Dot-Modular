@@ -15,6 +15,7 @@
 #include "../SubgateKnobs.hpp"   // SUBGATE TIER: the resolved-threshold dims + the three-way resolver (rack-free)
 #include "../StepAdvance.hpp"     // STEP-ADVANCE: the pure decideAdvance(p, u) (CC_PROMPT_GATE_STEP_ADVANCE_SPEC, rack-free)
 #include "../VoiceLaneTypes.hpp"   // VoiceSlot — the VoiceBank below (strong per-voice indexing)
+#include "PositionResolver.hpp"   // POSITION_UNIFICATION slice 1: the ONE position authority (a pure mirror)
 #include <cassert>
 #include <cstdio>
 
@@ -102,6 +103,13 @@ struct PolyVoice {
     bool  participating = false;
 };
 
+// (CC_PROMPT_16_TRIAGE bucket 3) the voice capacity (mono + 15 poly) at NAMESPACE
+// scope so VoiceBank (below, pre-class) sizes its slots with it — 16 = the VOICE
+// COUNT, never a step/length bound. VoiceResolver's static_assert holds the equality
+// (VoiceResolver.hpp includes this file, so the canonical constant cannot be reached
+// from here).
+static constexpr int kVoiceSlots = 16;
+
 // ── VoiceBank — per-voice storage, VoiceSlot-indexed (CC_PROMPT_STRONG_TYPES) ──
 // voices[] takes a MINTED VoiceSlot (VoiceResolver::mono() / slot(V) / allSlots());
 // the 16-wide storage convention (0 = V1 … 15 = V16) made STRUCTURAL. TIGHTEN: the
@@ -109,7 +117,7 @@ struct PolyVoice {
 // the mono role must be spelled mono(). Layout- and behaviour-identical to the raw
 // PolyVoice[16] it wraps (same cells, typed addressing).
 struct VoiceBank {
-    std::array<PolyVoice, 16> slots{};
+    std::array<PolyVoice, kVoiceSlots> slots{};
     PolyVoice&       operator[](dotModular::VoiceSlot s)       { return slots[s.v]; }
     const PolyVoice& operator[](dotModular::VoiceSlot s) const { return slots[s.v]; }
 };
@@ -265,12 +273,13 @@ struct SequencerEngine {
 // readable call sites.
 template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::array<T, Cols>, Rows>;
 
-    // P-A (ARRAY_CONTAINER_AUDIT Finding A): the ONE spelling of the voice capacity (mono + 15
-    // poly); hoisted above the first voice-dim member it sizes. VoiceResolver's static_assert
-    // holds the equality (VoiceResolver.hpp includes this file, so the canonical constant cannot
-    // be reached from here). The LOR-DEFAULT 16 (a drawn window length) is a DIFFERENT quantity
-    // and stays literal.
-    static constexpr int kVoiceSlots = 16;
+    // P-A (ARRAY_CONTAINER_AUDIT Finding A): the voice capacity (mono + 15 poly) — the
+    // ONE spelling now lives at NAMESPACE scope above VoiceBank (CC_PROMPT_16_TRIAGE
+    // bucket 3: VoiceBank's slots array sizes with it); this member ALIASES it so
+    // SequencerEngine::kVoiceSlots (the tests' spelling) keeps resolving.
+    // VoiceResolver's static_assert holds the equality (VoiceResolver.hpp includes
+    // this file, so the canonical constant cannot be reached from here).
+    static constexpr int kVoiceSlots = ::kVoiceSlots;
 
     // PER-VOICE STEP-ADVANCE Stage 2 (CC_PER_VOICE_ADVANCE_SIGNOFF decision 2): ARRAY-IFIED —
     // [0] is the MONO latch (every pre-existing reader, incl. Monsoon.cpp's fall guard);
@@ -286,6 +295,11 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
 
     int stepIndex = -1;
     int lastPlayDir = +1;   // +1 forward, -1 reverse (Mode E); for UI direction cues
+    // (DESIGN_POSITION_UNIFICATION slice 1) the ONE position authority — a PURE MIRROR
+    // this slice: advanced alongside stepIndex/globalWalk_, consumed by NOTHING; the
+    // golden-identity harness (test_position_resolver_identity) proves the mirror.
+    // Slice 2 migrates the derive to its phrasePos; slices 3-4 the stepIndex consumers.
+    PositionResolver pos_;
 
     // ── Per-lane direction (reverse a lane's read independently) ──────────────────
     // 4-state direction per strand: Forward, Reverse, Pendulum (bounce, no endpoint repeat),
@@ -381,7 +395,11 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
     std::array<int, dotModular::NUM_STRANDS> macroLaneSign_ = {1,1,1,1,1,1,1};   // NUM_STRANDS-sized (was 6-elem → LEGATO=0 pre-reset)
     std::array<LaneDir, dotModular::NUM_STRANDS> macroLaneDir_ = {};
     std::array<bool, dotModular::NUM_STRANDS> macroPingPongHold_ = {};
-    std::array<int, dotModular::NUM_STRANDS> macroLOR_ = {16,16,16,16,16,16,16};  // Macro's own LOR lengths (7 poly lanes: REST/MEL/OCT/ACC/QMIX/VAR/LEG)
+    // (CC_PROMPT_16_TRIAGE bucket 2, option C's STAY-16 group) Macro's own LOR lengths
+    // (7 poly lanes: REST/MEL/OCT/ACC/QMIX/VAR/LEG) — the lane-window seed =
+    // kDefaultPatternLen (the classic 16-step pattern, NAMED; the cap move is the
+    // deferred round).
+    std::array<int, dotModular::NUM_STRANDS> macroLOR_ = {kDefaultPatternLen,kDefaultPatternLen,kDefaultPatternLen,kDefaultPatternLen,kDefaultPatternLen,kDefaultPatternLen,kDefaultPatternLen};
     // Per-voice per-strand accumulated tick (poly analogue of laneTick_). Advanced in advancePlayhead
     // by dir * polyLaneSign(v, s) — the effective sign is the voice's OWN, i.e. ABSOLUTE, not
     // relative to mono. laneSignV_ = +1 (default) = Forward; -1 = Reverse. A voice therefore does
@@ -402,11 +420,11 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
     // Effective per-voice sign for a strand: +1 if laneSignV_ is 0 (default/unset → follow mono) or
     // positive, -1 if negative. Multiplied with mono's laneSign_ in advancePlayhead.
     int polyLaneSign(int bank, int strand) const {
-        if (bank < 0 || bank >= 16) return 1;
+        if (bank < 0 || bank >= kVoiceSlots) return 1;
         return (laneSignV_[bank][strand] < 0) ? -1 : +1;
     }
     int polyLaneSignPending(int bank, int strand) const {
-        if (bank < 0 || bank >= 16) return 1;
+        if (bank < 0 || bank >= kVoiceSlots) return 1;
         return (laneSignVPending_[bank][strand] < 0) ? -1 : +1;
     }
     // Derive sign (+1/-1) from a LaneDir state.
@@ -416,8 +434,10 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
     LaneFlipQuant laneFlipQuant = LaneFlipQuant::Phrase;   // musical default; StepEdge = live turns
     int lastStepIndex = -1;
     int startStep = 0;
-    int endStep = 15;
-    int cachedLength = 16;
+    // (CC_PROMPT_16_TRIAGE bucket 2, option C's DO-NOW group) the transport defaults =
+    // the full ring (reset() re-seeds the same; the construction default matches it).
+    int endStep = kPatternLengthCap - 1;
+    int cachedLength = kPatternLengthCap;
     int cachedOffset = 0;
     // ── THE POSITION-HOLDER MODEL (POSITION_HOLDER_MODEL.md) ────────────────────────
     // The global counter totalStepsElapsed is DELETED: position-being-a-function-of-one-
@@ -452,7 +472,7 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
     // congruences — needed because a mid-run window/LOR re-author re-bounds the
     // global walk to (tick−1) mod newLen, a congruence no bounded phase carries.
     int64_t transportTick_ = 0;
-    int globalWalk_ = 15;                     // ≡ (t−1) mod cachedLength (the t=0 anchor: −1 mod 16)
+    int globalWalk_ = kMaskRing - 1;          // ≡ (t−1) mod cachedLength (the t=0 anchor: −1 mod the cap default)
     // ≡ the RAW transport t0 (mod the walk's period) — the pass-through-config read
     // path; the phases advance by the RAW clock deltas every event so the congruence
     // survives any window/LOR config round-trip (the WARM-PHASE law).
@@ -460,6 +480,11 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
     std::array<std::array<int, dotModular::NUM_STRANDS>, kVoiceSlots> lanePhaseV_ = {};   // per-voice: ≡ the RAW effective clock's t0 (mod the walk's period)
     std::array<int, dotModular::NUM_STRANDS> macroLanePhase_ = {};   // macro lanes: ≡ the RAW transport t0 (mod the walk's period)
     std::array<int, kVoiceSlots> voiceFramePhase_ = {};   // mapped voice rows: ≡ the RAW effective clock's t0 (mod the row walk's period)
+    // (CC_FIX_MACRO_LANE_SEED Part 2) the MACRO ROW's frame phase — the mapped macro
+    // row's walk congruence, the container the Macro lanes hang under. Mirrors
+    // voiceFramePhase_ for the one shared row (the follower voices' rows resolve to
+    // it; the Macro lanes' seed needs it independently of any voice being live).
+    int macroFramePhase_ = 0;
     int globalT0Phase_                             = 0;    // ≡ the RAW transport t0 (mod the RHYTHM lane's length) — the step-light's DNA-content congruence under the pass-through window (the one read no mod-16 walk carries)
     std::array<int64_t, kVoiceSlots> advOffSeen_ = {};   // the transport's last-seen advanceOffset_ — the per-event diff IS the offset's contribution to k_v
     // THE WALK-KEY SHADOWS (the re-anchor law): a holder's phase is congruent to its raw
@@ -473,6 +498,7 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
     std::array<std::array<int, dotModular::NUM_STRANDS>, kVoiceSlots> laneKeyV_ = {};
     std::array<int, dotModular::NUM_STRANDS> macroLaneKey_ = {};
     std::array<int, kVoiceSlots> frameKey_ = {};
+    int macroFrameKey_ = 0;   // (CC_FIX_MACRO_LANE_SEED) the macro row's walk key
     int globalT0Key_                               = 0;
     static int walkKeyOf(LaneDir d, int len) { return (int)d * 64 + std::max(1, len); }
 
@@ -673,6 +699,11 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
     // and the 1<<c magic; the all-on default is the RING's all-on (0xFFFF at the 16 bound).
     static constexpr int      kMaskRing   = dotModular::kMaskRing;
     static constexpr uint64_t kMaskLenMask = dotModular::kMaskLenMask;
+    // (CC_PROMPT_16_TRIAGE bucket 3-adjacent) the panel's physical RING-LAMP count —
+    // the D10/D15 twice-around law's constant (the lamps STAY 16 when the ring went to
+    // 32; lamp k carries masters k and k+16). A DISPLAY quantity, not a step/length/
+    // voice bound — named so it can never be read as one.
+    static constexpr int      kRingLamps  = 16;
     static constexpr std::array<uint64_t, kVoiceSlots> maskAllOnArr() {
         std::array<uint64_t, kVoiceSlots> a{}; a.fill(kMaskLenMask); return a;
     }
@@ -817,7 +848,7 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
 
     // The EFFECTIVE voice LOR row (delegation + Macro tier) — the one resolution authority.
     void effectiveVoiceLor(int v, int& L, int& O, int& R, LaneDir& d) const {
-        if (v < 0 || v >= kVoiceSlots) { L = 16; O = 0; R = 0; d = LaneDir::Forward; return; }
+        if (v < 0 || v >= kVoiceSlots) { L = kPatternLengthCap; O = 0; R = 0; d = LaneDir::Forward; return; }   // (bucket 2) the out-of-range fallback = the identity values (the cap — was the literal 16, which read as a MAPPED row)
         if (voiceLorLocalEast_[v]) {
             L = voiceLorStore_[v][LOR_LEN]; O = voiceLorStore_[v][LOR_OFF];
             R = voiceLorStore_[v][LOR_ROT]; d = voiceLorDir_[v];
@@ -835,6 +866,14 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
     bool voiceLorIdentity(int v) const {
         int L, O, R; LaneDir d; effectiveVoiceLor(v, L, O, R, d);
         return L == kPatternLengthCap && O == 0 && R == 0 && d == LaneDir::Forward;
+    }
+    // (CC_FIX_MACRO_LANE_SEED Part 2) the MACRO ROW's own identity test —
+    // voiceLorIdentity's twin reading the shared row DIRECTLY (the Macro lanes and
+    // the macro frame hang under the ROW itself, not under any voice's delegation
+    // switch, so a localEast voice's row must not leak into the Macro tier's branch).
+    bool macroRowIdentity() const {
+        return macroVoiceLor_[LOR_LEN] == kPatternLengthCap && macroVoiceLor_[LOR_OFF] == 0
+            && macroVoiceLor_[LOR_ROT] == 0 && macroVoiceLorDir_ == LaneDir::Forward;
     }
     // Store accessors (the manager/UI author these; tests author them rack-free).
     // dotModular::VoiceSlot spelled out: the VoiceSlot alias is declared further below.
@@ -903,6 +942,22 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
     // THIS voice's LOR length for a strand (the walk's wrap point) — the shared table
     // (was a lambda duplicated in the two old recompute blocks).
     int     polyStrandLenOf(int v, int strand) const;
+    // (CC_FIX_MACRO_LANE_SEED Part 1) THE ONE SEED LAW — the single place the
+    // window→seed map lives for all three lane loops (East mono, East poly, Macro),
+    // so the three can never drift again (the doc's located cause: Macro's inline t0
+    // was the raw global walk in BOTH branches, folding the lane over the global
+    // pattern). Returns the lane's OWN length + the driver's t0 representative for
+    // laneRecomp; the identity/mapped branch is INSIDE and identical for all three:
+    // an identity driver row passes through (the lane's raw congruence under the
+    // pass-through global, the bounded GLOBAL window walk + the driver's advance
+    // offset under a mapped global); a mapped driver row hangs the lane off the row's
+    // FRAME VALUE (frameT0[v] — the bounded walk under the voice's own window; the
+    // macro row's frame value for Macro). East's two loops are BIT-IDENTICAL through
+    // here (the same expressions the inline seeds computed); laneRecomp is unchanged.
+    struct LaneSeed { int len = 1; int64_t t0 = 0; };
+    enum class LaneWin { Mono, Poly, Macro };   // the three seed sites
+    LaneSeed laneSeed(LaneWin win, int l, int v, bool passG, int wG, int offG, int lenG,
+                      const int* frameT0, int64_t macroFrameT0) const;
 
     // Lane-index unification: PL_* now matches the VISUAL/EDITOR/STRAND order
     // (MEL=0,OCT=1,QMIX=2,REST=3,ACC=4,VAR=5,LEG=6). Editor==engine==strand —
@@ -1013,7 +1068,7 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
     //   writers  → the rhythm cell (strandClamp maps invalid → STRAND_RHYTHM), so an out-of-range
     //              write lands on rhythm just as the old default: return rhythmLen/Off/Rot did.
     int strandLen(int strand) const {
-        return (strand >= 0 && strand < dotModular::NUM_STRANDS) ? lor(strand, LOR_LEN) : 16;
+        return (strand >= 0 && strand < dotModular::NUM_STRANDS) ? lor(strand, LOR_LEN) : kPatternLengthCap;   // (bucket 2) the invalid-strand fallback = the full phrase (was the literal 16)
     }
     int strandOff(int strand) const {
         return (strand >= 0 && strand < dotModular::NUM_STRANDS) ? lor(strand, LOR_OFF) : 0;
@@ -1088,7 +1143,7 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
         }
     }
 
-    int dnaLength = 16; // Legacy/Global fallback
+    int dnaLength = kPatternLengthCap; // (CC_PROMPT_16_TRIAGE bucket 2, ruling A) the Legacy/Global DNA fallback = the full phrase (was the literal 16)
     int dnaOffset = 0;
 
     uint64_t windowMask = kMaskLenMask;   // Stage 2a: the ring-wide play mask (was uint16 0xFFFF)
@@ -1177,14 +1232,14 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
     float voicePitch(VoiceSlot voiceIdx, int& outSem, const PatternInput& input, float r_semi, float r_oct,
                      bool forceGenerated = false) {
         if (quantiserPitchSource && !forceGenerated) {
-            const int vi = (voiceIdx.v < 0) ? 0 : (voiceIdx.v > 15 ? 15 : voiceIdx.v);
+            const int vi = (voiceIdx.v < 0) ? 0 : (voiceIdx.v >= kVoiceSlots ? kVoiceSlots - 1 : voiceIdx.v);
             // CA-routed input CV (QMIX_LANE_PARITY §"The blend" step 2): the external input CV rides
             // CA's MELODY source plane, so a voice can quantise ANOTHER voice's input line. voiceIdx is
             // the ENGINE voice (0=mono/V1, k=poly V(k+1)) — the SAME indexing as the CA pin rows — so
             // caInputCvSrcRow(vi) maps directly. Identity default = each voice reads its own CV (the
             // exact legacy quantiserCV[vi]); byte-identical when caMelodySrc is identity.
             const int srcVi = pe.caInputCvSrcRow(vi);
-            const int rvi = (srcVi < 0) ? 0 : (srcVi > 15 ? 15 : srcVi);
+            const int rvi = (srcVi < 0) ? 0 : (srcVi >= kVoiceSlots ? kVoiceSlots - 1 : srcVi);
             float v = quantize(quantiserCV[rvi]);
             float frac = v - std::floor(v);
             // markSemi correctness (QMIX_LANE_PARITY §"one correctness rule"): the QUANTISED branch
@@ -1289,7 +1344,7 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
     // (0=REST→rhythm, 1=MEL→melody, 2=OCT→octave), at that voice's own LOR step.
     // 0..1. Used to assemble the poly probability cables (channels 2..1+nVoices).
     inline float polyLaneProbability(LaneId polyLane, VoiceSlot voice) const {
-        if (voice.v < 0 || voice.v >= 16 || polyLane.l < 0 || polyLane.l >= PL_LANES) return 0.f;
+        if (voice.v < 0 || voice.v >= kVoiceSlots || polyLane.l < 0 || polyLane.l >= PL_LANES) return 0.f;
         // Follow this voice's own lane position, not the raw global tick: a reversed lane's
         // notes come from polyLaneTick, so its probability CV must too or the CV reports a
         // different cell than the one being played (they silently disagreed before).
@@ -1305,14 +1360,14 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
     // draw at MACRO's own global LOR step — independent of East/ownership. East instead
     // uses polyLaneProbability (resolved per-voice step). 0..1.
     inline float polyLaneProbabilityAtStep(LaneId polyLane, VoiceSlot voice, int step) const {
-        if (voice.v < 0 || voice.v >= 16 || polyLane.l < 0 || polyLane.l >= PL_LANES) return 0.f;
+        if (voice.v < 0 || voice.v >= kVoiceSlots || polyLane.l < 0 || polyLane.l >= PL_LANES) return 0.f;
         step &= kMaskRing - 1;
         return pe.warpRow(voice, polyLane)[step];   // the ONE uniform source (warp mirror)
     }
 
     // Step indices (for S&H edge detection) matching the probability accessors above.
     inline int polyLaneStep(LaneId polyLane, VoiceSlot voice) const {
-        if (voice.v < 0 || voice.v >= 16 || polyLane.l < 0 || polyLane.l >= PL_LANES) return -1;
+        if (voice.v < 0 || voice.v >= kVoiceSlots || polyLane.l < 0 || polyLane.l >= PL_LANES) return -1;
         return getStrandIdx(polyLaneTick(voice, polyLane), polyLenE(voice, polyLane),
                             polyOffE(voice, polyLane), polyRotE(voice, polyLane)) & (kMaskRing - 1);
     }

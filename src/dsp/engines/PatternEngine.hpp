@@ -87,6 +87,13 @@ static_assert(kStepStorage <= 64,                    "the storage fits the uint6
 // the 1<<c magic; the all-on default is the RING's all-on (0xFFFFFFFF at the 32 bound).
 static constexpr int      kMaskRing   = kPatternLengthCap;
 static constexpr uint64_t kMaskLenMask = (kMaskRing >= 64) ? ~0ULL : ((1ULL << kMaskRing) - 1ULL);
+// (CC_PROMPT_16_TRIAGE bucket 2, option C's STAY-16 group) the DEFAULT PATTERN LENGTH —
+// the lane-window LOR seeds' 16 (the classic 16-step pattern a fresh patch's lanes read).
+// DISTINCT from kPatternLengthCap (the full 32 ring — the transport default and the
+// out-of-range fallbacks take THAT): the lane seeds stay 16 so the default-config march
+// goldens hold; moving them to the cap is the DEFERRED round (done alone, the digest
+// change as the only change).
+static constexpr int kDefaultPatternLen = 16;
 }  // namespace dotModular
 
 // The length/storage/mask domain, visible UNQUALIFIED to the engine layer (the audit's
@@ -99,6 +106,7 @@ using dotModular::kLaneOffsetMax;
 using dotModular::kLaneLengthMax;
 using dotModular::kMaskRing;
 using dotModular::kMaskLenMask;
+using dotModular::kDefaultPatternLen;
 
 // ── Input snapshot — filled by MeloDicer::process() each block ────────────────
 // All knob/CV values are pre-read so PatternEngine is Rack-port-free.
@@ -121,7 +129,7 @@ struct PatternInput {
     float octaveHi         = 5.f;
     float transpose        = 0.f;
     int   noteVariationMask= 0b111;
-    int   dnaLength        = 16;
+    int   dnaLength        = kDefaultPatternLen;   // (bucket 2, the stay-16 group) the write-only legacy default — the classic pattern length, NAMED
     int   dnaOffset        = 0;
     bool  locked           = false;
     // LOCK_SCOPE_MENU dice-scope: when locked, a stream whose dice bit is opted live may still redraw

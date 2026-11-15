@@ -461,12 +461,15 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                     w->getOwnsFn = [this]() {
                         Monsoon* m = getMonsoon(); if (!m) return true;
                         const int vi = currentSlot();
-                        return (vi >= 0 && vi < kVoiceSlots) ? (m->getVoiceLorLocalEast(vi) != 0.f) : true;
+                        // (CC_PROMPT_16_TRIAGE bucket 3) qualified: the new namespace-scope
+                        // kVoiceSlots (SequencerEngine.hpp) is ambiguous with this class's own
+                        // alias inside the lambda — the resolver's constant is the authority.
+                        return (vi >= 0 && vi < dotModular::VoiceResolver::kVoiceSlots) ? (m->getVoiceLorLocalEast(vi) != 0.f) : true;
                     };
                     w->setOwnsFn = [this](bool b) {
                         Monsoon* m = getMonsoon(); if (!m) return;
                         const int vi = currentSlot();
-                        if (vi >= 0 && vi < kVoiceSlots) m->setVoiceLorLocalEast(vi, b ? 1.f : 0.f);
+                        if (vi >= 0 && vi < dotModular::VoiceResolver::kVoiceSlots) m->setVoiceLorLocalEast(vi, b ? 1.f : 0.f);
                     };
                     w->pushUndoFn = [this](bool oldB, bool newB) {
                         Monsoon* m = getMonsoon(); if (!m) return;
@@ -491,13 +494,13 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                     w->getStateFn = [this]() {
                         Monsoon* m = getMonsoon(); if (!m) return 0;
                         const int vi = currentSlot();
-                        return (vi >= 0 && vi < kVoiceSlots)
+                        return (vi >= 0 && vi < dotModular::VoiceResolver::kVoiceSlots)
                             ? (int)std::lround(m->getVoiceLorEastDir(vi)) & 3 : 0;
                     };
                     w->setStateFn = [this](int v) {
                         Monsoon* m = getMonsoon(); if (!m) return;
                         const int vi = currentSlot();
-                        if (vi >= 0 && vi < kVoiceSlots) m->setVoiceLorEastDir(vi, (float)(v & 3));
+                        if (vi >= 0 && vi < dotModular::VoiceResolver::kVoiceSlots) m->setVoiceLorEastDir(vi, (float)(v & 3));
                     };
                     w->pushUndoFn = [this](int oldV, int newV) {
                         Monsoon* m = getMonsoon(); if (!m) return;
@@ -646,12 +649,12 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                         Monsoon* m = getMonsoon(); if (!m) return true;
                         // (tab1MonoMirror removed — Mono killed Step 6)
                         int vi = currentSlot();   // Phase A: V1=0, V2+=1..15 (unified index)
-                        return (vi >= 0 && vi < kVoiceSlots) ? m->ownerIsEast(vi, lane) : true;
+                        return (vi >= 0 && vi < dotModular::VoiceResolver::kVoiceSlots) ? m->ownerIsEast(vi, lane) : true;
                     };
                     w->setOwnsFn = [this, lane](bool b) {
                         Monsoon* m = getMonsoon(); if (!m) return;
                         int vi = currentSlot();   // Phase A: V1=0, V2+=1..15
-                        if (vi >= 0 && vi < kVoiceSlots) m->setOwnerEast(vi, lane, b);
+                        if (vi >= 0 && vi < dotModular::VoiceResolver::kVoiceSlots) m->setOwnerEast(vi, lane, b);
                     };
                     w->pushUndoFn = [this, lane](bool oldB, bool newB) {
                         Monsoon* m = getMonsoon(); if (!m) return;
@@ -711,12 +714,12 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                     w->getStateFn = [this, lane]() {
                         Monsoon* m = getMonsoon(); if (!m) return 0;
                         int vi = currentSlot();   // Phase A: V1=0, V2+=1..15
-                        return (vi >= 0 && vi < kVoiceSlots) ? (int)std::lround(m->getLaneDir(vi, lane)) : 0;
+                        return (vi >= 0 && vi < dotModular::VoiceResolver::kVoiceSlots) ? (int)std::lround(m->getLaneDir(vi, lane)) : 0;
                     };
                     w->setStateFn = [this, lane](int v) {
                         Monsoon* m = getMonsoon(); if (!m) return;
                         int vi = currentSlot();   // Phase A: V1=0, V2+=1..15
-                        if (vi >= 0 && vi < kVoiceSlots) m->setLaneDir(vi, lane, (float)v);
+                        if (vi >= 0 && vi < dotModular::VoiceResolver::kVoiceSlots) m->setLaneDir(vi, lane, (float)v);
                     };
                     // Undo hook: route a direction cycle through Rack history (Ctrl+Z). Captures
                     // the resolved store target at click time (mono vs poly, which voice/lane).
@@ -1044,10 +1047,15 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                     dotModular::VoiceResolver::mono(), dotModular::LaneId{el}, st,
                     SequencerEngine::ProbLens::Owner);
             int ph580 = (m->engine.stepIndex >= 0) ? m->engine.laneTick_[el] : -1;
-            // (bug 18, LOR_EDITING_BUG_LIST) EVERY lane draws the SHARED window
-            // playhead (calcPlayhead — the ONE law, in-window by construction);
-            // the VAR lane no longer draws the engine's scan (it left the window).
-            visualEditor->setLanePlayStep(el, calcPlayhead(ph580, mLen, mOff, mRot));
+            // (fix/variation-scan-display) non-VAR lanes draw the SHARED window
+            // playhead (calcPlayhead — the ONE law, in-window by construction).
+            // The VAR lane draws the engine's SCANNED read index (stepAdvanceStrandIdx
+            // + signed scan delta) — the gate-mode scan-ahead chevron, in-window by
+            // construction (getStrandIdx folds mod len), not the retired global scan.
+            visualEditor->setLanePlayStep(
+                el, (el == SequencerEngine::EDITOR_LANE_VARIATION)
+                        ? variationLanePlayhead(m->engine)
+                        : calcPlayhead(ph580, mLen, mOff, mRot));
         }
     }
 
@@ -1260,7 +1268,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             return m->ownerIsEast(Monsoon::kMonoMacroOwnRow, engLane);
         }
         int vi = currentSlot();   // voiceSlot: V2..V16 = 1..15 (== polyVoice() on poly tabs)
-        return (vi >= 0 && vi < kVoiceSlots) ? m->ownerIsEast(vi, engLane) : true;
+        return (vi >= 0 && vi < dotModular::VoiceResolver::kVoiceSlots) ? m->ownerIsEast(vi, engLane) : true;
     }
     // The voice NUMBER (1..16) for the selected tab: tab 0 = V1 (mono), tab v = V(v+1).
     // All mono/poly identity + bank mapping flows through VoiceResolver so there's one
@@ -1784,9 +1792,13 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 int mRot = monsoon->engine.strandRot(l);
                 visualEditor->currentState.lanes[l].setDisplayLOR(std::max(1,mLen), mOff, mRot);
                 int ph1130 = (eng.stepIndex >= 0) ? eng.laneTick_[l] : -1;
-                // (bug 18) the SHARED window playhead for every lane — the VAR
-                // scan exception is gone (it left the lane's window).
-                visualEditor->setLanePlayStep(l, calcPlayhead(ph1130, std::max(1,mLen), mOff, mRot));
+                // (fix/variation-scan-display) non-VAR lanes draw the SHARED window playhead;
+                // the VAR lane draws the engine SCANNED read index (stepAdvanceStrandIdx +
+                // scan delta) — the gate-mode scan-ahead chevron, in-window by construction.
+                visualEditor->setLanePlayStep(
+                    l, (l == SequencerEngine::EDITOR_LANE_VARIATION)
+                           ? variationLanePlayhead(eng)
+                           : calcPlayhead(ph1130, std::max(1,mLen), mOff, mRot));
             }
             // Spread (combo 7): East's V1 spread knobs FOLLOW Mono's spread (inoperable,
             // locked). Mono's spread base is now STORE-BACKED (editor.spread[kMonoSlot,l],
@@ -1871,9 +1883,13 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 int cvRot = eng.strandRotRef(el);
                 visualEditor->currentState.lanes[el].setDisplayLOR(cvLen, cvOff, cvRot);
                 int ph1222 = (eng.stepIndex >= 0) ? eng.laneTick_[el] : -1;
-                // (bug 18) the SHARED window playhead for every lane — the VAR
-                // scan exception is gone (it left the lane's window).
-                visualEditor->setLanePlayStep(el, calcPlayhead(ph1222, cvLen, cvOff, cvRot));
+                // (fix/variation-scan-display) non-VAR lanes draw the SHARED window playhead;
+                // the VAR lane draws the engine SCANNED read index (stepAdvanceStrandIdx +
+                // scan delta) — the gate-mode scan-ahead chevron, in-window by construction.
+                visualEditor->setLanePlayStep(
+                    el, (el == SequencerEngine::EDITOR_LANE_VARIATION)
+                            ? variationLanePlayhead(eng)
+                            : calcPlayhead(ph1222, cvLen, cvOff, cvRot));
             }
             // Probabilities (CC_PROMPT_UI_TO_RESOLVER_SPEC step 2): the ONE accessor,
             // Owner lens, explicit voiceSlot 0 — the manager's resolver-resolved V1
@@ -1902,9 +1918,13 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 // Use the PER-VOICE tick (laneTickV_), not mono's laneTick_ — otherwise
                 // the poly playhead always follows mono's direction, ignoring the DirCell.
                 int ph1253 = (eng.stepIndex >= 0) ? eng.laneTickV_[pv][l] : -1;
-                // (bug 18) the SHARED window playhead for every lane, per voice —
-                // the VAR scan exception is gone (it left the lane's window).
-                visualEditor->setLanePlayStep(l, calcPlayhead(ph1253, cvLen, cvOff, cvRot));
+                // (fix/variation-scan-display) non-VAR lanes draw the SHARED window playhead,
+                // per voice; the VAR lane draws THIS voice.s SCANNED read index
+                // (stepAdvanceStrandIdx + scan delta) — scan-ahead, in-window by construction.
+                visualEditor->setLanePlayStep(
+                    l, (l == SequencerEngine::EDITOR_LANE_VARIATION)
+                            ? variationLanePlayheadForVoice(eng, dotModular::VoiceResolver::slot(pv + 1))
+                            : calcPlayhead(ph1253, cvLen, cvOff, cvRot));
             }
             // (The pre-consolidation "VARIATION (4) / LEGATO (5)" extra loop is DELETED:
             //  SANDS CONSOLIDATION made VAR/LEG full poly lanes — POLY_LANES == EAST_LANES
