@@ -9,6 +9,9 @@ and how that composes with the existing effect-timing ladder. C1 (rungs), C2 (ke
 C4 (display cadence) and C3 (per-level direction, GATED on the position-holder migration) all
 DECIDED 2026-11-15. Design-ahead: C1/C2/C4 land as their OWN slice AFTER S2; C3 rides the
 counter-removal migration, not that slice. NOT slice 1.
+See also DRIVE DIRECTION MODEL below (2026-11-15) — gate direction is GLOBAL, not voice-1/mono-
+sourced; event modes default forward with a REVERSE-ALL control; HOLD per-voice; and the
+VARIATION-centre fix (knob 0.5 = repeat-in-place, no forward creep).
 
 ## DECISIONS (Rodney, locked)
 1. SCOPE: ALL modes. NUANCE — in CLOCK mode the GLOBAL playhead is forward-only
@@ -239,6 +242,80 @@ C3 (per-level direction) is NOT in this slice. It is coherent only on the positi
 model, so it rides the COUNTER-REMOVAL migration (POSITION_HOLDER_MODEL.md: poly advance +
 divergence tests → counter removal → 32 steps), with its own direction-divergence test (parent
 flips mid-phrase, child tracks the live parent wrap). Gated on that migration, not on S2.
+
+## DRIVE DIRECTION MODEL — direction comes from the drive, not from a voice (Rodney, 2026-11-15)
+
+STATUS: DECIDED 2026-11-15. Companion to the cadence addendum. Amends the mode-direction rule
+in CC_PROMPT_POSITION_RESOLVER.md (the "signMotion" line).
+
+### The bug being removed (verified in code)
+In gate mode the GLOBAL advancePlayhead direction is taken from decideStepAdvance_(mono()) —
+the MONO slot's signed variationProb (SequencerEngine.cpp ~:1818) — and the per-voice motions
+layer on top via foldPerVoiceAdvance_. So mono's Variation does DOUBLE DUTY: voice-1's own
+motion AND the whole transport's direction. "Voice 1 steers the ship" was never decided — it is
+the single-decision-era incumbent (before per-voice advance there was ONE decision driving ONE
+timeline; per-voice motion was layered on later, the global kept using mono's). The only thing
+actually decided at mode level was "gate/phase bidirectional" (CC_PROMPT_POSITION_RESOLVER:29).
+This is the mono-is-special leak — same root as POSITION_HOLDER_MODEL.md.
+
+### The principle — direction comes from the DRIVE's own nature
+An EVENT drive (clock tick, gate rise) carries NO direction — a tick says "advance", not which
+way. A POSITION drive (phase/position input) carries direction — it can run backward on its
+own. Therefore:
+- CLOCK (event) → a GLOBAL direction, default forward.
+- GATE (event) → a GLOBAL direction, default forward. Borrowing a voice's sign to fake one is
+  the arbitrary part; removed.
+- PHASE (position) → bidirectional, direction taken from the phase signal itself.
+This is why gate ≠ phase is NOT arbitrary: phase HAS a direction to read; gate does not, so a
+gate global sourced from voice 1 was the one true inconsistency of the three.
+
+### Forward is itself a convention — so it is globally flippable (the "reverse all" gesture)
+Once mono is de-specialized, "forward" is an arbitrary default for BOTH event modes. So the
+event-mode global direction is DEFAULT forward, flipped by a single dedicated REVERSE-ALL
+control that applies to CLOCK and GATE identically — a GLOBAL control, not sourced from any
+voice. PHASE has no reverse-all (reversing the phase input IS the gesture). This recovers the
+one-gesture "reverse everything" properly, instead of smuggling it through voice 1's Variation.
+
+### The three tiers (one owner each)
+1. GLOBAL DRIVE DIRECTION — event modes: default-forward, flipped by reverse-all (clock + gate
+   uniform); phase: from the input. Mono plays no part.
+2. PER-(VOICE,LANE) DIRECTION — LaneDir / voiceLorDir_ (deterministic) AND Variation
+   (stochastic, bipolar — below), each per holder; composes on top of tier 1 per the
+   MULTIPLICATIVE/nesting rule (C3).
+No tier is sourced from another's incidental state.
+
+### HOLD is per-voice too — the (2) decision
+The global frame advances on EVERY event rise (forward, or flipped by reverse-all); HOLD is
+PURELY per-voice — a voice freezes ITSELF (falls behind the moving frame); the frame never
+freezes because one voice (mono) chose to. This fully de-specializes mono: its Variation drives
+ONLY its own voice, like every other voice. (The smaller alternative — frame holds when mono's
+p≈0 — was rejected: it keeps mono special for hold.)
+
+### VARIATION — keep it coupled to direction; fix the CENTRE (Rodney)
+Variation is NOT decoupled from direction — it stays a per-voice stochastic advance+direction
+control (tier 2). Only the CENTRE semantics change:
+- knob 0.5 → the variation lane HOLDS: repeats the current step. NO advance, NO scan, NO
+  direction. TODAY p=0 is lumped with forward (decideStepAdvance_: `signedDelta = (p<0) ?
+  -delta : +delta`), and since |p|=0 the freeze-fix escape never comes, scanOfsV_ grows and the
+  lane/chevron CREEPS FORWARD indefinitely — the arbitrary forward at the centre.
+- knob >0.5 → FORWARD; advance probability = (knob−0.5) scaled; scan forward.
+- knob <0.5 → BACKWARD; advance probability = (0.5−knob) scaled; scan backward.
+- It STILL drives voice direction (the side of 0.5 is that voice's advance direction) — intent
+  unchanged; only the centre is fixed.
+FIX: make the sign a THREE-WAY — p>0 forward, p<0 backward, p==0 repeat-in-place with NO scan
+(scanOfsV_ stays 0, no chevron creep). This also makes the restored VAR scan chevron
+(fix/variation-scan-display) sit STILL at the centre instead of creeping — the two are
+consistent — and it is the correct meaning of the "by-design stutter" (knob 0.5 → p=0,
+MonsoonModeController.cpp:160).
+
+### Slice / where it lands
+The DRIVE layer, separate from the C1/C2/C4 cadence slice and from C3. The VARIATION-CENTRE fix
+is a small, self-contained engine change (three-way p sign at the scan site + scanOfsV_ gated
+on |p|>0), reproduce-first: at p=0 assert NO advance AND scanOfsV_==0 over many held rises; at
+p>0 forward scan, p<0 backward scan (the existing freeze-fix behaviour, now excluding the
+centre). REVERSE-ALL + per-voice HOLD are bigger (gate-mode advance plumbing + a new global
+control) and ride the counter-removal migration alongside C3 (POSITION_HOLDER_MODEL.md). The
+mono de-specialization (gate direction global, not mono-sourced) is noted there.
 
 ## MIGRATION PLAN (incremental; goldens green at EVERY step — this is the whole risk)
 This touches transport timing; the goldens are the contract. Do it in landable slices,
