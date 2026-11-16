@@ -441,7 +441,11 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
       if (!pv.active || pv.len < 1) continue;
       const float y0 = layout.getLaneY(lane) + 2.f;
       const float y1 = layout.getLaneY(lane) + layout.laneHeightF() - 2.f;
+      // (the follow-up's wrap fix) THE GRID GUARD: a tick NEVER escapes the grid —
+      // skip any landing outside [padding, padding + gridW]. Belt-and-braces: with the
+      // end-wrap below nothing should, but nothing CAN again.
       const auto tick = [&](float x, float w) {
+        if (x < layout.padding - 0.5f || x > layout.padding + layout.gridW() + 0.5f) return;
         nvgBeginPath(vg);
         nvgMoveTo(vg, x, y0);
         nvgLineTo(vg, x, y1);
@@ -449,9 +453,17 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
         nvgStrokeWidth(vg, w);
         nvgStroke(vg);
       };
-      // START / END: the preview window's bounds (the cells [off, off+len)).
+      // START / END: the preview window's bounds (the cells [off, off+len)). The END
+      // WRAPS to the ring: STEP_COUNT == kMaskRing == 32, and off+len reaches 63
+      // (off <= 31, len <= 32) — an un-wrapped end drew right of the 32-cell grid,
+      // straight into the direction/delegation buttons (the stray red marker Rodney
+      // saw: the END of a wrapped preview window). (off+len) % STEP_COUNT with 0
+      // mapped to STEP_COUNT: a window ending exactly at the ring boundary keeps its
+      // tick at the right edge.
       tick(layout.getStepX(pv.off), 2.f);
-      tick(layout.getStepX(pv.off + pv.len), 2.f);
+      int endStep = (pv.off + pv.len) % STEP_COUNT;
+      if (endStep == 0) endStep = STEP_COUNT;
+      tick(layout.getStepX(endStep), 2.f);
       // ROTATION: content-step-1's cell — timelineIdx = (1 + rot) mod len, then + off
       // mod the ring (calcPlayhead's fold; rot is clamped to [0, len-1] upstream).
       const int ring = dotModular::kMaskRing;
