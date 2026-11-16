@@ -676,8 +676,15 @@ int SequencerEngine::walkPeriod(LaneDir d, int len) {
 // (the manager's last push) become the committed sample. Under lock the pending
 // may churn — the committed holds until the gate opens (the Stage A pend, CV-ward).
 void SequencerEngine::refreshVoiceLorLatches() {
-    voiceLorCvMacro_ = voiceLorCvPendMacro_;
-    voiceLorCv_ = voiceLorCvPend_;
+    // (C1b Stage C) the suspended scopes HOLD their committed sample (the pending
+    // churns underneath): the Macro row's dragged items, and the ONE edited voice's
+    // dragged items. On release the suspend clears and the next boundary resumes.
+    for (int item = 0; item < LOR_ITEMS; ++item)
+        if (!lorCvSuspendMacro_[item]) voiceLorCvMacro_[item] = voiceLorCvPendMacro_[item];
+    for (int v = 0; v < kVoiceSlots; ++v)
+        for (int item = 0; item < LOR_ITEMS; ++item)
+            if (!(v == lorCvSuspendVoice_ && lorCvSuspendVoiceItems_[item]))
+                voiceLorCv_[v][item] = voiceLorCvPend_[v][item];
 }
 
 void SequencerEngine::refreshLaneLatchesForVoice(int v, bool atPhraseEdge, bool unlockNow) {
@@ -687,8 +694,20 @@ void SequencerEngine::refreshLaneLatchesForVoice(int v, bool atPhraseEdge, bool 
         // CV HOLDS (the pend; the pending churns underneath, the effective read of
         // the CV contribution is frozen).
         if (!lorLaneCommitGate_(el, atPhraseEdge, unlockNow)) continue;
-        laneLorCv_[v][el] = laneLorCvPend_[v][el];
+        for (int item = 0; item < LOR_ITEMS; ++item)
+            if (!(v == lorCvSuspendVoice_ && el == lorCvSuspendLane_ && lorCvSuspendLaneItems_[item]))
+                laneLorCv_[v][el][item] = laneLorCvPend_[v][el][item];
     }
+}
+
+// (C1b Stage C) the suspend push — the manager's per-block snapshot. Absent scopes
+// (voiceIdx/laneIdx < 0) clear; present scopes set exactly the dragged items.
+void SequencerEngine::setLorCvSuspend(const bool* macro3, int voiceIdx, const bool* voice3, int laneIdx, const bool* lane3) {
+    for (int item = 0; item < LOR_ITEMS; ++item) lorCvSuspendMacro_[item] = macro3[item];
+    lorCvSuspendVoice_ = voiceIdx;
+    for (int item = 0; item < LOR_ITEMS; ++item) lorCvSuspendVoiceItems_[item] = (voiceIdx >= 0) ? voice3[item] : false;
+    lorCvSuspendLane_ = laneIdx;
+    for (int item = 0; item < LOR_ITEMS; ++item) lorCvSuspendLaneItems_[item] = (laneIdx >= 0) ? lane3[item] : false;
 }
 
 // (C1b Stage B) the CV-delta pushes — the PENDING side. The manager computes

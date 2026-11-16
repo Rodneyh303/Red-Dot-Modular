@@ -1918,6 +1918,32 @@ void Monsoon::process(const ProcessArgs& args) {
         // BOTH modes: the control block is mode-independent and the voice frame is
         // per-voice (mono = slot 0 = East's V1 tab). A tier with no jacks connected is
         // skipped — the pushed base stands (the byte-neutral default).
+        // (CC_PROMPT_CADENCE_C1B STAGE C) THE EDIT-SUSPEND — the per-block push of
+        // the active gesture's scope: a MACRO strip gesture suspends the Macro row's
+        // dragged items (the followers all read the one row — "that lane across ALL
+        // macro-following voices"); an EAST gesture suspends the ONE edited voice's
+        // row items (the strip) or the lane's items (the lane strip). The committed
+        // CV holds the pre-gesture sample through the gesture; on release the
+        // suspend clears and the CV resumes at the NEXT boundary (the ordinary
+        // commit gate). The zone→items law is the widgets' (len+off for the window
+        // zones, rot for the rotation band).
+        {
+            std::array<bool, 3> macS = {false, false, false};
+            int voiceIdx = -1;
+            std::array<bool, 3> vS = {false, false, false};
+            int laneIdx = -1;
+            std::array<bool, 3> lS = {false, false, false};
+            auto* mVisS = expanderManager.cachedMacroSandsVisual;
+            auto* eVisS = expanderManager.cachedEastSandsVisual;
+            if (mVisS && mVisS->lorGestureActive) macS = mVisS->lorGestureItems;
+            if (eVisS && eVisS->lorGestureActive) {
+                voiceIdx = eVisS->lorGestureVoice;
+                if (eVisS->lorGestureOwner == 2 && eVisS->lorGestureLane >= 0) { laneIdx = eVisS->lorGestureLane; lS = eVisS->lorGestureItems; }
+                else vS = eVisS->lorGestureItems;
+            }
+            engine.setLorCvSuspend(macS.data(), voiceIdx, vS.data(), laneIdx, lS.data());
+        }
+
         {
             auto* eVis = expanderManager.cachedEastSandsVisual;
             auto* mVis = expanderManager.cachedMacroSandsVisual;

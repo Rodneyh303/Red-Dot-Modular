@@ -959,6 +959,21 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
     // at the Stage A gates. Deltas are ROW deltas (combined − base_only, integer).
     void pushVoiceLorCv(const int* macroDelta3, const int* eastDelta);   // macro [3]; east [kVoiceSlots*3] slot-major
     void pushLaneLorCvPoly(dotModular::VoiceSlot bank, int lane, const int* delta3);   // slot 0 = the mono strands (the F2 law)
+    // ── (CC_PROMPT_CADENCE_C1B STAGE C) THE EDIT-SUSPEND ────────────────────────
+    // While an LOR gesture is active, the CV commit for the EDITED SCOPE is
+    // suspended: the pending churns (the jacks keep feeding it), the committed
+    // HOLDS the pre-gesture sample — the window tracks only the live base ("a
+    // stable target, miles better than a constantly moving one"). On release the
+    // suspend clears and the CV resumes at the NEXT boundary (the ordinary commit
+    // gate). The manager pushes the per-block snapshot from the visual modules'
+    // widget-written gesture fields; the scope rides the existing row/lane
+    // vocabulary — NOT a new scope concept. voiceIdx/laneIdx < 0 = absent.
+    std::array<bool, LOR_ITEMS> lorCvSuspendMacro_ = {};
+    int lorCvSuspendVoice_ = -1;
+    std::array<bool, LOR_ITEMS> lorCvSuspendVoiceItems_ = {};
+    int lorCvSuspendLane_ = -1;
+    std::array<bool, LOR_ITEMS> lorCvSuspendLaneItems_ = {};
+    void setLorCvSuspend(const bool* macro3, int voiceIdx, const bool* voice3, int laneIdx, const bool* lane3);
 
     // The EFFECTIVE voice LOR row (delegation + Macro tier) — the one resolution authority.
     // (C1b Stage B) the L/O/R = the BASE rows (LIVE — the pre-C1 delegation; a knob

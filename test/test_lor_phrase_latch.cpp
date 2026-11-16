@@ -453,6 +453,95 @@ static void p7_row_invariants_on_composed() {
     CHECK(L == 1 && R == 0, msg);
 }
 
+// ── P8 (C1b Stage C): THE EDIT-SUSPEND — during an active LOR gesture the CV ──
+// commit for the EDITED SCOPE holds the pre-gesture sample (the window tracks only
+// the live base — "a stable target"); other scopes/voices commit normally; on
+// release the CV resumes at the NEXT boundary. The test drives the engine's suspend
+// push directly (the rack-free form of the manager's per-block gesture snapshot).
+static void p8_edit_suspend() {
+    std::printf("P8 edit-suspend during an active gesture\n");
+    const int v = v2().v;
+    const int v3 = dotModular::VoiceResolver::slot(3).v;
+    char msg[160];
+    {   // the voice row: V2's LEN suspended — its CV holds; V3's commits at the edge.
+        SequencerEngine eng; eng.reset();
+        eng.updateWindow(8.f, 0.f, false, 0.f, 0.f, false);
+        eng.numPolyVoices = 4;
+        eng.setVoiceLorLocalEast(v2(), true);
+        eng.setVoiceLorLocalEast(dotModular::VoiceResolver::slot(3), true);
+        eng.voiceLorRef(v2(), SequencerEngine::LOR_LEN) = 4;
+        eng.voiceLorRef(dotModular::VoiceResolver::slot(3), SequencerEngine::LOR_LEN) = 4;
+        {   // the pre-gesture sample: +2 on BOTH voices, committed at the first edge
+            std::vector<int> m3 = {0, 0, 0};
+            std::vector<int> east = zeroEast();
+            east[v * 3 + SequencerEngine::LOR_LEN]  = 2;
+            east[v3 * 3 + SequencerEngine::LOR_LEN] = 2;
+            eng.pushVoiceLorCv(m3.data(), east.data());
+        }
+        eng.advancePlayhead(1, nullptr);   // the first edge commits (+2 each: both rows walk mod 6)
+        eng.advancePlayhead(1, nullptr);   // off-edge
+        {   // THE GESTURE ENGAGES on V2 (len+off items) and BOTH rows get new deltas:
+            // V2's is suspended (holds 6); V3's commits at the boundary (-> 4).
+            std::array<bool, 3> mac3 = {false, false, false};
+            std::array<bool, 3> vS = {true, false, false};   // the LEN item (the window zones)
+            std::array<bool, 3> lS = {false, false, false};
+            eng.setLorCvSuspend(mac3.data(), v, vS.data(), -1, lS.data());
+            std::vector<int> m3 = {0, 0, 0};
+            std::vector<int> east = zeroEast();
+            east[v * 3 + SequencerEngine::LOR_LEN]  = -2;   // V2: back toward the base — SUSPENDED
+            east[v3 * 3 + SequencerEngine::LOR_LEN] = -2;   // V3: the same push — NOT suspended
+            eng.pushVoiceLorCv(m3.data(), east.data());
+        }
+        int edge = -1;
+        for (int t = 0; t < 9; ++t) {
+            eng.advancePlayhead(1, nullptr);
+            if (eng.pos_.phrasePos() == 0) { edge = t; break; }
+        }
+        std::snprintf(msg, sizeof(msg), "P8: no boundary observed after the suspended push (edge=%d)", edge);
+        CHECK(edge > 0, msg);
+        if (edge <= 0) return;
+        // Probe at the DIVERGENCE step (pp==4): both windows read the same at the
+        // entry (the rotation-anchor law) — the held row walks mod 6 (read 4), the
+        // committed row mod 4 (read 0).
+        int v2Read4 = -1, v3Read4 = -1;
+        for (int t = 0; t < 9; ++t) {
+            eng.advancePlayhead(1, nullptr);
+            if (eng.pos_.phrasePos() == 4) { v2Read4 = eng.voiceRead_[v]; v3Read4 = eng.voiceRead_[v3]; break; }
+        }
+        std::snprintf(msg, sizeof(msg), "P8: never reached the divergence step (pp==4)");
+        CHECK(v2Read4 >= 0, msg);
+        if (v2Read4 < 0) return;
+        std::snprintf(msg, sizeof(msg), "P8: the SUSPENDED scope moved during the gesture (V2 read %d at pp 4, want the held 4) — the gesture must hold the pre-gesture sample",
+                      v2Read4);
+        CHECK(v2Read4 == 4, msg);
+        std::snprintf(msg, sizeof(msg), "P8: the NON-suspended voice did not commit at the boundary (V3 read %d at pp 4, want 0 mod 4)",
+                      v3Read4);
+        CHECK(v3Read4 == 0, msg);
+        {   // RELEASE: the suspend clears; the pending (−2) commits at the NEXT boundary.
+            std::array<bool, 3> mac3 = {false, false, false};
+            std::array<bool, 3> vS = {false, false, false};
+            std::array<bool, 3> lS = {false, false, false};
+            eng.setLorCvSuspend(mac3.data(), -1, vS.data(), -1, lS.data());
+        }
+        int edge2 = -1;
+        for (int t = 0; t < 10; ++t) {
+            eng.advancePlayhead(1, nullptr);
+            if (eng.pos_.phrasePos() == 0) { edge2 = t; break; }
+        }
+        std::snprintf(msg, sizeof(msg), "P8: no boundary after the release (edge2=%d)", edge2);
+        CHECK(edge2 > 0, msg);
+        if (edge2 <= 0) return;
+        int v2After = -1;
+        for (int t = 0; t < 9; ++t) {
+            eng.advancePlayhead(1, nullptr);
+            if (eng.pos_.phrasePos() == 4) { v2After = eng.voiceRead_[v]; break; }
+        }
+        std::snprintf(msg, sizeof(msg), "P8: the CV did not resume at the next boundary after release (V2 read %d at pp 4, want 0 mod 4)",
+                      v2After);
+        CHECK(v2After == 0, msg);
+    }
+}
+
 int main() {
     std::printf("== test_lor_phrase_latch (the cadence latch suite: C1 + C1b) ==\n");
     p1_voice_row();
@@ -462,6 +551,7 @@ int main() {
     p4_c2_keep_counting_and_step_rate_global();
     p5p6_lock_aware_commit();
     p7_row_invariants_on_composed();
+    p8_edit_suspend();
     if (g_fail == 0) std::printf("all green\n");
     else std::printf("%d FAILED\n", g_fail);
     return g_fail ? 1 : 0;
