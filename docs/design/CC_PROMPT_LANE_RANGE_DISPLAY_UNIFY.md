@@ -183,12 +183,25 @@ suspended window; on RELEASE the CV resumes at the next boundary and the wirefra
 Key the hide off the SAME gesture signal the suspend uses — do not invent a second gesture
 state.
 
+**WIREFRAME OFF-PISTE BUG (CC Stage B `c24f4eab`, `drawLanePreviewMarks` in
+`SandsVisualEditorV4.hpp` ~443) — fix in this follow-up.** The END tick is drawn at
+`getStepX(pv.off + pv.len)` with NO wrap. `STEP_COUNT == kMaskRing == 32`, but `off` ∈
+[0,31] and `len` ∈ [1,32], so `off+len` reaches 63; any window that wraps past the ring
+(`off+len > 32`) draws the end line RIGHT of the 32-cell grid — into the direction/
+delegation buttons (Rodney saw this live). START (`off`) and ROTATION (`% ring`) are
+bounded; only END is raw. FIX: wrap the end — `endStep = (pv.off + pv.len) % STEP_COUNT`,
+mapping `0 → STEP_COUNT` so a window ending exactly at the boundary stays at the right edge
+(`getStepX(STEP_COUNT)` = `padding + gridW`); AND add a guard so NO tick ever draws outside
+`[padding, padding + gridW]` (clamp or skip), belt-and-braces for every marker. Rack
+feel-test: modulate offset/length so the window wraps — the end marker stays inside the
+grid, never over the buttons.
+
 **ACCEPTANCE (Stage B):** the preview pin fails-before/passes-after; battery still
 byte-identical (the preview accessor is read-only, no audio reader); build + warn sweep
 clean; Rodney Rack feel-test: (a) with CV and no drag — base-outline + committed-fill +
-pending-wireframe all legible, grab never detaches; (b) drag a range — the grab stays on
-the base and drags, no wireframe during the drag (modulation disconnected), on release the
-fill commits and the wireframe reappears at the next boundary.
+pending-wireframe all legible, grab never detaches, no marker escapes the grid; (b) drag a
+range — the grab stays on the base and drags, no wireframe during the drag (modulation
+disconnected), on release the fill commits and the wireframe reappears at the next boundary.
 
 ---
 
