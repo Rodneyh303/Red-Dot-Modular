@@ -117,6 +117,23 @@ like mod arcs."
    (easy). ROTATION needs its OWN marker (it moves the content within the window, not the
    window) — a tick where content-step-1 sits; the straight mod-arc-line variant with three
    markers (start/end/rotate) reads rotation better than a box outline, Rodney's call.
+
+   **REUSE the existing EDIT/DISPLAY split — do NOT add a third range source (the
+   disconnected-grab bug).** `SandsLaneWindowCore` already holds the range TWICE on purpose:
+   the EDIT values (`length/offset/rotation`, used by `editStartBar`/`editBarInWindow` — the
+   grab/hit-test, the user's authored/base window) and the DISPLAY values
+   (`dispLength/dispOffset/dispRotation`, overwritten each frame by `setDisplayLOR` with the
+   engine's CV-applied value — the tint/bars). Stage A made DISPLAY = effective; EDIT stays at
+   base, so under CV they diverge — correct and non-destructive, but nothing draws the
+   difference, so the grab handle (EDIT) detaches from the tinted window (DISPLAY) and reads
+   as a bug (Rodney saw this live: grab box off its range, plus a second apparent "jump" one
+   step after the commit as the two re-settle). The machinery to render it properly already
+   exists, built for the LOCK case: `editBarInWindow` ("render the live window as the solid
+   one"), `lorDiverged()`, and the "ghost echo". The overlay must EXTEND that to the
+   CV-modulation case: **EDIT window = the SOLID grab box; DISPLAY (effective) window = the
+   wireframe.** No new source, no third copy. When EDIT == DISPLAY (no CV) draw one window as
+   today. ACCEPTANCE adds: Rodney feel-test that the grab box stays on the base window and the
+   modulated window shows only as the wireframe — no detached grab, no phantom second jump.
 3. **Gesture/suspend feel item (flag, don't over-build):** during an LOR drag, C1b Stage C
    suspends the CV commit but the pending keeps churning, so `base+pending` during a drag
    shows the dragged base + live CV. Decide in Rack whether the wireframe should track that
