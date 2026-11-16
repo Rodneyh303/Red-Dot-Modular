@@ -127,11 +127,15 @@ int main() {
     bool exact = true;
     for (int64_t i = 21; i <= 40; ++i) {
         e.advancePlayhead();
-        const int len = (i < 33) ? 7 : 5;   // the latch edge fires during advance 33 (pp = (i-1) mod 32 lands 0 there)
-        const int want = (int)(((E::laneTickFor(e.laneDir_[dm::STRAND_RHYTHM], i, len) % len) + len) % len);
+        // (CC_PROMPT_CADENCE_C1B Stage B) the store write IS a BASE change — applied
+        // LIVE (the doc's DECIDED law); the boundary cadence belongs to the CV path
+        // (the engine's delta push). So the re-anchor law fires at the change STEP
+        // itself: f(t, 5) from advance 21 on, the closed form from the transport's
+        // own position (no teleport) — the original pre-C1 expectation, re-earned.
+        const int want = fOf(e, dm::STRAND_RHYTHM, i);
         exact = exact && (e.laneTick_[dm::STRAND_RHYTHM] == want);
     }
-    check(exact, "RE-ANCHOR: a mid-run len change re-bounds the walk to f(t, newLen) exactly — at the C1 voice-frame latch edge (f(t,7) holds to the phrase wrap, f(t,5) from it)");
+    check(exact, "RE-ANCHOR: a mid-run len change re-bounds the walk to f(t, newLen) exactly — the base applies LIVE (C1b Stage B), the re-anchor at the change step");
 
     // a mid-run DIRECTION flip re-anchors the same way (the DirCell promotion path)
     E e2; e2.reset();

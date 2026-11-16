@@ -444,7 +444,19 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
             // A DELEGATED lane tracks Macro's value exclusively (set above) — it takes
             // neither East's CV nor the Macro SEND on top (that would double-count Macro's
             // modulation, already in the delegated base). Only OWNED lanes receive these.
+            // (CC_PROMPT_CADENCE_C1B STAGE B) the base/CV split: wLen/wOff/wRot hold
+            // the BASE-ONLY row (the same clamps with the CV terms absent — the same
+            // rounding); the fold below keeps the combined row VERBATIM and the total
+            // contribution goes to the engine's pending lane-CV push as delta =
+            // combined − base_only. With no CV patched the deltas are 0 and the
+            // base-only write is byte-identical to the pre-split combined write.
+            float wLen = baseLen, wOff = baseOff, wRot = baseRot;
+            std::array<int, 3> dMono = {0, 0, 0};
             if (l < dotModular::SandsGrid::POLY_LANES && v1OwnsLane) {
+                const float lenOnly = math::clamp(baseLen, 1.f, (float)dotModular::kLaneLengthMax);
+                const float offOnly = math::clamp(baseOff, 0.f, (float)dotModular::kLaneOffsetMax);
+                const float rotOnly = math::clamp(baseRot, 0.f, lenOnly - 1.f);
+                wLen = lenOnly; wOff = offOnly; wRot = rotOnly;
                 // Sum ALL mods (East CV + Macro send) onto the base, then clamp the END RESULT once.
                 // F: the named lane-window bounds (was the literal 1..16/0..15 spans — the
                 // midpoint snap). ROT's hi is the FINAL length − 1 — the length's clamp landed
@@ -453,6 +465,9 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
                 baseLen = math::clamp(baseLen + eastDelta(l, 0, 1.f, (float)dotModular::kLaneLengthMax) + macroDelta(l, 0),  1.f, (float)dotModular::kLaneLengthMax);
                 baseOff = math::clamp(baseOff + eastDelta(l, 1, 0.f, (float)dotModular::kLaneOffsetMax) + macroDelta(l, 1),  0.f, (float)dotModular::kLaneOffsetMax);
                 baseRot = math::clamp(baseRot + eastDelta(l, 2, 0.f, baseLen - 1.f) + macroDelta(l, 2),  0.f, baseLen - 1.f);
+                dMono[0] = (int)std::round(baseLen) - (int)std::round(wLen);
+                dMono[1] = (int)std::round(baseOff) - (int)std::round(wOff);
+                dMono[2] = (int)std::round(baseRot) - (int)std::round(wRot);
             }
 
             // LOR is LATCH (LOCK_SEMANTICS §9): under lock, do NOT re-push the strand window --
@@ -469,10 +484,13 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
                 : dotModular::LockManager::liveNow(dotModular::Control::Lor, engine.locked, engine.scopeLiveMask, lorMelodyAxis);
             if (lorLive) {
                 engine.setStrand(StrandWriter::MONO, l,
-                                 (int)std::round(baseLen),
-                                 (int)std::round(baseOff),
-                                 (int)std::round(baseRot));
+                                 (int)std::round(wLen),
+                                 (int)std::round(wOff),
+                                 (int)std::round(wRot));
             }
+            // (C1b Stage B) the pending CV pushes regardless (the engine's commit
+            // gate holds it under lock); slot 0 IS the mono strands' row (the F2 law).
+            engine.pushLaneLorCvPoly(dotModular::VoiceResolver::slot(dotModular::VoiceResolver::kMonoSlot + 1), l, dMono.data());
         };
 
         // Spread: base trimpot + per-lane spread CV. Lane index is the UNIFIED order
@@ -673,11 +691,19 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
                         ? (!engine.locked || (engine.scopeLiveMask & (1u << 13)) != 0)   // == dotModular::SB_SANDS_Q
                         : dotModular::LockManager::liveNow(dotModular::Control::Lor, engine.locked, engine.scopeLiveMask, lorMelAxis);
                     if (monoOwnedByMacro(el)) {
+                        // (C1b Stage B) the delegated arm's split: the store gets
+                        // Macro's BASE; the delta (the published macroCVDelta's round
+                        // contribution) pushes to the pending.
+                        { std::array<int, 3> d3 = {0, 0, 0};
+                          for (int item = 0; item < 3; ++item)
+                              d3[item] = (int)std::round(macroVis->macroBase[el][item] + macroVis->macroCVDelta[el][item])
+                                       - (int)std::round(macroVis->macroBase[el][item]);
+                          engine.pushLaneLorCvPoly(dotModular::VoiceResolver::slot(dotModular::VoiceResolver::kMonoSlot + 1), el, d3.data()); }
                         if (lorLive)   // LOR LATCH: skip re-push under lock
                         engine.setStrand(StrandWriter::EAST, el,
-                            (int)std::round(macroVis->macroBase[el][0] + macroVis->macroCVDelta[el][0]),
-                            (int)std::round(macroVis->macroBase[el][1] + macroVis->macroCVDelta[el][1]),
-                            (int)std::round(macroVis->macroBase[el][2] + macroVis->macroCVDelta[el][2]));
+                            (int)std::round(macroVis->macroBase[el][0]),
+                            (int)std::round(macroVis->macroBase[el][1]),
+                            (int)std::round(macroVis->macroBase[el][2]));
                         continue;
                     }
                     const int b0 = mmV1 ? (int)std::round(mmV1->getLorBase(kMono, el, 0)) : 16;
@@ -704,16 +730,26 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
                         }
                         return rack::math::clamp(base + sendBlend(item), lo, hi);
                     };
+                    // (C1b Stage B) the split: the base-only row = the addCV results
+                    // with every CV term absent (the same clamps, the same rounding —
+                    // byte-identical to today's write when the jacks are cold); the
+                    // deltas push to the pending (committed at the boundary).
+                    const float lenV = addCV(len, 0, 1.f, (float)dotModular::kLaneLengthMax);
+                    const float offV = addCV(off, 1, 0.f, (float)dotModular::kLaneOffsetMax);
+                    const float rotV = addCV(rot, 2, 0.f, std::max(0.f, lenV - 1.f));
+                    { const std::array<int, 3> d3 = { (int)std::round(lenV) - (int)std::round(len),
+                                    (int)std::round(offV) - (int)std::round(math::clamp(off, 0.f, (float)dotModular::kLaneOffsetMax)),
+                                    (int)std::round(rotV) - (int)std::round(math::clamp(rot, 0.f, std::max(0.f, len - 1.f))) };
+                      engine.pushLaneLorCvPoly(dotModular::VoiceResolver::slot(dotModular::VoiceResolver::kMonoSlot + 1), el, d3.data()); }
                     if (lorLive) {  // LOR LATCH: skip re-push under lock (q-mix on SB_SANDS_Q)
                         // F: the LEN lands FIRST (hoisted) so ROT's clamp hi is the lane's
                         // own length − 1 — the lanes' rule; OFF spans 0..kLaneOffsetMax (was
                         // the literal 1..16/0..15 spans on this East-V1 path — the missed D1
                         // class and the midpoint snap).
-                        const float lenV = addCV(len, 0, 1.f, (float)dotModular::kLaneLengthMax);
                         engine.setStrand(StrandWriter::EAST, el,
-                            (int)std::round(lenV),
-                            (int)std::round(addCV(off, 1, 0.f, (float)dotModular::kLaneOffsetMax)),
-                            (int)std::round(addCV(rot, 2, 0.f, std::max(0.f, lenV - 1.f))));
+                            (int)std::round(len),
+                            (int)std::round(math::clamp(off, 0.f, (float)dotModular::kLaneOffsetMax)),
+                            (int)std::round(math::clamp(rot, 0.f, std::max(0.f, len - 1.f))));
                     }
                 }
                 // VAR/LEG (editor 5/6) now flow through the SAME core loop above (POLY_LANES=7),

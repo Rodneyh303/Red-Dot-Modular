@@ -669,31 +669,44 @@ int SequencerEngine::walkPeriod(LaneDir d, int len) {
     return L;   // Forward / Reverse: the lane's own length IS the period
 }
 
-// (CC_PROMPT_CADENCE_C1) THE LATCH REFRESHES — the only writers of the latched
-// rows, called at the addressed-against edges (the advance head + the derive head
-// + the anchor + reset). They sample the LIVE reads (the pre-latch bodies).
+// (CC_PROMPT_CADENCE_C1B STAGE B) THE CV COMMITS — the only writers of the
+// committed CV deltas, called at the Stage A gates (the advance head + the derive
+// head + the anchor + reset). The base is LIVE (the managers write it through the
+// stores); what the boundary freezes is the CV CONTRIBUTION: the pending deltas
+// (the manager's last push) become the committed sample. Under lock the pending
+// may churn — the committed holds until the gate opens (the Stage A pend, CV-ward).
 void SequencerEngine::refreshVoiceLorLatches() {
-    for (int v = 0; v < kVoiceSlots; ++v) {
-        int L, O, R; LaneDir d;
-        effectiveVoiceLorLive(v, L, O, R, d);
-        latchedVoiceLor_[v][LOR_LEN] = L; latchedVoiceLor_[v][LOR_OFF] = O; latchedVoiceLor_[v][LOR_ROT] = R;
-    }
-    int ML, MO, MR; LaneDir md;
-    effectiveMacroRowLorLive(ML, MO, MR, md);
-    latchedMacroRow_[LOR_LEN] = ML; latchedMacroRow_[LOR_OFF] = MO; latchedMacroRow_[LOR_ROT] = MR;
+    voiceLorCvMacro_ = voiceLorCvPendMacro_;
+    voiceLorCv_ = voiceLorCvPend_;
 }
 
 void SequencerEngine::refreshLaneLatchesForVoice(int v, bool atPhraseEdge, bool unlockNow) {
     for (int el = 0; el < dotModular::NUM_STRANDS; ++el) {
         // (C1b Stage A) per-lane scope gate: the lane's axis (MEL/OCT melody, the
-        // rest rhythm) must be live at the commit edge — else the lane's latch HOLDS
-        // (the pend; the store churns underneath, the effective read is frozen).
-        if (!lorCommitGate_(lorLaneMelody_(el), atPhraseEdge, unlockNow)) continue;
-        int L, O, R; LaneDir d;
-        if (v == 0) effectiveMonoLaneLorLive(el, L, O, R, d);
-        else        effectiveLaneLorLive(dotModular::VoiceResolver::slot(v + 1), LaneId{el}, L, O, R, d);
-        latchedLaneLor_[v][el][LOR_LEN] = L; latchedLaneLor_[v][el][LOR_OFF] = O; latchedLaneLor_[v][el][LOR_ROT] = R;
+        // rest rhythm) must be live at the commit edge — else the lane's committed
+        // CV HOLDS (the pend; the pending churns underneath, the effective read of
+        // the CV contribution is frozen).
+        if (!lorLaneCommitGate_(el, atPhraseEdge, unlockNow)) continue;
+        laneLorCv_[v][el] = laneLorCvPend_[v][el];
     }
+}
+
+// (C1b Stage B) the CV-delta pushes — the PENDING side. The manager computes
+// delta = combined − base_only (the SAME fold law resolved twice, the same
+// rounding) and pushes per control block; the engine never sees a pre-combined
+// value. The pending overwrites each push (last-writer-wins per block).
+void SequencerEngine::pushVoiceLorCv(const int* macroDelta3, const int* eastDelta) {
+    for (int item = 0; item < LOR_ITEMS; ++item) voiceLorCvPendMacro_[item] = macroDelta3[item];
+    for (int v = 0; v < kVoiceSlots; ++v)
+        for (int item = 0; item < LOR_ITEMS; ++item)
+            voiceLorCvPend_[v][item] = eastDelta[v * LOR_ITEMS + item];
+}
+
+void SequencerEngine::pushLaneLorCvPoly(dotModular::VoiceSlot bank, int lane, const int* delta3) {
+    if (bank.v < 0 || bank.v >= kVoiceSlots) return;
+    const int el = editorLane(lane);
+    for (int item = 0; item < LOR_ITEMS; ++item)
+        laneLorCvPend_[bank.v][el][item] = delta3[item];
 }
 
 // THIS voice's LOR length for a strand (the walk's wrap point) — the same table the
