@@ -932,11 +932,15 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
             for (auto& r : laneRow) { r[LOR_LEN] = kDefaultPatternLen; r[LOR_OFF] = 0; r[LOR_ROT] = 0; }
         return a;
     }();
-    // The refreshes — the ONLY writers of the latches, called at the edges (the
+    // The refreshes — the ONLY writers of the latches, called at the gated commit
+    // edges (C1b Stage A: (phrase edge OR unlock flush) AND the axis live — the
     // advance head + the derive head + the anchor + reset). Defined in the .cpp
     // (they mint VoiceSlots through the resolver, which is forward-declared here).
+    // The defaulted args are the CONFIG-SIMULATION form (always commit) the
+    // configuration tests use to accept an authored row at the edge; the engine's
+    // advance paths pass the real edge flags.
     void refreshVoiceLorLatches();
-    void refreshLaneLatchesForVoice(int v);
+    void refreshLaneLatchesForVoice(int v, bool atPhraseEdge = true, bool unlockNow = true);
 
     // The EFFECTIVE voice LOR row (delegation + Macro tier) — the one resolution authority.
     // (C1) the L/O/R come from the LATCH (sampled at the last global phrase edge);
@@ -1329,6 +1333,32 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
     // Lives beside locked because the static LockManager::liveNow call sites already read
     // engine.locked; they pass engine.scopeLiveMask alongside. Persisted by PersistenceManager.
     uint32_t scopeLiveMask = 0;
+
+    // ── (CC_PROMPT_CADENCE_C1B STAGE A) the LOR latch commit's lock plumbing ────
+    // The C1 phrase-latch becomes the SHARED boundary-commit: it commits at the
+    // phrase edge (or flushes at the unlock edge — the engine-side twin of
+    // LockManager::queueFires()'s unlockNow) and is gated by the axis's ScopeBit —
+    // the engine-side twin of liveNow(Control::Lor, ...) — kept inline here (NOT
+    // routed through the manager) per dirLive_'s include-free audio-thread law.
+    // Under lock the store may churn (the managers keep writing it); the LATCH is
+    // the pending mechanism — it holds the committed values until the gate opens.
+    bool lorPrevLocked_ = false;   // the unlock-edge tracker (the direction template's shadow, LOR-ward)
+    inline bool lorLive_(bool melodyAxis) const {
+        if (!locked) return true;
+        constexpr uint32_t kSandsR = 1u << 2;   // == dotModular::SB_SANDS_R (dirLive_'s law)
+        constexpr uint32_t kSandsM = 1u << 3;   // == dotModular::SB_SANDS_M
+        return (scopeLiveMask & (melodyAxis ? kSandsM : kSandsR)) != 0;
+    }
+    // The commit gate: (phrase edge OR unlock flush) AND the axis live. The VOICE
+    // family (the voice rows + the Macro row — the play-window over the phrase)
+    // gates on the RHYTHM axis; the LANE family gates PER LANE (MEL/OCT the melody
+    // axis, the rest rhythm — dirLive_'s lane split exactly).
+    inline bool lorCommitGate_(bool melodyAxis, bool atPhraseEdge, bool unlockNow) const {
+        return (atPhraseEdge || unlockNow) && lorLive_(melodyAxis);
+    }
+    static inline bool lorLaneMelody_(int editorLane) {
+        return editorLane == 0 || editorLane == 1;   // editor 0..6 = MEL,OCT,QMIX,REST,ACC,VAR,LEG
+    }
 
     // ── Change Alley pin-matrix (CHANGE_ALLEY_DESIGN.md §3-REVISED) ──────────
     // The pin remap now lives UPSTREAM in the slewed buffers (pe.remapSlewedByPins,

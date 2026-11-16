@@ -288,6 +288,87 @@ static void p4_c2_keep_counting_and_step_rate_global() {
     }
 }
 
+// ── P5/P6 (CC_PROMPT_CADENCE_C1B STAGE A): the latch commit is lock-aware ────
+// The commit rides the shared boundary-commit vocabulary: (phrase edge OR unlock
+// flush) gated by the axis's ScopeBit — the engine-side twins of
+// LockManager::queueFires()/liveNow(Control::Lor, ...) (kept include-free per
+// dirLive_'s law). Under lock (scope bit NOT opted out) the latch HOLDS — the
+// store may churn (the managers keep writing it) but the effective reads freeze —
+// and the first step event after unlock FLUSHES the accumulated change. A lane
+// whose axis bit is set in scopeLiveMask commits at the phrase edge even under
+// lock (the dirLive_ opt-out). Unlocked marches are unchanged (P1-P4 above).
+static void p5p6_lock_aware_commit() {
+    std::printf("P5/P6 lock-aware latch commit (CC_PROMPT_CADENCE_C1B STAGE A)\n");
+    const int v = v2().v;
+    char msg[160];
+    {   // P5: under lock the latch pends; at the unlock edge it flushes.
+        // Probe: both windows read the SAME at the entry (the rotation-anchor law),
+        // so the pend is proven at the first DIVERGENCE — pp mod 4 (the held old
+        // window) vs pp mod 6 (the pended edit) differ from pp == 4.
+        SequencerEngine eng; eng.reset();
+        eng.updateWindow(8.f, 0.f, false, 0.f, 0.f, false);
+        eng.numPolyVoices = 2;
+        eng.setVoiceLorLocalEast(v2(), true);
+        eng.voiceLorRef(v2(), SequencerEngine::LOR_LEN) = 4;
+        for (int t = 0; t < 3; ++t) eng.advancePlayhead(1, nullptr);
+        eng.locked = true;                       // the lock closes (the engine's own bool — Monsoon aliases it)
+        for (int t = 0; t < 3; ++t) eng.advancePlayhead(1, nullptr);   // the tracker sees the locked state
+        eng.voiceLorRef(v2(), SequencerEngine::LOR_LEN) = 6;   // the edit lands on the STORE mid-phrase, under lock
+        bool held = true;                        // the phrase edge passes UNDER LOCK; march past pp==4
+        bool sawDivergenceStep = false;
+        int divergeRead = -1;
+        for (int t = 0; t < 14; ++t) {
+            eng.advancePlayhead(1, nullptr);
+            const int pp = eng.pos_.phrasePos();
+            if (pp == 4 && !sawDivergenceStep) {   // held: 4 mod 4 = 0; pended: 4 mod 6 = 4
+                sawDivergenceStep = true;
+                divergeRead = eng.voiceRead_[v];
+                held = held && (divergeRead == 0);
+            }
+        }
+        std::snprintf(msg, sizeof(msg), "P5: never reached the divergence step (pp==4)");
+        CHECK(sawDivergenceStep, msg);
+        std::snprintf(msg, sizeof(msg), "P5: the effective read moved to the new window UNDER LOCK at the divergence step (read %d, want the held 0) — the latch must pend while the axis is frozen",
+                      divergeRead);
+        CHECK(held && sawDivergenceStep, msg);
+        eng.locked = false;                      // the unlock edge
+        eng.advancePlayhead(1, nullptr);         // the first step event after unlock = queueFires's unlockNow flush
+        bool walksNew = true;
+        for (int t = 0; t < 8; ++t) {
+            eng.advancePlayhead(1, nullptr);
+            walksNew = walksNew && (eng.voiceRead_[v] == eng.pos_.phrasePos() % 6);   // the flush = the CLOSED FORM under the new window
+        }
+        std::snprintf(msg, sizeof(msg), "P5: the read does not walk the new window after the unlock flush (read %d at pp %d)",
+                      eng.voiceRead_[v], eng.pos_.phrasePos());
+        CHECK(walksNew, msg);
+    }
+    {   // P6: the scope opt-out — with the axis's ScopeBit set, the commit fires at
+        // the phrase edge EVEN UNDER LOCK (the dirLive_ opt-out, SB_SANDS_R for the
+        // voice family).
+        SequencerEngine eng; eng.reset();
+        eng.updateWindow(8.f, 0.f, false, 0.f, 0.f, false);
+        eng.numPolyVoices = 2;
+        eng.setVoiceLorLocalEast(v2(), true);
+        eng.voiceLorRef(v2(), SequencerEngine::LOR_LEN) = 4;
+        eng.scopeLiveMask = 1u << 2;             // SB_SANDS_R: the rhythm-axis LOR is live-under-lock
+        for (int t = 0; t < 3; ++t) eng.advancePlayhead(1, nullptr);
+        eng.locked = true;
+        for (int t = 0; t < 3; ++t) eng.advancePlayhead(1, nullptr);
+        eng.voiceLorRef(v2(), SequencerEngine::LOR_LEN) = 6;
+        int edgeAt = -1;
+        for (int t = 0; t < 8; ++t) {
+            eng.advancePlayhead(1, nullptr);
+            if (eng.pos_.phrasePos() == 0) { edgeAt = t; break; }
+        }
+        std::snprintf(msg, sizeof(msg), "P6: no phrase edge observed (edgeAt=%d)", edgeAt);
+        CHECK(edgeAt >= 0, msg);
+        if (edgeAt < 0) return;
+        std::snprintf(msg, sizeof(msg), "P6: the read at the opted-out axis's edge is %d, want %d (the store change must commit at the edge under lock)",
+                      eng.voiceRead_[v], eng.pos_.phrasePos() % 6);
+        CHECK(eng.voiceRead_[v] == eng.pos_.phrasePos() % 6, msg);
+    }
+}
+
 int main() {
     std::printf("== test_lor_phrase_latch (CC_PROMPT_CADENCE_C1) ==\n");
     p1_voice_row_at_phrase_edge();
@@ -295,6 +376,7 @@ int main() {
     p2_lane_at_voice_frame_edge();
     p3_live_boundary_shrink8to6();
     p4_c2_keep_counting_and_step_rate_global();
+    p5p6_lock_aware_commit();
     if (g_fail == 0) std::printf("all green\n");
     else std::printf("%d FAILED\n", g_fail);
     return g_fail ? 1 : 0;

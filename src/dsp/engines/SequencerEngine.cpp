@@ -265,7 +265,8 @@ void SequencerEngine::reset() {
     // first frame's latch (the anchor above already ran the phrase-edge refresh
     // via the park law; this pins it against any seed-order change).
     refreshVoiceLorLatches();
-    for (int v = 0; v < kVoiceSlots; ++v) refreshLaneLatchesForVoice(v);
+    for (int v = 0; v < kVoiceSlots; ++v) refreshLaneLatchesForVoice(v, true, true);
+    lorPrevLocked_ = locked;   // (C1b Stage A) the tracker seeds with the reset state
 }
 
 bool SequencerEngine::isStepInWindow(int idx) const {
@@ -682,8 +683,12 @@ void SequencerEngine::refreshVoiceLorLatches() {
     latchedMacroRow_[LOR_LEN] = ML; latchedMacroRow_[LOR_OFF] = MO; latchedMacroRow_[LOR_ROT] = MR;
 }
 
-void SequencerEngine::refreshLaneLatchesForVoice(int v) {
+void SequencerEngine::refreshLaneLatchesForVoice(int v, bool atPhraseEdge, bool unlockNow) {
     for (int el = 0; el < dotModular::NUM_STRANDS; ++el) {
+        // (C1b Stage A) per-lane scope gate: the lane's axis (MEL/OCT melody, the
+        // rest rhythm) must be live at the commit edge — else the lane's latch HOLDS
+        // (the pend; the store churns underneath, the effective read is frozen).
+        if (!lorCommitGate_(lorLaneMelody_(el), atPhraseEdge, unlockNow)) continue;
         int L, O, R; LaneDir d;
         if (v == 0) effectiveMonoLaneLorLive(el, L, O, R, d);
         else        effectiveLaneLorLive(dotModular::VoiceResolver::slot(v + 1), LaneId{el}, L, O, R, d);
@@ -784,7 +789,9 @@ void SequencerEngine::anchorTransport(int64_t tick1based) {
     // the voice-family edge fires there (the re-entry law: the latch samples at the
     // re-anchor, so the seeds below read the freshly latched rows). The lane latches
     // re-check in the next derive's edge loop.
-    if (pos_.phrasePos() == 0) refreshVoiceLorLatches();
+    // (C1b Stage A) the re-entry commit is scope-gated too (no unlock flush here —
+    // that belongs to the step event's advance head).
+    if (pos_.phrasePos() == 0 && lorLive_(false)) refreshVoiceLorLatches();
     // (SLICE 5) the globalWalk_ seed line is DELETED — pos_.phaseClock(transportTick_)
     // yields wrapMod(tick−1, len_) on every read: the same value this seeded.
     const int64_t t0 = tick1based - 1;
@@ -872,7 +879,13 @@ void SequencerEngine::tickHolders(int transportMotion, int signMotion, const int
     // advance (the 8→6 trace: the boundary moves with the parent's length). The
     // holder reads below (the Macro row's frame, the voice frames) consume the
     // latched rows for this step; the lane latches re-check in the derive.
-    if (pos_.phrasePos() == 0) refreshVoiceLorLatches();
+    // (C1b Stage A) the edge is the SHARED boundary-commit now: the unlock edge is
+    // consumed here ONCE per step event (the direction template's shadow law), and
+    // the commit is gated by the axis's ScopeBit (lorLive_ — the liveNow(Control::Lor)
+    // twin). Under lock the latch pends; at the unlock edge it flushes.
+    const bool lorUnlockNowC1b = (lorPrevLocked_ && !locked);
+    lorPrevLocked_ = locked;
+    if (lorCommitGate_(false, pos_.phrasePos() == 0, lorUnlockNowC1b)) refreshVoiceLorLatches();
     // (SLICE 5) the globalWalk_ increment line is DELETED — the congruence it maintained
     // (≡ (t−1) mod len) is pos_.phaseClock's closed form, read on demand.
     // ── the raw-clock congruences (config-independent; the RE-ANCHOR LAW on a walk-key
@@ -939,8 +952,12 @@ void SequencerEngine::tickHolders(int transportMotion, int signMotion, const int
         // row rides the global phrase edge (its pass-through cycle IS the phrase).
         // Refreshing here means the lane advances below re-bound at the edge step
         // itself — the re-anchor law fires with the key change, no transition step.
-        if (voiceLorIdentity(v) ? (pos_.phrasePos() == 0) : (voiceFramePhase_[v] == 0))
-            refreshLaneLatchesForVoice(v);
+        // (C1b Stage A) the per-lane commit gate lives inside the refresh (each
+        // lane's axis); the unlock flush reaches every voice regardless of its
+        // frame edge.
+        const bool vLaneEdgeC1b = voiceLorIdentity(v) ? (pos_.phrasePos() == 0) : (voiceFramePhase_[v] == 0);
+        if (vLaneEdgeC1b || lorUnlockNowC1b)
+            refreshLaneLatchesForVoice(v, vLaneEdgeC1b, lorUnlockNowC1b);
         if (!voiceLorIdentity(v)) {
             // Mapped row: the frame phase advances by the RAW delta too (its congruence
             // is the raw effective clock's), and the mapped frame's read path derives
@@ -1075,10 +1092,14 @@ void SequencerEngine::deriveHolders(int signMotion, const int8_t* voiceMotion) {
     // holds: a mapped voice's lanes do NOT latch at the phrase edge unless its
     // own frame is at its entry.
     const bool atPhraseEdgeC1 = (pos_.phrasePos() == 0);
-    if (atPhraseEdgeC1) refreshVoiceLorLatches();
-    for (int v = 0; v < kVoiceSlots; ++v)
-        if (voiceLorIdentity(v) ? atPhraseEdgeC1 : (voiceFramePhase_[v] == 0))
-            refreshLaneLatchesForVoice(v);
+    // (C1b Stage A) idempotent re-check under the same gate — the unlock edge was
+    // already consumed at the advance head this step event, so no flush here.
+    if (atPhraseEdgeC1 && lorLive_(false)) refreshVoiceLorLatches();
+    for (int v = 0; v < kVoiceSlots; ++v) {
+        const bool vLaneEdgeC1b = voiceLorIdentity(v) ? atPhraseEdgeC1 : (voiceFramePhase_[v] == 0);
+        if (vLaneEdgeC1b)
+            refreshLaneLatchesForVoice(v, vLaneEdgeC1b, false);
+    }
     const int  lenG = std::max(1, cachedLength);
     const int  offG = cachedOffset;
     // (Rodney's correction) the default-pattern pass-through is the POLYMETER LAW —
