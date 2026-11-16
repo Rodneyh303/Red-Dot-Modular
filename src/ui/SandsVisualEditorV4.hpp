@@ -192,10 +192,9 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
   // divergence alone can't distinguish "locked" from "CV modulating". Host wires to engine.locked.
   std::function<bool()> lockActiveFn;
   bool lockActive() const { return lockActiveFn && lockActiveFn(); }
-  // Ghost echo for this lane: lock-mode active AND the live edit window has diverged from the
-  // committed/display window. Under lock the display is frozen (LOR LATCH) while edit tracks the
-  // handle, so divergence here = a genuine moved-under-lock echo (not CV modulation).
-  bool lorGhost(int editorLane) const { return lockActive() && currentState.lanes[editorLane].lorDiverged(); }
+  // (REMAINING BUGS 1) lorGhost RETIRED: the lock-only ghost gate. The committed
+  // window now shows as the divergence echo on ANY split (CV or a moved LOR — the
+  // decided model's committed-fill), drawn directly off lorDiverged() at the sites.
   // Optional right-click callback: host registers this to open a context menu
   // when a lane row is right-clicked. Called with (lane, pos); return true to consume.
   std::function<bool(int lane, rack::math::Vec pos)> onLaneRightClick;
@@ -878,11 +877,13 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
     rack::Rect rect  = layout.getStepRect(lane, step);
     float prob       = L.probabilities[step];
     float barHeight  = prob * rect.size.y;
-    // Under lock with a moved LOR, the SOLID window follows the LIVE edit (the handle the user is
-    // moving); the committed/display window becomes a ghost echo (drawn below). Otherwise the solid
-    // window is the display window (so CV modulation shows normally when unlocked).
-    const bool ghost = lorGhost(lane);
-    bool  isInWindow = ghost ? L.editBarInWindow(step) : L.barInWindow(step);
+    // (REMAINING BUGS 1 — the window model, display side) the lit/dim bars are YOUR
+    // AUTHORED window (the EDIT/base L/O/R) — ALWAYS, so the lit run coincides with
+    // the grab at all times, including under CV. Was: the display/committed window
+    // when unlocked — the lit bars and the grab box SPLIT under modulation (the lit
+    // bars at one position, the grab at another). The committed/effective window now
+    // shows as the echo overlay below (on divergence); the pending as the wireframe.
+    bool  isInWindow = L.editBarInWindow(step);
     float dimAlpha   = isInWindow ? 1.f : 0.22f;
 
     // Background
@@ -922,8 +923,8 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
     // the cells, so even a 1-wide window shows both edges on the same cell
     // unambiguously (the old brackets collided and got stuck in that case).
     NVGcolor edge = getLaneColor(lane); edge.a = 0.95f;
-    const int solidStart = ghost ? L.editStartBar() : L.startBar();
-    const int solidEnd   = ghost ? L.editEndBar()   : L.endBar();
+    const int solidStart = L.editStartBar();   // (BUG 1) the authored window's edges — always the EDIT bars
+    const int solidEnd   = L.editEndBar();
     if (step == solidStart) {
       nvgBeginPath(vg);
       nvgRect(vg, rect.pos.x, rect.pos.y, 2.5f, rect.size.y);
@@ -937,10 +938,12 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
       nvgFill(vg);
     }
 
-    // Ghost echo: under lock with a moved LOR, mark the COMMITTED (still-playing) window as a faint
-    // trace so the user sees where the playhead is held while the live (solid) window shows where it
-    // will land at unlock. Committed window = barInWindow/startBar/endBar (display L/O, frozen).
-    if (ghost) {
+    // (BUG 1) the COMMITTED/effective window as a faint echo — on ANY divergence from
+    // the authored window (CV modulation unlocked, or a moved LOR under lock: either
+    // way the still-playing window splits from the solid one). Was the lock-only
+    // ghost; this is the decided model's committed-fill. Committed window =
+    // barInWindow/startBar/endBar (display L/O). Collapsed (not drawn) when equal.
+    if (L.lorDiverged()) {
       if (L.barInWindow(step)) {
         nvgBeginPath(vg);
         nvgRect(vg, rect.pos.x, rect.pos.y, rect.size.x, rect.size.y);
@@ -1091,9 +1094,10 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
 
     // Window body fill across the EDIT range (matches inWindowX / the MOVE hit
     // zone). Iterate from editStartBar so the fill = the grabbable body.
-    // Under lock+diverged (ghost), the live edit window is the SOLID one -> stronger body/edge.
-    const bool ghostHandles = lorGhost(lane);
-    NVGcolor body = nvgRGBAf(1.f, 1.f, 1.f, ghostHandles ? 0.20f : 0.10f);
+    // (BUG 1) stronger body/edge whenever the authored window splits from the
+    // committed — the grab draws the eye when the windows diverge.
+    const bool splitHandles = L.lorDiverged();
+    NVGcolor body = nvgRGBAf(1.f, 1.f, 1.f, splitHandles ? 0.20f : 0.10f);
     for (int k = 0; k < lenC; ++k) {
       int bar = (L.editStartBar() + k) % STEP_COUNT;
       rack::Rect c = layout.getStepRect(lane, bar);
@@ -1112,7 +1116,7 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
     rack::Rect cs = layout.getStepRect(lane, L.editStartBar());
     rack::Rect ce = layout.getStepRect(lane, L.editEndBar());
     bool oneWide = (L.editStartBar() == L.editEndBar());
-    NVGcolor edge = getLaneColor(lane); edge.a = ghostHandles ? 0.95f : 0.55f;
+    NVGcolor edge = getLaneColor(lane); edge.a = splitHandles ? 0.95f : 0.55f;
 
     auto fillRect = [&](float x, float w, NVGcolor col) {
       nvgBeginPath(vg); nvgRect(vg, x, bandTop, w, bandH);
@@ -1161,10 +1165,10 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
     float stripTop = laneR.pos.y + laneR.size.y * 0.70f;
     float stripH   = laneR.size.y * 0.30f;
 
-    // Faint track ONLY across the start–end window. Uses the DISPLAY window so it
-    // tracks CV modulation in step with the window band (which uses startBar()).
-    int startBar = L.dispOffset % STEP_COUNT;
-    int lenC = std::max(1, std::min(L.dispLength, STEP_COUNT));
+    // Faint track ONLY across the start–end window. (BUG 1) the AUTHORED window —
+    // in step with the lit bars + the grab (the EDIT L/O). Was the DISPLAY window.
+    int startBar = L.offset % STEP_COUNT;
+    int lenC = std::max(1, std::min(L.length, STEP_COUNT));
     NVGcolor track = nvgRGB(0x00, 0x00, 0x00); track.a = 0.07f;   // faint neutral darkening (was teal)
     for (int k = 0; k < lenC; ++k) {
       int bar = (startBar + k) % STEP_COUNT;
@@ -1176,9 +1180,10 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
     }
 
     // Rotation marker sits WITHIN the start-end window: physical bar =
-    // (dispOffset + dispRotation) % STEP_COUNT. Uses DISPLAY values so the chevron moves
-    // with the modulated window.
-    int rotBar = (L.dispOffset + (L.dispRotation % std::max(1, L.dispLength))) % STEP_COUNT;
+    // (offset + rotation) % STEP_COUNT. (BUG 1) the AUTHORED rotation — one coherent
+    // authored-window layer (track + marker + grab); the LIVE modulated rotation is
+    // the wireframe's rotation tick. Was the DISPLAY values.
+    int rotBar = (L.offset + (L.rotation % std::max(1, L.length))) % STEP_COUNT;
     rack::Rect cell = layout.getStepRect(lane, rotBar);
     float cx = cell.pos.x + cell.size.x * 0.5f;
     float cyc = stripTop + stripH * 0.5f;
