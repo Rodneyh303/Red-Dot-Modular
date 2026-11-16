@@ -176,11 +176,20 @@ identical — the only difference is the modulation. So draw exactly two things:
 **GRAB THE COMMITTED WINDOW WHERE IT IS DRAWN — no snap.** Hit-test against the committed
 window, NOT the base edges (CC currently hit-tests the base — a cause of the split feel). On
 press, modulation suspends (per-item, below) and the window follows the pointer FROM the
-grab point: the first frame the pointer is at the committed position, so the drag sets the
-base absolutely and NOTHING jumps. On release, the drop position IS the new base; modulation
-reconnects at the next boundary and re-applies CV from there (so with CV still patched the
-window shifts by the CV amount at that boundary — correct, modulation resuming on the new
-base, not a bug).
+grab point.
+
+NO-SNAP REQUIRES "FORGET THE SUSPENDED SAMPLE" (Rodney): the reducer's `grabOff`/`grabLen`
+must be seeded from the COMMITTED window at press (base + the CV displacing it), NOT from the
+base. That folds the suspended item's grab-time CV into the new base — the drag sets the
+base absolutely from the committed position, so nothing jumps, and that one CV sample is
+DISCARDED (forgotten), not restored. Scope is exact: ONLY the suspended item(s) (the ones
+under the finger) forget their grab-time CV; every non-suspended item keeps modulating
+uninterrupted through the drag. On release, the drop position IS the new base; fresh CV
+reconnects on all items at the next boundary and applies from the new base (so with CV still
+patched the window shifts by the CURRENT CV at that boundary — correct, modulation resuming
+on the new base, not a bug). Consequence to accept: a grab+release without moving shifts the
+suspended item's base by its momentary CV (you keep what you grabbed) — the honest price of
+no-snap.
 
 **PER-ITEM SUSPEND — suspend EXACTLY what the gesture writes (mirror the reducer, drop the
 coarse blanket).** `SandsRangeGestureCore`'s reducer defines the per-zone writes;
