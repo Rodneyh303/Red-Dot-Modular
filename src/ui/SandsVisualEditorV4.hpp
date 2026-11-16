@@ -264,6 +264,16 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
   bool laneDragLive() const {
     return lorDrag.active && lorDrag.owner == redDot::SandsRangeGestureCore::LorDragState::O_LANE;
   }
+  // (CC_PROMPT_LANE_RANGE_DISPLAY_UNIFY Stage B follow-up) THIS lane's drag — the SAME
+  // gesture state the C1b Stage C suspend snapshots (lorDrag → the module's
+  // lorGestureActive → setLorCvSuspend). The display keys off it directly: no second
+  // gesture state. While true, the drag owns the lane's EDIT values (the base push
+  // stands down) and the lane's mod-preview wireframe is HIDDEN (modulation is
+  // disconnected for the scope).
+  bool laneDragLive(int lane) const {
+    return lorDrag.active && lorDrag.owner == redDot::SandsRangeGestureCore::LorDragState::O_LANE
+        && lorDrag.laneIdx == lane;
+  }
 
   // ── UNIFIED ADDRESSING Stage 3: the VOICE-RANGE strip ────────────────────────
   // A thin CONSTANT-block lane reserved ABOVE lane 0 (the frame the probability lanes

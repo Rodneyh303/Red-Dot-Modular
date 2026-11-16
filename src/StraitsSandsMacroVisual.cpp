@@ -1088,18 +1088,32 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
                                      ownLen, ownOff, ownRot, ownDir);
                 ownLen = std::max(1, ownLen);
                 visualEditor->currentState.lanes[l].setDisplayLOR(ownLen, ownOff, ownRot);
+                // (Stage B follow-up — the window model DECIDED) the BASE/EDIT window:
+                // the grab stays on the base (the authored row the drag edits), pushed
+                // each frame EXCEPT while this lane's drag is live (the drag owns the
+                // edit values during the gesture; the release commit re-syncs). The
+                // committed fill (setDisplayLOR above) and the pending wireframe stay.
+                if (!visualEditor->laneDragLive(l)) {
+                    auto& ed = visualEditor->currentState.lanes[l];
+                    ed.length   = eng.polyLOR(macroLaneLorRep_(eng), dotModular::LaneId{l}, SequencerEngine::LOR_LEN);
+                    ed.offset   = eng.polyLOR(macroLaneLorRep_(eng), dotModular::LaneId{l}, SequencerEngine::LOR_OFF);
+                    ed.rotation = eng.polyLOR(macroLaneLorRep_(eng), dotModular::LaneId{l}, SequencerEngine::LOR_ROT);
+                }
                 // (Stage B — Option 3) the mod-preview wireframe: base + PENDING — the
                 // three red markers, pushed ONLY when the surface's EXISTING modVizMacro
                 // flag is on AND the preview diverges from the latched window above (the
                 // divergence IS the live modulation; at each commit boundary the preview
-                // snaps into the solid). Tracks during an LOR drag by default (the
-                // dragged base + live CV) — flip to `false &&` to freeze during gestures.
+                // snaps into the solid). (Follow-up decision B) HIDDEN during this
+                // lane's edit gesture — the SAME lorDrag signal the C1b Stage C suspend
+                // keys on (modulation is disconnected for the scope while dragging).
                 {
                     int pvL, pvO, pvR; SequencerEngine::LaneDir pvD;
                     eng.effectiveLanePreview(macroLaneLorRep_(eng), dotModular::LaneId{l},
                                              pvL, pvO, pvR, pvD);
                     const bool diverged = (pvL != ownLen || pvO != ownOff || pvR != ownRot);
-                    visualEditor->setLanePreview(l, monsoon->modVizMacro && diverged, pvL, pvO, pvR);
+                    visualEditor->setLanePreview(l, monsoon->modVizMacro && diverged
+                                                     && !visualEditor->laneDragLive(l),
+                                                 pvL, pvO, pvR);
                 }
                 // (CC_PROMPT_RETIRE_MACRO_LANE_HOLDER) the DERIVED VIEW replaces the
                 // retired macroLaneTick_ holder: the macro ROW's frame authority mapped

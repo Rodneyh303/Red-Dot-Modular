@@ -1875,13 +1875,26 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 eng.effectiveMonoLaneLor(el, cvLen, cvOff, cvRot, cvDir);
                 cvLen = std::max(1, cvLen);
                 visualEditor->currentState.lanes[el].setDisplayLOR(cvLen, cvOff, cvRot);
+                // (Stage B follow-up — the window model DECIDED) the BASE/EDIT window:
+                // the grab stays on the base; the push stands down during this lane's
+                // drag (the drag owns the edit values; the release commit re-syncs).
+                if (!visualEditor->laneDragLive(el)) {
+                    auto& ed = visualEditor->currentState.lanes[el];
+                    ed.length   = eng.lor(el, SequencerEngine::LOR_LEN);
+                    ed.offset   = eng.lor(el, SequencerEngine::LOR_OFF);
+                    ed.rotation = eng.lor(el, SequencerEngine::LOR_ROT);
+                }
                 // (Stage B — Option 3) the mod-preview wireframe (see the Macro twin):
-                // base + PENDING, gated on the EXISTING modVizEast flag + the divergence.
+                // base + PENDING, gated on the EXISTING modVizEast flag + the divergence
+                // — and HIDDEN during this lane's edit gesture (decision B: the SAME
+                // lorDrag signal the suspend keys on; modulation is disconnected).
                 {
                     int pvL, pvO, pvR; SequencerEngine::LaneDir pvD;
                     eng.effectiveMonoLanePreview(el, pvL, pvO, pvR, pvD);
                     const bool diverged = (pvL != cvLen || pvO != cvOff || pvR != cvRot);
-                    visualEditor->setLanePreview(el, monsoon->modVizEast && diverged, pvL, pvO, pvR);
+                    visualEditor->setLanePreview(el, monsoon->modVizEast && diverged
+                                                         && !visualEditor->laneDragLive(el),
+                                                 pvL, pvO, pvR);
                 }
                 int ph1222 = eng.started() ? eng.laneTick_[el] : -1;
                 // (fix/variation-scan-display) non-VAR lanes draw the SHARED window playhead;
@@ -1920,13 +1933,24 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                                       cvLen, cvOff, cvRot, cvDir);
                 cvLen = std::max(1, cvLen);
                 visualEditor->currentState.lanes[l].setDisplayLOR(cvLen, cvOff, cvRot);
-                // (Stage B — Option 3) the mod-preview wireframe, the poly form.
+                // (Stage B follow-up — the window model DECIDED) the BASE/EDIT window,
+                // the poly form: the grab stays on THIS voice's authored base row.
+                if (!visualEditor->laneDragLive(l)) {
+                    auto& ed = visualEditor->currentState.lanes[l];
+                    ed.length   = eng.polyLOR(dotModular::VoiceResolver::slot(pv + 1), dotModular::LaneId{l}, SequencerEngine::LOR_LEN);
+                    ed.offset   = eng.polyLOR(dotModular::VoiceResolver::slot(pv + 1), dotModular::LaneId{l}, SequencerEngine::LOR_OFF);
+                    ed.rotation = eng.polyLOR(dotModular::VoiceResolver::slot(pv + 1), dotModular::LaneId{l}, SequencerEngine::LOR_ROT);
+                }
+                // (Stage B — Option 3) the mod-preview wireframe, the poly form —
+                // hidden during this lane's edit gesture (decision B, the same signal).
                 {
                     int pvL, pvO, pvR; SequencerEngine::LaneDir pvD;
                     eng.effectiveLanePreview(dotModular::VoiceResolver::slot(pv + 1), dotModular::LaneId{l},
                                               pvL, pvO, pvR, pvD);
                     const bool diverged = (pvL != cvLen || pvO != cvOff || pvR != cvRot);
-                    visualEditor->setLanePreview(l, monsoon->modVizEast && diverged, pvL, pvO, pvR);
+                    visualEditor->setLanePreview(l, monsoon->modVizEast && diverged
+                                                     && !visualEditor->laneDragLive(l),
+                                                 pvL, pvO, pvR);
                 }
                 // Use the PER-VOICE tick (laneTickV_), not mono's laneTick_ — otherwise
                 // the poly playhead always follows mono's direction, ignoring the DirCell.
