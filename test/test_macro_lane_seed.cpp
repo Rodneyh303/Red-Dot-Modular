@@ -8,6 +8,13 @@
 // macroVoiceLor_, off the macroFramePhase_ congruence); macroFrameRead_ becomes the
 // row's walk read (ring-folded — the %16 fold was bug 17's twin at this tier).
 //
+// (CC_PROMPT_RETIRE_MACRO_LANE_HOLDER) the display-only holder is RETIRED — the Macro
+// lane's tick now reads the DERIVED VIEW (macroLaneDisplay), which carries the SAME
+// seed law (the identity/mapped branch) + the same walk, with the lane window coming
+// from the per-voice latched store (the view's LOR source: the lowest macro-following
+// voice = V2 here). The gates below re-pin the SAME closed forms through the view;
+// the lane-window authoring moved from macroLOR_[MEL] to V2's per-voice store.
+//
 // GATES (the doc):
 //  1. MACRO LANE WINDOW — a len=7 Macro lane: under the DEFAULT global it cycles its
 //     OWN 7 (the polymeter free-run — the UA_NONDIV law's visible edge, UNCHANGED);
@@ -40,17 +47,18 @@ static void check(bool ok, const char* what) {
 }
 
 int main() {
-    const int MEL = dotModular::STRAND_MELODY;   // strand 0 == editor lane 0 == macroLOR_[0]
+    const int MEL = dotModular::STRAND_MELODY;   // strand 0 == editor lane 0 (the per-voice store lane)
 
     // ── GATE 1a: the DEFAULT global + identity row — the lane's OWN 7 (the free-run) ──
     {
         SequencerEngine eng; eng.reset();
-        eng.macroLOR_[MEL] = 7;
+        eng.polyLORRef(VoiceResolver::slot(2), dotModular::LaneId{SequencerEngine::PL_MELODY}, SequencerEngine::LOR_LEN) = 7;   // (retire) the view's LOR source: the per-voice latched store
         bool ok = true;
         for (int t = 0; t < 21; ++t) {
             eng.advancePlayhead(1, nullptr);
             const int T = t + 1;
-            ok = ok && eng.macroLaneTick_[MEL] == (T - 1) % 7;
+            int vt, vs; eng.macroLaneDisplay(MEL, vt, vs);
+            ok = ok && vt == (T - 1) % 7;
         }
         check(ok, "1a: default global + identity row — the len-7 Macro lane cycles its OWN 7 "
                   "((T-1)%7, the raw-tick polymeter free-run — the UA_NONDIV law, UNCHANGED)");
@@ -60,12 +68,13 @@ int main() {
     {
         SequencerEngine eng; eng.reset();
         eng.updateWindow(10.f, 0.f, false, 2.f, 0.f, false);
-        eng.macroLOR_[MEL] = 7;
+        eng.polyLORRef(VoiceResolver::slot(2), dotModular::LaneId{SequencerEngine::PL_MELODY}, SequencerEngine::LOR_LEN) = 7;   // (retire) the view's LOR source: the per-voice latched store
         bool ok = true;
         for (int t = 0; t < 21; ++t) {
             eng.advancePlayhead(1, nullptr);
             const int T = t + 1;
-            ok = ok && eng.macroLaneTick_[MEL] == (((T - 1) % 10) + 2) % 7;
+            int vt, vs; eng.macroLaneDisplay(MEL, vt, vs);
+            ok = ok && vt == (((T - 1) % 10) + 2) % 7;
         }
         check(ok, "1b: mapped global 10@2 + identity row — the IDENTITY arm seeds the bounded "
                   "GLOBAL walk, folded by the lane's own length (((T-1)%10 + 2) mod 7 — the "
@@ -77,12 +86,13 @@ int main() {
         SequencerEngine eng; eng.reset();
         eng.macroVoiceLor_[SequencerEngine::LOR_LEN] = 8;
         eng.macroVoiceLor_[SequencerEngine::LOR_OFF] = 16;
-        eng.macroLOR_[MEL] = 7;
+        eng.polyLORRef(VoiceResolver::slot(2), dotModular::LaneId{SequencerEngine::PL_MELODY}, SequencerEngine::LOR_LEN) = 7;   // (retire) the view's LOR source: the per-voice latched store
         bool ok = true;
         for (int t = 0; t < 21; ++t) {
             eng.advancePlayhead(1, nullptr);
             const int T = t + 1;
-            ok = ok && eng.macroLaneTick_[MEL] == ((T - 1) % 8) % 7;
+            int vt, vs; eng.macroLaneDisplay(MEL, vt, vs);
+            ok = ok && vt == ((T - 1) % 8) % 7;
         }
         check(ok, "1c: authored row 8@16 (CYCLE) — the lane hangs under the ROW's walk "
                   "(((T-1)%8)%7: period 8, restarting at the row's wrap) — NOT the global's "
@@ -95,12 +105,13 @@ int main() {
         eng.macroVoiceLor_[SequencerEngine::LOR_LEN] = 8;
         eng.macroVoiceLor_[SequencerEngine::LOR_OFF] = 16;
         eng.maskMacroKind_ = SequencerEngine::MASK_DYNAMIC;   // the row's ABS1
-        eng.macroLOR_[MEL] = 7;
+        eng.polyLORRef(VoiceResolver::slot(2), dotModular::LaneId{SequencerEngine::PL_MELODY}, SequencerEngine::LOR_LEN) = 7;   // (retire) the view's LOR source: the per-voice latched store
         bool ok = true;
         for (int t = 0; t < 21; ++t) {
             eng.advancePlayhead(1, nullptr);
             const int T = t + 1;
-            ok = ok && eng.macroLaneTick_[MEL] == ((T - 1 + 16) % 32) % 7;
+            int vt, vs; eng.macroLaneDisplay(MEL, vt, vs);
+            ok = ok && vt == ((T - 1 + 16) % 32) % 7;
         }
         check(ok, "1d: authored row 8@16 (ABS1) — the row walks the FULL PHRASE (the ring, "
                   "rho=(R-O): ((T-1+16)%32)%7), the lane still cycling its own 7 values "
@@ -113,20 +124,22 @@ int main() {
         {
             SequencerEngine eng; eng.reset();
             eng.lorRef(MEL, SequencerEngine::LOR_LEN) = 7;   // V1's mono MEL lane — the same window
-            eng.macroLOR_[MEL] = 7;
+            eng.polyLORRef(VoiceResolver::slot(2), dotModular::LaneId{SequencerEngine::PL_MELODY}, SequencerEngine::LOR_LEN) = 7;   // (retire) the view's LOR source: the per-voice latched store
             for (int t = 0; t < 21; ++t) {
                 eng.advancePlayhead(1, nullptr);
-                okDefault = okDefault && eng.laneTick_[MEL] == eng.macroLaneTick_[MEL];
+                int vt, vs; eng.macroLaneDisplay(MEL, vt, vs);
+                okDefault = okDefault && eng.laneTick_[MEL] == vt;
             }
         }
         {
             SequencerEngine eng; eng.reset();
             eng.updateWindow(10.f, 0.f, false, 2.f, 0.f, false);
             eng.lorRef(MEL, SequencerEngine::LOR_LEN) = 7;
-            eng.macroLOR_[MEL] = 7;
+            eng.polyLORRef(VoiceResolver::slot(2), dotModular::LaneId{SequencerEngine::PL_MELODY}, SequencerEngine::LOR_LEN) = 7;   // (retire) the view's LOR source: the per-voice latched store
             for (int t = 0; t < 21; ++t) {
                 eng.advancePlayhead(1, nullptr);
-                okMapped = okMapped && eng.laneTick_[MEL] == eng.macroLaneTick_[MEL];
+                int vt, vs; eng.macroLaneDisplay(MEL, vt, vs);
+                okMapped = okMapped && eng.laneTick_[MEL] == vt;
             }
         }
         check(okDefault && okMapped,
@@ -145,7 +158,7 @@ int main() {
         for (int v = 1; v <= 15; ++v)                          // V2..V16's lanes — the same window
             eng.polyLenERef(VoiceResolver::slot(v + 1),
                             dotModular::LaneId{SequencerEngine::PL_MELODY}) = 7;
-        eng.macroLOR_[MEL] = 7;                                // the Macro lane — the same window
+        eng.polyLORRef(VoiceResolver::slot(2), dotModular::LaneId{SequencerEngine::PL_MELODY}, SequencerEngine::LOR_LEN) = 7;   // (retire) the view's LOR source: the per-voice latched store                                // the Macro lane — the same window
         bool ok = true;
         for (int t = 0; t < 21; ++t) {
             eng.advancePlayhead(1, nullptr);
@@ -154,7 +167,8 @@ int main() {
             ok = ok && eng.laneTick_[MEL] == want;             // East MONO  (V1, slot 0)
             for (int v = 1; v <= 15; ++v)
                 ok = ok && eng.laneTickV_[v][MEL] == want;     // East POLY  (V2..V16, followers)
-            ok = ok && eng.macroLaneTick_[MEL] == want;        // MACRO      (the global row)
+            int vt, vs; eng.macroLaneDisplay(MEL, vt, vs);
+            ok = ok && vt == want;                             // MACRO      (the view — the same law derived)
         }
         check(ok,
               "3: SAME WINDOW -> SAME TICK — with the same lane window (7) and direction under "
@@ -170,16 +184,16 @@ int main() {
             SequencerEngine eng; eng.reset();
             eng.macroVoiceLor_[SequencerEngine::LOR_LEN] = 8;
             eng.macroVoiceLor_[SequencerEngine::LOR_OFF] = 16;
-            eng.macroLOR_[MEL] = 7;
-            for (int t = 0; t < 21; ++t) { eng.advancePlayhead(1, nullptr); seq0[t] = eng.macroLaneTick_[MEL]; }
+            eng.polyLORRef(VoiceResolver::slot(2), dotModular::LaneId{SequencerEngine::PL_MELODY}, SequencerEngine::LOR_LEN) = 7;   // (retire) the view's LOR source: the per-voice latched store
+            for (int t = 0; t < 21; ++t) { eng.advancePlayhead(1, nullptr); int vt, vs; eng.macroLaneDisplay(MEL, vt, vs); seq0[t] = vt; }
         }
         {
             SequencerEngine eng; eng.reset();
             eng.numPolyVoices = 15;                            // every voice live
             eng.macroVoiceLor_[SequencerEngine::LOR_LEN] = 8;
             eng.macroVoiceLor_[SequencerEngine::LOR_OFF] = 16;
-            eng.macroLOR_[MEL] = 7;
-            for (int t = 0; t < 21; ++t) { eng.advancePlayhead(1, nullptr); seq15[t] = eng.macroLaneTick_[MEL]; }
+            eng.polyLORRef(VoiceResolver::slot(2), dotModular::LaneId{SequencerEngine::PL_MELODY}, SequencerEngine::LOR_LEN) = 7;   // (retire) the view's LOR source: the per-voice latched store
+            for (int t = 0; t < 21; ++t) { eng.advancePlayhead(1, nullptr); int vt, vs; eng.macroLaneDisplay(MEL, vt, vs); seq15[t] = vt; }
         }
         bool ok = true;
         for (int t = 0; t < 21; ++t) ok = ok && seq0[t] == seq15[t];
@@ -212,13 +226,14 @@ int main() {
         eng.macroVoiceLor_[SequencerEngine::LOR_LEN] = 8;
         eng.macroVoiceLor_[SequencerEngine::LOR_OFF] = 16;
         eng.macroVoiceLor_[SequencerEngine::LOR_ROT] = 3;
-        eng.macroLOR_[MEL] = 7;
+        eng.polyLORRef(VoiceResolver::slot(2), dotModular::LaneId{SequencerEngine::PL_MELODY}, SequencerEngine::LOR_LEN) = 7;   // (retire) the view's LOR source: the per-voice latched store
         bool ok = true;
         for (int t = 0; t < 21; ++t) {
             eng.advancePlayhead(1, nullptr);
             const int T = t + 1;
+            int vt, vs; eng.macroLaneDisplay(MEL, vt, vs);
             ok = ok && eng.macroFrameRead() == ((T - 1 + 3) % 8) + 16
-                && eng.macroLaneTick_[MEL] == ((T - 1 + 3) % 8) % 7;
+                && vt == ((T - 1 + 3) % 8) % 7;
         }
         check(ok,
               "5b: R=3 phase-shifts the row walk by rho=R — the read still inside [16,24) and "

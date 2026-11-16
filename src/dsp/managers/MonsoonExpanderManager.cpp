@@ -153,8 +153,9 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
     // display (the per-lane playhead cue) reads those derived signs — one resolved
     // direction per (voice,lane), no second selection anywhere.
     //
-    // ALSO push Macro's own direction to macroLaneDir_ (always, regardless of ownership)
-    // so the engine advances macroLaneTick_ independently for Macro's playhead display.
+    // (CC_PROMPT_RETIRE_MACRO_LANE_HOLDER) the macroLaneDir_/macroLOR_ side-push is
+    // GONE with the display-only holder it fed — the Macro strip's playhead reads the
+    // engine's derived view (macroLaneDisplay) off the per-voice latched truth.
     {
         // Read through the single authority helper — the same one East's V1 gate-mod writes
         // through, so the mod can never target a store the manager isn't reading.
@@ -177,30 +178,6 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
             } else if (src.paramId >= 0) {
                 engine.laneDirPending_[l] = (SequencerEngine::LaneDir)(int)std::lround(
                     math::clamp(src.mod->params[src.paramId].getValue(), 0.f, 3.f));
-            }
-        }
-        auto* macroVis = cachedMacroSandsVisual;
-        // Push Macro's direction + LOR length to macroLaneDir_/macroLOR_ (all 4 lanes, always)
-        if (macroVis) {
-            auto* mmod = dynamic_cast<StraitsSandsMacroVisual*>(macroVis);
-            // MVC step 1c: Macro's global direction now reads from the store, not its params.
-            Monsoon* gMon = owner;   // back-pointer (set in Monsoon::process)
-            // Now 5 poly lanes: MEL/OCT/QMIX/REST/ACC (editor order).
-            for (int el = 0; el < dotModular::SandsGrid::POLY_LANES; ++el) {
-                // el = editor lane (MEL=0, OCT=1, QMIX=2, REST=3, ACC=4) = strand index
-                engine.macroLaneDir_[el] = (SequencerEngine::LaneDir)(int)std::lround(
-                    math::clamp(gMon ? gMon->getGlobalDir(el) : 0.f, 0.f, 3.f));
-                // Push Macro's own LOR length for bounce detection.
-                // macroBase is indexed by lane; editor lane == engine lane (identity
-                // since the lane-index unification), so el passes through directly.
-                if (mmod) {
-                    engine.macroLOR_[el] = std::max(1, (int)std::lround(mmod->macroBase[el][0] + mmod->macroCVDelta[el][0]));
-                }
-            }
-        } else {
-            for (int el = 0; el < dotModular::SandsGrid::POLY_LANES; ++el) {
-                engine.macroLaneDir_[el] = SequencerEngine::LaneDir::Forward;
-                engine.macroLOR_[el] = 16;
             }
         }
     }

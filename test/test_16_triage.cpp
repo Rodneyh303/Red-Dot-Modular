@@ -151,8 +151,8 @@ int main() {
            && eng.pos_.phaseClock(eng.transportTick_) == dotModular::kMaskRing - 1
            && eng.dnaLength == CAP,
                "GATE 3a: the TRANSPORT default = the cap (cachedLength/endStep/the phase clock at t=0/dnaLength)");
-        check(eng.strandLen(0) == 16 && eng.macroLOR_[0] == 16,
-              "GATE 3b: the LANE-WINDOW seeds = kDefaultPatternLen (16 — the stay-16 group)");
+        check(eng.strandLen(0) == 16,
+              "GATE 3b: the LANE-WINDOW seeds = kDefaultPatternLen (16 — the stay-16 group; the macroLOR_ clause retired with the display-only holder — the per-voice latched store is the seed source now)");
         check(eng.voiceLor(M, 0) == CAP && eng.macroVoiceLor_[0] == CAP
            && eng.macroVoiceLor_[1] == 0 && eng.macroVoiceLor_[2] == 0,
               "GATE 3c: the identity rows = the cap (bug 23 — unchanged)");

@@ -843,7 +843,7 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         ModuleWidget::step();
         // (CC_PROMPT_CADENCE_C1B STAGE C) publish the Macro-strip gesture snapshot
         // (the zone→items law as East's): only the STRIP owner touches the Macro
-        // row; lane gestures edit the live macroLOR_ store (nothing to suspend).
+        // row; lane gestures edit the live per-voice lane stores (nothing to suspend).
         if (auto* mm = dynamic_cast<StraitsSandsMacroVisual*>(module)) {
             const auto& ld = visualEditor ? visualEditor->lorDrag : redDot::SandsRangeGestureCore::LorDragState{};
             mm->lorGestureActive = ld.active && ld.owner == redDot::SandsRangeGestureCore::LorDragState::O_STRIP;
@@ -1027,9 +1027,13 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         // Display-only. (Lane base rings already come from Macro's own params via
         // loadLOR; this overlay now matches them.)
         auto& eng = monsoon->engine;
-        // Per-lane direction cue: use Macro's OWN macroLaneSign_ (always follows Macro's DirCell)
+        // Per-lane direction cue: (CC_PROMPT_RETIRE_MACRO_LANE_HOLDER) the derived
+        // view's sign (the macro ROW's frame authority + the lane's latched walk law —
+        // the holder is gone; the walk's own bounce sign IS Macro's direction law).
         for (int l = 0; l < dotModular::SandsGrid::POLY_LANES; ++l) {
-            visualEditor->setLanePlayDir(l, eng.lastPlayDir * eng.macroLaneSign_[l]);
+            int vt, vs;
+            eng.macroLaneDisplay(l, vt, vs);
+            visualEditor->setLanePlayDir(l, eng.lastPlayDir * vs);
         }
         // TAB-1 MONO MIRROR: view tab 1 = voice 1 = the mono master strand when Sands
         // Mono is attached. Show mono's LORS read-only (consistent treatment with the
@@ -1065,12 +1069,15 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
                 int ownRot = (int)std::lround(mod->macroBase[l][2] + mod->macroCVDelta[l][2]);
                 ownLen = std::max(1, ownLen);
                 visualEditor->currentState.lanes[l].setDisplayLOR(ownLen, ownOff, ownRot);
-                // Use Macro's OWN macroLaneTick_ — advanced by the engine in advancePlayhead
-                // using Macro's direction (macroLaneDir_), with full bounce support for
-                // Pendulum/PingPong. Same pattern as East's laneTickV_.
+                // (CC_PROMPT_RETIRE_MACRO_LANE_HOLDER) the DERIVED VIEW replaces the
+                // retired macroLaneTick_ holder: the macro ROW's frame authority mapped
+                // through the lane's FULL latched LOR from the per-voice path — the same
+                // law the holder maintained, computed on demand, O/R-correct.
                 // MVC: hide the playhead when stopped (match Mono's started ? tick : -1), so
                 // rotation CV only moves the chevron, not the playhead, when the seq is stopped.
-                int ph = eng.started() ? eng.macroLaneTick_[l] : -1;
+                int vt, vs;
+                eng.macroLaneDisplay(l, vt, vs);
+                int ph = eng.started() ? vt : -1;
                 // (fix/variation-scan-display) non-VAR lanes draw the SHARED window
                 // playhead (per-voice tick + LOR → the ONE law). The VAR lane draws
                 // THIS view-voice's SCANNED read index (engine stepAdvanceStrandIdx +
