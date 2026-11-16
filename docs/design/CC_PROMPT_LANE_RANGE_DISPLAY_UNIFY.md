@@ -183,14 +183,64 @@ suspended window; on RELEASE the CV resumes at the next boundary and the wirefra
 Key the hide off the SAME gesture signal the suspend uses — do not invent a second gesture
 state.
 
+**WIREFRAME OFF-PISTE BUG (CC Stage B `c24f4eab`, `drawLanePreviewMarks` in
+`SandsVisualEditorV4.hpp` ~443) — fix in this follow-up.** The END tick is drawn at
+`getStepX(pv.off + pv.len)` with NO wrap. `STEP_COUNT == kMaskRing == 32`, but `off` ∈
+[0,31] and `len` ∈ [1,32], so `off+len` reaches 63; any window that wraps past the ring
+(`off+len > 32`) draws the end line RIGHT of the 32-cell grid — into the direction/
+delegation buttons (Rodney saw this live). START (`off`) and ROTATION (`% ring`) are
+bounded; only END is raw. FIX: wrap the end — `endStep = (pv.off + pv.len) % STEP_COUNT`,
+mapping `0 → STEP_COUNT` so a window ending exactly at the boundary stays at the right edge
+(`getStepX(STEP_COUNT)` = `padding + gridW`); AND add a guard so NO tick ever draws outside
+`[padding, padding + gridW]` (clamp or skip), belt-and-braces for every marker. Rack
+feel-test: modulate offset/length so the window wraps — the end marker stays inside the
+grid, never over the buttons.
+
 **ACCEPTANCE (Stage B):** the preview pin fails-before/passes-after; battery still
 byte-identical (the preview accessor is read-only, no audio reader); build + warn sweep
 clean; Rodney Rack feel-test: (a) with CV and no drag — base-outline + committed-fill +
-pending-wireframe all legible, grab never detaches; (b) drag a range — the grab stays on
-the base and drags, no wireframe during the drag (modulation disconnected), on release the
-fill commits and the wireframe reappears at the next boundary.
+pending-wireframe all legible, grab never detaches, no marker escapes the grid; (b) drag a
+range — the grab stays on the base and drags, no wireframe during the drag (modulation
+disconnected), on release the fill commits and the wireframe reappears at the next boundary.
 
 ---
+
+## REMAINING BUGS — CC's follow-up (`b0008944`) missed these (Rodney, Rack, 2026-11-16)
+
+**BUG 1 — grab separated from the highlighted (lit/dim) bars [display].** CC attached the
+grab to the base/EDIT window but left the BAR DIMMING on the committed window.
+`SandsVisualEditorV4.hpp` ~885: `isInWindow = ghost ? L.editBarInWindow(step) :
+L.barInWindow(step)` — the normal (non-ghost) branch uses `barInWindow`, which reads the
+DISPLAY (committed) L/O/R, while the grab now reads EDIT/base. So they split under
+modulation (Rodney saw the lit bars at one position, the grab box at another). FIX: the
+dimming (which bars are lit vs dim = "your window") must follow the **EDIT/base** window —
+use `editBarInWindow` for it so it tracks the grab. The committed/effective window is shown
+by the SOLID FILL overlay (the decided model), NOT by the bar dimming; pending stays the
+wireframe. Audit the other `barInWindow`/`startBar`/`endBar` display reads in this file
+(e.g. ~944) and route the "your authored window" visuals to the EDIT edges, leaving
+`barInWindow`/disp only for the committed-fill overlay. Rack feel-test: the grab box and the
+lit bars coincide at all times, including under CV; the modulated window shows only as
+fill + wireframe.
+
+**BUG 2 — the double commit (the "two jumps one step apart", 16/8/8) [ENGINE — its own
+commit, reproduce-first].** NOT a Stage-A regression — a latent C1b engine bug Stage A made
+visible. `voiceFramePhase_` is written twice in `tickHolders` (SequencerEngine.cpp): the
+closed form at ~886, then ADVANCED by `kV` at ~1004. The lane-commit edge
+(`voiceFramePhase_[v]==0`) is checked at tickHolders ~992 (BEFORE the advance) AND at
+deriveHolders ~1122 (AFTER it — deriveHolders is called at ~1036, past the advance). So the
+deriveHolders re-check tests the NEXT step's phase and fires one step early — the lane
+commits at TWO ADJACENT steps per voice-frame cycle (the display jumps twice; the AUDIO
+double-commits too, uncaught because no golden modulates lane LOR mid-run). The C1b comment
+calls it "idempotent re-check under the same gate" — false once the phase has advanced.
+FIX: the deriveHolders re-check must evaluate the SAME pre-advance edge tickHolders used —
+either a per-step "lane edge already committed this step event" flag set at the advance
+head and honoured in the derive, or snapshot the pre-advance `voiceFramePhase_` for the
+derive's check — so the lane commits EXACTLY ONCE per cycle, keeping the anchor-only /
+offsets-only flows the derive re-check was added for. REPRODUCE-FIRST (headless): a pin that
+modulates a lane's LOR under a mapped voice frame (e.g. the 16/8/8 rig) and asserts the
+committed lane window changes once per voice-frame cycle, not twice — fails before, passes
+after. Battery must stay byte-identical (no golden modulates lane LOR, so the single-commit
+fix changes nothing the goldens cover).
 
 ## NON-SCOPE
 - No audio/engine behaviour change in Stage A; Stage B adds only a read-only accessor.
