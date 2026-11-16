@@ -68,6 +68,17 @@ extern Plugin* pluginInstance;
     // CV-modulated value); set = the SPREAD_* param. Both normalised (v+1)/2.
    
 
+// (CC_PROMPT_LANE_RANGE_DISPLAY_UNIFY Stage A) the Macro strip's LANE-RANGE
+// representative — macroLaneDisplay's exact choice (the lowest macro-following
+// voice, falling back to V2): the range display and the playhead must agree on
+// ONE row. File-local display plumbing, not engine API.
+static dotModular::VoiceSlot macroLaneLorRep_(const SequencerEngine& eng) {
+    int rep = 1;
+    for (int v = 1; v < SequencerEngine::kVoiceSlots; ++v)
+        if (!eng.voiceLorLocalEast_[v]) { rep = v; break; }
+    return dotModular::VoiceResolver::slot(rep + 1);
+}
+
 struct StraitsSandsMacroVisualWidget : ModuleWidget,
     dotModular::Compose<StraitsSandsMacroVisualWidget,
                         dotModular::ShapeQuery, dotModular::Bind, dotModular::Reload> {
@@ -1064,9 +1075,17 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
             // missing accent), so Macro's V1 page reflected Mono instead of Macro. l =
             // engine lane (0=REST 1=MEL 2=OCT 3=ACC 4=QMIX) → editor lane.
             for (int l = 0; l < dotModular::SandsGrid::POLY_LANES; ++l) {
-                int ownLen = (int)std::lround(mod->macroBase[l][0] + mod->macroCVDelta[l][0]);
-                int ownOff = (int)std::lround(mod->macroBase[l][1] + mod->macroCVDelta[l][1]);
-                int ownRot = (int)std::lround(mod->macroBase[l][2] + mod->macroCVDelta[l][2]);
+                // (CC_PROMPT_LANE_RANGE_DISPLAY_UNIFY Stage A) the lane range reads the
+                // LATCHED authority — effectiveLaneLor through the SAME representative
+                // macroLaneDisplay uses (the lowest macro-follower, fallback V2) — so the
+                // range and the playhead agree and both show what PLAYS: a knob edit
+                // shows immediately (base live), modulation STEPS the window at the
+                // voice-frame boundary. Was macroBase[l]+macroCVDelta[l] — the manager's
+                // un-latched scratch recomputed live every block (the video-rate GLIDE),
+                // an MVC leak C1b never brought under the latch.
+                int ownLen, ownOff, ownRot; SequencerEngine::LaneDir ownDir;
+                eng.effectiveLaneLor(macroLaneLorRep_(eng), dotModular::LaneId{l},
+                                     ownLen, ownOff, ownRot, ownDir);
                 ownLen = std::max(1, ownLen);
                 visualEditor->currentState.lanes[l].setDisplayLOR(ownLen, ownOff, ownRot);
                 // (CC_PROMPT_RETIRE_MACRO_LANE_HOLDER) the DERIVED VIEW replaces the
@@ -1372,10 +1391,12 @@ size_t StraitsSandsMacroVisual::sweepFingerprint_(void* dst) {
         const int nV = eng.numPolyVoices;
         std::array<int, dotModular::SandsGrid::POLY_LANES> stepArr{};
         for (int l = 0; l < dotModular::SandsGrid::POLY_LANES; ++l) {
-            const int ownLen = std::max(1, (int)std::lround(macroBase[l][0] + macroCVDelta[l][0]));
-            const int ownOff = (int)std::lround(macroBase[l][1] + macroCVDelta[l][1]);
-            const int ownRot = (int)std::lround(macroBase[l][2] + macroCVDelta[l][2]);
-            stepArr[l] = calcPlayhead(eng.playedColumn(), ownLen, ownOff, ownRot) & 0x0F;
+            // (Stage A) the lane range reads the LATCHED authority (see the tab-update
+            // site): what the audio walks, at the voice-frame cadence.
+            int ownLen, ownOff, ownRot; SequencerEngine::LaneDir ownDir;
+            eng.effectiveLaneLor(macroLaneLorRep_(eng), dotModular::LaneId{l},
+                                 ownLen, ownOff, ownRot, ownDir);
+            stepArr[l] = calcPlayhead(eng.playedColumn(), std::max(1, ownLen), ownOff, ownRot) & 0x0F;
         }
         const bool ch = sweepSigChanged(sweepSig_, eng, stepArr.data(), nV);
 #ifdef MONSOON_PROFILE
@@ -1397,10 +1418,12 @@ void StraitsSandsMacroVisual::sweepProduce_() {
     const int nCh = 1 + nV;
     std::array<int, dotModular::SandsGrid::POLY_LANES> stepArr{};
     for (int l = 0; l < dotModular::SandsGrid::POLY_LANES; ++l) {
-        const int ownLen = std::max(1, (int)std::lround(macroBase[l][0] + macroCVDelta[l][0]));
-        const int ownOff = (int)std::lround(macroBase[l][1] + macroCVDelta[l][1]);
-        const int ownRot = (int)std::lround(macroBase[l][2] + macroCVDelta[l][2]);
-        stepArr[l] = calcPlayhead(eng.playedColumn(), ownLen, ownOff, ownRot) & 0x0F;
+        // (Stage A) the lane range reads the LATCHED authority (see the tab-update
+        // site): what the audio walks, at the voice-frame cadence.
+        int ownLen, ownOff, ownRot; SequencerEngine::LaneDir ownDir;
+        eng.effectiveLaneLor(macroLaneLorRep_(eng), dotModular::LaneId{l},
+                             ownLen, ownOff, ownRot, ownDir);
+        stepArr[l] = calcPlayhead(eng.playedColumn(), std::max(1, ownLen), ownOff, ownRot) & 0x0F;
     }
     // Capture the sig exactly as the resolve is about to consume it (the resolve is
     // read-only on every fingerprinted input, so the placement here is free).
