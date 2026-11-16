@@ -48,22 +48,28 @@ live `phrasePos` gets this for free; a precomputed period would latch at the sta
 C2 keep-counting interaction: the global walk keeps counting and folds mod newLen; the LOR latch
 rides that live wrap.)
 
-## READ SITES (swap live store → effective) — ENUMERATE them yourself, do not trust this list to be complete
-The live LOR reads in the derive to migrate (grep `lor(`, `polyLOR(`, `voiceLorStore_`,
-`macroVoiceLor_` across SequencerEngine.cpp): the rLen/rhythm reads (~:762/:831/:1383), the macro
-voice reads (~:782/:850/:1004), `voiceLorStore_[v][...]` (~:839/:908), the poly lane reads. The
-POSITION-derive reads these for L/O/R; those are the ones that must see the EFFECTIVE value.
+## PREREQUISITE — C0 consolidation must land first
+`CC_PROMPT_CADENCE_C0_LOR_READ_CONSOLIDATION.md` routes every derive-path LOR/dir read through TWO
+chokepoints — `effectiveVoiceLor` (voice) and `effectiveLaneLor` (strand/lane) — as a bit-identical
+refactor. C1 ASSUMES those two chokepoints exist. Do C0 first; then the latch has exactly two homes
+instead of a dozen scattered raw reads. If C0 is not yet merged, STOP and do it first — latching a
+subset of reads (the trap this ordering exists to avoid) produces half-latched LOR that goldens may
+not catch.
+
+## WHERE THE LATCH GOES (the two chokepoints from C0)
+The effective LOR is latched INSIDE the two accessors; nothing else changes:
+- `effectiveVoiceLor(v, …)` → return the value latched at the last GLOBAL phrase edge
+  (`pos_.phrasePos()==0`), refreshed from the live store only on that edge.
+- `effectiveLaneLor(voice, lane, …)` → latched at the last VOICE-frame edge (`voiceFramePhase_[v]==0`).
+Because C0 already routes ALL derive reads through these, putting the latch here catches every read
+by construction — no site-by-site migration, no bypass. (Direction `d` rides the same accessors, so
+it stays live/unlatched here; its own cadence is C3.)
 
 ## WHAT STAYS LIVE (do NOT latch)
 - **Global length + offset** — C1 says these are the real-time (STEP-rate) class; they already apply
   at the step. Do NOT phrase-latch them. (They are the DRIVE reposition, MeloDicer-native.) Confirm
   they are step-rate; change nothing if so.
 - Direction (C3) — separate slice; not here.
-
-## EXISTING SCAFFOLDING — reconcile first
-There is already an `effectiveVoiceLor` reference (~:836, a comment contrasting it with the raw
-`voiceLorStore_`/`macroVoiceLor_` read). CHECK whether partial effective-LOR scaffolding exists and
-build on / reconcile with it rather than adding a parallel mechanism (ODR/DRY).
 
 ## NON-SCOPE
 - **C4 (display cadence) — Rodney's Rack leg.** Once the engine latches, the Sands range must DRAW
