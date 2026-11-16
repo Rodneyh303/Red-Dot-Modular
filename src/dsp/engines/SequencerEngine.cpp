@@ -261,6 +261,11 @@ void SequencerEngine::reset() {
     // advancePlayhead derives them from the phases bit-identically to the old
     // f(counter) evaluation at t=1).
     anchorTransport(0);
+    // (C1) the latches sample the freshly seeded stores — the reset state IS the
+    // first frame's latch (the anchor above already ran the phrase-edge refresh
+    // via the park law; this pins it against any seed-order change).
+    refreshVoiceLorLatches();
+    for (int v = 0; v < kVoiceSlots; ++v) refreshLaneLatchesForVoice(v);
 }
 
 bool SequencerEngine::isStepInWindow(int idx) const {
@@ -663,6 +668,29 @@ int SequencerEngine::walkPeriod(LaneDir d, int len) {
     return L;   // Forward / Reverse: the lane's own length IS the period
 }
 
+// (CC_PROMPT_CADENCE_C1) THE LATCH REFRESHES — the only writers of the latched
+// rows, called at the addressed-against edges (the advance head + the derive head
+// + the anchor + reset). They sample the LIVE reads (the pre-latch bodies).
+void SequencerEngine::refreshVoiceLorLatches() {
+    for (int v = 0; v < kVoiceSlots; ++v) {
+        int L, O, R; LaneDir d;
+        effectiveVoiceLorLive(v, L, O, R, d);
+        latchedVoiceLor_[v][LOR_LEN] = L; latchedVoiceLor_[v][LOR_OFF] = O; latchedVoiceLor_[v][LOR_ROT] = R;
+    }
+    int ML, MO, MR; LaneDir md;
+    effectiveMacroRowLorLive(ML, MO, MR, md);
+    latchedMacroRow_[LOR_LEN] = ML; latchedMacroRow_[LOR_OFF] = MO; latchedMacroRow_[LOR_ROT] = MR;
+}
+
+void SequencerEngine::refreshLaneLatchesForVoice(int v) {
+    for (int el = 0; el < dotModular::NUM_STRANDS; ++el) {
+        int L, O, R; LaneDir d;
+        if (v == 0) effectiveMonoLaneLorLive(el, L, O, R, d);
+        else        effectiveLaneLorLive(dotModular::VoiceResolver::slot(v + 1), LaneId{el}, L, O, R, d);
+        latchedLaneLor_[v][el][LOR_LEN] = L; latchedLaneLor_[v][el][LOR_OFF] = O; latchedLaneLor_[v][el][LOR_ROT] = R;
+    }
+}
+
 // THIS voice's LOR length for a strand (the walk's wrap point) — the same table the
 // old recomp carried as a lambda in two places; one mechanism now.
 // (C0 FAMILY 2) the length reads through the lane chokepoint (effectiveLaneLor) —
@@ -752,6 +780,11 @@ int64_t SequencerEngine::voiceFrameTickAt(int v, int64_t effTick1based,
 // Mode E phase snap at the phase-derived tick, Monsoon's Beat-1 hard reset at 0.
 void SequencerEngine::anchorTransport(int64_t tick1based) {
     transportTick_ = tick1based;   // THE WRITE SITE: the anchor IS the transport's own position update
+    // (C1) the anchor lands the phrase entry when it points at the window's start —
+    // the voice-family edge fires there (the re-entry law: the latch samples at the
+    // re-anchor, so the seeds below read the freshly latched rows). The lane latches
+    // re-check in the next derive's edge loop.
+    if (pos_.phrasePos() == 0) refreshVoiceLorLatches();
     // (SLICE 5) the globalWalk_ seed line is DELETED — pos_.phaseClock(transportTick_)
     // yields wrapMod(tick−1, len_) on every read: the same value this seeded.
     const int64_t t0 = tick1based - 1;
@@ -835,6 +868,11 @@ void SequencerEngine::tickHolders(int transportMotion, int signMotion, const int
     // The offsets-only refresh (motion 0) leaves it verbatim.
     transportTick_ += transportMotion;
     const int64_t t0Now = transportTick_ - 1;   // the post-event raw t0 (the re-anchor coordinate)
+    // (C1) THE VOICE-FAMILY LATCH EDGE — the GLOBAL phrase, re-read LIVE each
+    // advance (the 8→6 trace: the boundary moves with the parent's length). The
+    // holder reads below (the Macro row's frame, the voice frames) consume the
+    // latched rows for this step; the lane latches re-check in the derive.
+    if (pos_.phrasePos() == 0) refreshVoiceLorLatches();
     // (SLICE 5) the globalWalk_ increment line is DELETED — the congruence it maintained
     // (≡ (t−1) mod len) is pos_.phaseClock's closed form, read on demand.
     // ── the raw-clock congruences (config-independent; the RE-ANCHOR LAW on a walk-key
@@ -895,6 +933,14 @@ void SequencerEngine::tickHolders(int transportMotion, int signMotion, const int
         const int64_t kV = (int64_t)transportMotion + (advanceOffset_[v] - advOffSeen_[v]);
         advOffSeen_[v] = advanceOffset_[v];
         const int64_t t0EffNow = t0Now + advanceOffset_[v];   // this voice's raw walk coordinate
+        // (C1) THE VOICE-FRAME LATCH EDGE for this voice's lane rows — checked right
+        // AFTER its frame advance (the landed entry) and BEFORE its lane advances
+        // consume the row: a MAPPED row at its holder entry (phase==0); an IDENTITY
+        // row rides the global phrase edge (its pass-through cycle IS the phrase).
+        // Refreshing here means the lane advances below re-bound at the edge step
+        // itself — the re-anchor law fires with the key change, no transition step.
+        if (voiceLorIdentity(v) ? (pos_.phrasePos() == 0) : (voiceFramePhase_[v] == 0))
+            refreshLaneLatchesForVoice(v);
         if (!voiceLorIdentity(v)) {
             // Mapped row: the frame phase advances by the RAW delta too (its congruence
             // is the raw effective clock's), and the mapped frame's read path derives
@@ -1020,6 +1066,19 @@ static inline int frameReadCell(int64_t frameValue, int windowOffset, int ring) 
 // the warm phases wait for a pass-through round-trip. Either representative yields the
 // exact values the old f(counter) recompute produced at the same instants.
 void SequencerEngine::deriveHolders(int signMotion, const int8_t* voiceMotion) {
+    // (C1) THE LATCH EDGES, re-checked per derive (covers the anchor-only and the
+    // offsets-only refresh flows): the global phrase edge for the voice family
+    // (idempotent — the advance head already sampled it this step), and the
+    // VOICE-FRAME edge per voice for the lane latches — a MAPPED row's holder
+    // phase AT its entry; an IDENTITY row's pass-through cycle IS the global
+    // phrase, so its lanes latch with the phrase edge. The refinement's negative
+    // holds: a mapped voice's lanes do NOT latch at the phrase edge unless its
+    // own frame is at its entry.
+    const bool atPhraseEdgeC1 = (pos_.phrasePos() == 0);
+    if (atPhraseEdgeC1) refreshVoiceLorLatches();
+    for (int v = 0; v < kVoiceSlots; ++v)
+        if (voiceLorIdentity(v) ? atPhraseEdgeC1 : (voiceFramePhase_[v] == 0))
+            refreshLaneLatchesForVoice(v);
     const int  lenG = std::max(1, cachedLength);
     const int  offG = cachedOffset;
     // (Rodney's correction) the default-pattern pass-through is the POLYMETER LAW —

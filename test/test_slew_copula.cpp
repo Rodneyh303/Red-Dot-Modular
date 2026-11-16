@@ -158,6 +158,14 @@ int main(){
                 PatternInput in;
                 for (int p=0; p<M; ++p) {
                     pe.rhythmDrawCtr = p * 64;  // thin by K=64 (independent samples)
+                    // (C1 commit housekeeping) the addressable-window cache is a pure
+                    // fn-of-(key,pos) memo — clearing it here recomputes the same draws
+                    // BIT-IDENTICALLY (the doc comment's own law) and bounds the walk's
+                    // footprint: M=2048 x stride 64 spans ~131k entries x ~26KB (~3.4GB),
+                    // which OOM-killed the suite on a 4GB machine (reproduced at the
+                    // pre-C1 tips too — environmental, not the cadence change). The
+                    // 64-iteration chunk bounds it at ~4k entries (~108MB).
+                    if ((p & 63) == 63) pe.rhythmDrawCache_.clear();
                     pe.latchSlew(slewKnob, 0.f, 0.f);
                     pe.latchMix(mixVal, 0.f, 0.f, true, false, false);
                     pe.recomputeEffectiveRhythm();

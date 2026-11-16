@@ -906,8 +906,48 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
         return (pat == kMaskLenMask) ? m : (m & pat);
     }
 
+    // ── (CC_PROMPT_CADENCE_C1) THE LATCHED EFFECTIVE LOR ────────────────────────
+    // The derive reads the LATCH; the live store is sampled into it ONLY at the
+    // level's ADDRESSED-AGAINST frame edge (DESIGN_POSITION_UNIFICATION.md, the
+    // CADENCE addendum's C1 refinement): the voice family (the effectiveVoiceLor
+    // rows + the Macro row) at the GLOBAL phrase edge (pos_.phrasePos()==0,
+    // re-read LIVE each advance — the 8→6 trace: the boundary moves with the
+    // parent's length), the lane family (the effectiveLaneLor rows) at the
+    // VOICE-FRAME edge (a mapped row's holder phase AT its entry; an IDENTITY
+    // row's pass-through cycle IS the global phrase, so its lanes latch with the
+    // phrase edge). Global length/offset stay STEP-rate (the MeloDicer-native
+    // class); direction stays LIVE (C3's slice). The Macro tier's own LANE store
+    // (macroLOR_, effectiveMacroLaneLor) is NOT latched — C1's mechanism list
+    // names the voice rows + the probability lanes; its cadence is Rodney's call
+    // (flagged in the C1 commit message).
+    std::array<std::array<int, LOR_ITEMS>, kVoiceSlots> latchedVoiceLor_ = [] {
+        std::array<std::array<int, LOR_ITEMS>, kVoiceSlots> a {};
+        for (auto& r : a) { r[LOR_LEN] = kPatternLengthCap; r[LOR_OFF] = 0; r[LOR_ROT] = 0; }
+        return a;
+    }();
+    std::array<int, LOR_ITEMS> latchedMacroRow_ = {kPatternLengthCap, 0, 0};
+    std::array<std::array<std::array<int, LOR_ITEMS>, dotModular::NUM_STRANDS>, kVoiceSlots> latchedLaneLor_ = [] {
+        std::array<std::array<std::array<int, LOR_ITEMS>, dotModular::NUM_STRANDS>, kVoiceSlots> a {};
+        for (auto& laneRow : a)
+            for (auto& r : laneRow) { r[LOR_LEN] = kDefaultPatternLen; r[LOR_OFF] = 0; r[LOR_ROT] = 0; }
+        return a;
+    }();
+    // The refreshes — the ONLY writers of the latches, called at the edges (the
+    // advance head + the derive head + the anchor + reset). Defined in the .cpp
+    // (they mint VoiceSlots through the resolver, which is forward-declared here).
+    void refreshVoiceLorLatches();
+    void refreshLaneLatchesForVoice(int v);
+
     // The EFFECTIVE voice LOR row (delegation + Macro tier) — the one resolution authority.
+    // (C1) the L/O/R come from the LATCH (sampled at the last global phrase edge);
+    // the direction stays live. The LIVE read is effectiveVoiceLorLive (the
+    // pre-latch body verbatim — what the refreshes sample).
     void effectiveVoiceLor(int v, int& L, int& O, int& R, LaneDir& d) const {
+        if (v < 0 || v >= kVoiceSlots) { L = kPatternLengthCap; O = 0; R = 0; d = LaneDir::Forward; return; }   // (bucket 2) the out-of-range fallback = the identity values (the cap — was the literal 16, which read as a MAPPED row)
+        L = latchedVoiceLor_[v][LOR_LEN]; O = latchedVoiceLor_[v][LOR_OFF]; R = latchedVoiceLor_[v][LOR_ROT];
+        d = voiceLorLocalEast_[v] ? voiceLorDir_[v] : macroVoiceLorDir_;
+    }
+    void effectiveVoiceLorLive(int v, int& L, int& O, int& R, LaneDir& d) const {
         if (v < 0 || v >= kVoiceSlots) { L = kPatternLengthCap; O = 0; R = 0; d = LaneDir::Forward; return; }   // (bucket 2) the out-of-range fallback = the identity values (the cap — was the literal 16, which read as a MAPPED row)
         if (voiceLorLocalEast_[v]) {
             L = voiceLorStore_[v][LOR_LEN]; O = voiceLorStore_[v][LOR_OFF];
@@ -920,10 +960,13 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
     // (CC_PROMPT_CADENCE_C0 FAMILY 1) the MACRO ROW's own effective read — the thin
     // macro-row form of effectiveVoiceLor (the macro frame machinery hangs under the
     // ROW itself, not under any voice's delegation switch — macroRowIdentity's law).
-    // Returns EXACTLY what the raw macroVoiceLor_/macroVoiceLorDir_ reads return;
-    // the derive/holder paths (anchorTransport's seed, tickHolders' guard, deriveHolders'
-    // mapped arm) read the row through HERE — the one read point C1 latches behind.
+    // (C1) the L/O/R come from the Macro row's LATCH (the same global phrase edge);
+    // the direction stays live. The LIVE read is effectiveMacroRowLorLive.
     void effectiveMacroRowLor(int& L, int& O, int& R, LaneDir& d) const {
+        L = latchedMacroRow_[LOR_LEN]; O = latchedMacroRow_[LOR_OFF];
+        R = latchedMacroRow_[LOR_ROT]; d = macroVoiceLorDir_;
+    }
+    void effectiveMacroRowLorLive(int& L, int& O, int& R, LaneDir& d) const {
         L = macroVoiceLor_[LOR_LEN]; O = macroVoiceLor_[LOR_OFF];
         R = macroVoiceLor_[LOR_ROT]; d = macroVoiceLorDir_;
     }
@@ -1125,7 +1168,14 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
     // these catches every derive read by construction. Direction rides the same
     // accessors (C3's benefit).
     // The MONO form (V1 = slot 0): the STRAND store row + the mono lane dir.
+    // (C1) the L/O/R come from the lane LATCH (sampled at the voice-frame edge —
+    // for slot 0, the identity pass-through's phrase edge); the dir stays live.
     void effectiveMonoLaneLor(int strand, int& L, int& O, int& R, LaneDir& d) const {
+        const int s = strandClamp(strand);
+        L = latchedLaneLor_[0][s][LOR_LEN]; O = latchedLaneLor_[0][s][LOR_OFF]; R = latchedLaneLor_[0][s][LOR_ROT];
+        d = (strand >= 0 && strand < dotModular::NUM_STRANDS) ? laneDir_[strand] : LaneDir::Forward;
+    }
+    void effectiveMonoLaneLorLive(int strand, int& L, int& O, int& R, LaneDir& d) const {
         L = lor(strand, LOR_LEN); O = lor(strand, LOR_OFF); R = lor(strand, LOR_ROT);
         d = (strand >= 0 && strand < dotModular::NUM_STRANDS) ? laneDir_[strand] : LaneDir::Forward;
     }
@@ -1134,7 +1184,16 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
     // SAME row the mono form does (the unified store) but its OWN dir row
     // (laneDirV_[0], maintained for store consistency) — exactly what
     // polyStrandLenOf and the lane advance loops read today.
+    // (C1) the L/O/R come from the lane LATCH; the dir stays live.
     void effectiveLaneLor(dotModular::VoiceSlot bank, LaneId lane, int& L, int& O, int& R, LaneDir& d) const {
+        const int el = editorLane(lane.l);
+        const int vv = (bank.v >= 0 && bank.v < kVoiceSlots) ? bank.v : 0;
+        L = latchedLaneLor_[vv][el][LOR_LEN]; O = latchedLaneLor_[vv][el][LOR_OFF];
+        R = latchedLaneLor_[vv][el][LOR_ROT];
+        d = (bank.v >= 0 && bank.v < kVoiceSlots && el >= 0 && el < dotModular::NUM_STRANDS)
+            ? laneDirV_[bank.v][el] : LaneDir::Forward;
+    }
+    void effectiveLaneLorLive(dotModular::VoiceSlot bank, LaneId lane, int& L, int& O, int& R, LaneDir& d) const {
         const int el = editorLane(lane.l);
         L = polyLOR(bank, LaneId{el}, LOR_LEN); O = polyLOR(bank, LaneId{el}, LOR_OFF);
         R = polyLOR(bank, LaneId{el}, LOR_ROT);

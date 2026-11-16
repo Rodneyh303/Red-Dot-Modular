@@ -118,12 +118,20 @@ int main() {
     e.lorRef(dm::STRAND_RHYTHM, E::LOR_LEN) = 7;
     for (int64_t i = 1; i <= 20; ++i) e.advancePlayhead();
     e.lorRef(dm::STRAND_RHYTHM, E::LOR_LEN) = 5;   // mid-run re-author
+    // (CC_PROMPT_CADENCE_C1) the lane LOR change accepts at the VOICE-FRAME edge —
+    // the mono row is IDENTITY (its pass-through cycle IS the global phrase, the
+    // 32-window), so the walk keeps f(t, 7) until the phrase edge and re-bounds to
+    // f(t, 5) EXACTLY there: the re-anchor law fires with the key change at the
+    // edge, re-seeding from the transport's own position (no teleport) — the same
+    // closed-form guarantee, now at the acceptance cadence.
     bool exact = true;
     for (int64_t i = 21; i <= 40; ++i) {
         e.advancePlayhead();
-        exact = exact && (e.laneTick_[dm::STRAND_RHYTHM] == fOf(e, dm::STRAND_RHYTHM, i));
+        const int len = (i < 33) ? 7 : 5;   // the latch edge fires during advance 33 (pp = (i-1) mod 32 lands 0 there)
+        const int want = (int)(((E::laneTickFor(e.laneDir_[dm::STRAND_RHYTHM], i, len) % len) + len) % len);
+        exact = exact && (e.laneTick_[dm::STRAND_RHYTHM] == want);
     }
-    check(exact, "RE-ANCHOR: a mid-run len change re-bounds the walk to f(t, newLen) exactly");
+    check(exact, "RE-ANCHOR: a mid-run len change re-bounds the walk to f(t, newLen) exactly — at the C1 voice-frame latch edge (f(t,7) holds to the phrase wrap, f(t,5) from it)");
 
     // a mid-run DIRECTION flip re-anchors the same way (the DirCell promotion path)
     E e2; e2.reset();
