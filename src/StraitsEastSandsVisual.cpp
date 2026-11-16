@@ -1034,9 +1034,12 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         Monsoon* m = getMonsoon();
         if (!m || !visualEditor || !onMonoTab()) return;
         for (int el = dotModular::SandsGrid::POLY_LANES; el < dotModular::SandsGrid::EAST_LANES; ++el) {
-            int mLen = std::max(1, m->engine.lor(el, SequencerEngine::LOR_LEN));
-            int mOff = m->engine.lor(el, SequencerEngine::LOR_OFF);
-            int mRot = m->engine.lor(el, SequencerEngine::LOR_ROT);
+            // (CC_PROMPT_CADENCE_C4) the display reads the EFFECTIVE accessor — the
+            // C1b law (base live + CV committed at the phrase): what the strip shows is
+            // what the engine PLAYS, at the phrase cadence. Was the raw lor() store.
+            int el_, eO, eR; SequencerEngine::LaneDir eD;
+            m->engine.effectiveMonoLaneLor(el, el_, eO, eR, eD);
+            int mLen = std::max(1, el_), mOff = eO, mRot = eR;
             auto& lane = visualEditor->currentState.lanes[el];
             lane.setDisplayLOR(mLen, mOff, mRot);
             // CC_PROMPT_UI_TO_RESOLVER_SPEC step 2: the ONE accessor (Owner lens,

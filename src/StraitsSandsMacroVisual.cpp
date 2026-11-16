@@ -1107,9 +1107,17 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
             // macro range on EVERY tab — ONE range for all follow-Macro voices (L, O, R,
             // direction = macroVoiceLor_, exactly like the other Macro controls); an
             // East-local voice keeps its own range (voiceLorStore_) on EAST's strip.
-            const int mL = std::max(1, se->macroVoiceLor_[SequencerEngine::LOR_LEN]);
-            const int mO = se->macroVoiceLor_[SequencerEngine::LOR_OFF];
-            const int mR = se->macroVoiceLor_[SequencerEngine::LOR_ROT];
+            // (CC_PROMPT_CADENCE_C4) the display reads the EFFECTIVE accessor — the
+            // C1b law (base live + CV committed at the phrase, suspended during a
+            // gesture): what the strip shows is what the engine PLAYS. Was the raw
+            // macroVoiceLor_ row (which smeared per-step under CV and ignored the
+            // cadence). The direction stays live (C3's slice).
+            int mL = 16, mO = 0, mR = 0;
+            {
+                int ml_, mo_, mr_; SequencerEngine::LaneDir md_;
+                se->effectiveMacroRowLor(ml_, mo_, mr_, md_);
+                mL = std::max(1, ml_); mO = mo_; mR = mr_;
+            }
             // The read cell: the SHARED Macro frame's read cell + walk sign
             // (eng.macroFrameRead/macroFrameSign — the strip IS the Macro tier's
             // surface, one value for every tab). CC_FIX_MACRO_NO_VOICE1_SPECIAL removed

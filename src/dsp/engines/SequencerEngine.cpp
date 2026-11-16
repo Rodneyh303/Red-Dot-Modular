@@ -379,6 +379,21 @@ void SequencerEngine::pushMaskEditor(
         const int kind         = kindInt(macroKind);
         const bool followR     = (macroFollowR != 0.f);
         const int  baseR       = macroVoiceLor_[LOR_ROT];
+        // (CC_PROMPT_CADENCE_C4) THE ANCHOR CADENCE DECISION: this detector STAYS on
+        // the BASE rotation — deliberately NOT repointed to the effective accessor,
+        // notwithstanding the C4 doc's repoint suggestion with its confirm-caveat.
+        // Reasons: (1) the UAS Stage-4 law (the C1b-era ordering note at the CV fold
+        // site): 'the mask's anchor change-detection must re-pin against the
+        // UNMODULATED base R — rotation modulation offsets relative to the anchor, it
+        // never re-pins'; an effective-R detector would RE-PIN the mask at every CV
+        // commit boundary — the mask rotation chasing the modulation, the exact
+        // behaviour the UAS law forbids. (2) The C4 doc's own NON-SCOPE: 'No ENGINE
+        // change — C1b owns the cadence; this is display only' — this detector IS the
+        // mask's audio-side re-pin law. (3) The with-CV overlay-vs-range disagreement
+        // this leaves (the displayed range shows base+committed-CV; the anchored mask
+        // rotates with the base) is a FEEL-TEST item Rodney owns — if it feel-tests as
+        // wrong, the effective-R anchor is a two-line change HERE, and the display-side
+        // overlay rotation can follow the effective R without touching this law.
         if (painted != maskMacroLastPushed_) {              // repaint / load: re-anchor
             maskMacroAnchored_    = painted;
             maskMacroAnchorR_     = baseR;
