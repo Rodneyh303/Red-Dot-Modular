@@ -509,6 +509,16 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
     std::array<int, dotModular::NUM_STRANDS> lanePhase_ = {};
     std::array<std::array<int, dotModular::NUM_STRANDS>, kVoiceSlots> lanePhaseV_ = {};   // per-voice: ≡ the RAW effective clock's t0 (mod the walk's period)
     std::array<int, kVoiceSlots> voiceFramePhase_ = {};   // mapped voice rows: ≡ the RAW effective clock's t0 (mod the row walk's period)
+    // (REMAINING BUGS 2 — the double commit) the PRE-advance voiceFramePhase_
+    // snapshot: the phases the tickHolders HEAD's lane-edge test evaluated, kept for
+    // the derive's re-check. The derive used to re-test the POST-advance phase (the
+    // NEXT step's) and fire one step early — the lane committed at TWO ADJACENT steps
+    // per voice-frame cycle (the C1b "idempotent re-check" claim was false once the
+    // phase advanced). ONE-SHOT: set at the head, consumed + cleared by the first
+    // derive; the anchor-only / offsets-only derives (no advance this event) see it
+    // clear and test the current phases, as they always did.
+    std::array<int, kVoiceSlots> voiceFramePhaseEdgeSnap_ = {};
+    bool laneEdgeSnapValid_ = false;
     // (CC_FIX_MACRO_LANE_SEED Part 2) the MACRO ROW's frame phase — the mapped macro
     // row's walk congruence, the container the Macro lanes hang under. Mirrors
     // voiceFramePhase_ for the one shared row (the follower voices' rows resolve to

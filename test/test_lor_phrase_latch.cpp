@@ -621,6 +621,46 @@ static void p9_preview_accessors() {
     }
 }
 
+// ── P10: the DOUBLE COMMIT — the lane latch must fire ONCE per voice-frame cycle ──
+// (CC_PROMPT_LANE_RANGE_DISPLAY_UNIFY REMAINING BUGS 2, Rodney's "two jumps one step
+// apart" in the 16/8/8 rig). The lane-commit edge is evaluated at the tickHolders
+// head (voiceFramePhase_[v]==0, BEFORE the frame advance) AND re-checked in
+// deriveHolders (AFTER the advance — the NEXT step's phase) — so the re-check fires
+// one step early and the lane commits at TWO ADJACENT steps per cycle. THE RIG: the
+// global window 16; V2's row MAPPED at L=8 (its own 8-step frame cycle); a
+// per-step-varying lane pend pushed before each advance; the committed laneLorCv_
+// recorded per step. THE LAW: the commit spacings are EXACTLY the 8-step cycle —
+// never two adjacent.
+static void p10_single_commit_per_frame_cycle() {
+    std::printf("P10 single lane commit per voice-frame cycle (the double-commit bug)\n");
+    char msg[160];
+    SequencerEngine eng; eng.reset();
+    eng.updateWindow(16.f, 0.f, false, 0.f, 0.f, false);   // the global 16
+    eng.numPolyVoices = 2;
+    eng.setVoiceLorLocalEast(v2(), true);
+    eng.voiceLorRef(v2(), SequencerEngine::LOR_LEN) = 8;  // V2's row MAPPED at L=8
+    eng.refreshVoiceLorLatches();   // settle the row config before the march
+    const int el = SequencerEngine::editorLane(SequencerEngine::PL_REST);
+    const int v = v2().v;
+    int prevCommitted = eng.laneLorCv_[v][el][SequencerEngine::LOR_LEN];
+    std::vector<int> commitSteps;
+    for (int t = 0; t < 40; ++t) {
+        std::vector<int> d3 = {(t % 7) + 1, 0, 0};        // a per-step-varying pend
+        eng.pushLaneLorCvPoly(v2(), SequencerEngine::PL_REST, d3.data());
+        eng.advancePlayhead(1, nullptr);
+        const int committed = eng.laneLorCv_[v][el][SequencerEngine::LOR_LEN];
+        if (committed != prevCommitted) { commitSteps.push_back(t); prevCommitted = committed; }
+    }
+    std::snprintf(msg, sizeof msg, "P10: %zu commits in 40 steps (want 5 — one per 8-step frame cycle)",
+                  commitSteps.size());
+    CHECK(commitSteps.size() == 5, msg);
+    for (size_t i = 1; i < commitSteps.size(); ++i) {
+        std::snprintf(msg, sizeof msg, "P10: commits %d and %d ONE STEP APART (spacing %d, want 8) — the lane double-commits per cycle",
+                      commitSteps[i - 1], commitSteps[i], commitSteps[i] - commitSteps[i - 1]);
+        CHECK(commitSteps[i] - commitSteps[i - 1] == 8, msg);
+    }
+}
+
 int main() {
     std::printf("== test_lor_phrase_latch (the cadence latch suite: C1 + C1b) ==\n");
     p1_voice_row();
@@ -632,6 +672,7 @@ int main() {
     p7_row_invariants_on_composed();
     p8_edit_suspend();
     p9_preview_accessors();
+    p10_single_commit_per_frame_cycle();
     if (g_fail == 0) std::printf("all green\n");
     else std::printf("%d FAILED\n", g_fail);
     return g_fail ? 1 : 0;

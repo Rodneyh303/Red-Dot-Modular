@@ -162,6 +162,7 @@ void SequencerEngine::reset() {
     pos_.reset();   // (STEP 4-final) THE park: the played column starts at -1 (the pre-start state) + the default window
     prevPhaseAbsStep_ = 0;    // (slice 2b) the phase-sweep history starts fresh
     hasPhaseAbsStep_  = false;
+    laneEdgeSnapValid_ = false;   // (REMAINING BUGS 2) no stale edge snapshot across a reset
     startStep = 0;
     // (CC_PROMPT_16_TRIAGE bucket 2, option C's DO-NOW group) the transport default IS
     // the full ring: endStep/cachedLength derive from the cap (was the literal 15/16 —
@@ -977,6 +978,12 @@ void SequencerEngine::tickHolders(int transportMotion, int signMotion, const int
         // here is exactly (d_v − dMain) and k_v = d_v — the voice's OWN decision. A
         // hand-seeded or activation-zeroed offset jumps the diff — the same jump the
         // old f(t + offset) read saw. [0] ≡ 0 ALWAYS: k_0 = the transport motion.
+        // (REMAINING BUGS 2) the snapshot at this iteration's head — BEFORE this
+        // voice's edge check + frame advance below — so the derive's re-check
+        // evaluates the SAME pre-advance phase the head tests (each voice's phase is
+        // untouched until its own iteration, so per-voice == the whole-loop snap).
+        voiceFramePhaseEdgeSnap_[v] = voiceFramePhase_[v];
+        laneEdgeSnapValid_ = true;
         const int64_t kV = (int64_t)transportMotion + (advanceOffset_[v] - advOffSeen_[v]);
         advOffSeen_[v] = advanceOffset_[v];
         const int64_t t0EffNow = t0Now + advanceOffset_[v];   // this voice's raw walk coordinate
@@ -1118,8 +1125,18 @@ void SequencerEngine::deriveHolders(int signMotion, const int8_t* voiceMotion) {
     // (C1b Stage A) idempotent re-check under the same gate — the unlock edge was
     // already consumed at the advance head this step event, so no flush here.
     if (atPhraseEdgeC1 && lorLive_(false)) refreshVoiceLorLatches();
+    // (REMAINING BUGS 2 — the double commit) the lane-edge re-check must evaluate the
+    // SAME pre-advance phases the tickHolders head tested. When this derive follows an
+    // advance (the snapshot valid), the current voiceFramePhase_ is already the NEXT
+    // step's — re-testing it fired one step early, committing the lane at TWO ADJACENT
+    // steps per cycle. The anchor-only / offsets-only flows (no advance this event)
+    // keep testing the current phases — the re-check's original purpose. ONE-SHOT:
+    // consumed here so a later derive in the same event cannot double-fire either.
+    const bool edgeSnap = laneEdgeSnapValid_;
+    laneEdgeSnapValid_ = false;
     for (int v = 0; v < kVoiceSlots; ++v) {
-        const bool vLaneEdgeC1b = voiceLorIdentity(v) ? atPhraseEdgeC1 : (voiceFramePhase_[v] == 0);
+        const int framePhaseHere = edgeSnap ? voiceFramePhaseEdgeSnap_[v] : voiceFramePhase_[v];
+        const bool vLaneEdgeC1b = voiceLorIdentity(v) ? atPhraseEdgeC1 : (framePhaseHere == 0);
         if (vLaneEdgeC1b)
             refreshLaneLatchesForVoice(v, vLaneEdgeC1b, false);
     }
