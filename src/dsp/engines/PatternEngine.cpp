@@ -488,6 +488,7 @@ void PatternEngine::recomputeEffectiveRhythm() {
     const int   f    = (int)s;
     const float frac = s - (float)f;
     const int64_t N  = rhythmDrawCtr;
+    pruneDrawCache_(rhythmDrawCache_, N);   // bound the draw cache to the live window (before any cache ref)
     const float slew = rack::math::clamp(rhythmSlewLatched, -1.f, 1.f);
     const float r    = slewKnobToR(slew);
     constexpr std::size_t K = redDot::MovingAverageCopula::K;
@@ -605,6 +606,7 @@ void PatternEngine::recomputeEffectiveMelody() {
     const int   f    = (int)s;
     const float frac = s - (float)f;
     const int64_t N  = melodyDrawCtr;
+    pruneDrawCache_(melodyDrawCache_, N);   // bound the draw cache to the live window (before any cache ref)
     const float slew = rack::math::clamp(melodySlewLatched, -1.f, 1.f);
     const float r    = slewKnobToR(slew);
     constexpr std::size_t K = redDot::MovingAverageCopula::K;
@@ -691,6 +693,7 @@ void PatternEngine::recomputeEffectiveQmix() {
     const int   f    = (int)s;
     const float frac = s - (float)f;
     const int64_t N  = qmixDrawCtr;
+    pruneDrawCache_(qmixDrawCache_, N);   // bound the draw cache to the live window (before any cache ref)
     const float slew = rack::math::clamp(qmixSlewLatched, -1.f, 1.f);
     const float r    = slewKnobToR(slew);
     constexpr std::size_t K = redDot::MovingAverageCopula::K;
@@ -770,6 +773,7 @@ void PatternEngine::recomputeEffectiveRhythmForVoice(VoiceSlot voice) {
     const int   f = (int)s;
     const float frac = s - (float)f;
     const int64_t N  = rhythmDrawCtr;
+    pruneDrawCache_(rhythmDrawCache_, N);   // bound the draw cache to the live window (before any cache ref)
     const float slew = rack::math::clamp(rhythmSlewLatched, -1.f, 1.f);
     const float r = slewKnobToR(slew);
     if (r == 0.f) return;
@@ -824,6 +828,7 @@ void PatternEngine::recomputeEffectiveMelodyForVoice(VoiceSlot voice) {
     const int   f = (int)s;
     const float frac = s - (float)f;
     const int64_t N  = melodyDrawCtr;
+    pruneDrawCache_(melodyDrawCache_, N);   // bound the draw cache to the live window (before any cache ref)
     const float slew = rack::math::clamp(melodySlewLatched, -1.f, 1.f);
     const float r = slewKnobToR(slew);
     if (r == 0.f) return;
@@ -868,6 +873,7 @@ void PatternEngine::recomputeEffectiveQmixForVoice(VoiceSlot voice) {
     const int   f = (int)s;
     const float frac = s - (float)f;
     const int64_t N  = qmixDrawCtr;
+    pruneDrawCache_(qmixDrawCache_, N);   // bound the draw cache to the live window (before any cache ref)
     const float slew = rack::math::clamp(qmixSlewLatched, -1.f, 1.f);
     const float r = slewKnobToR(slew);
     if (r == 0.f) return;
