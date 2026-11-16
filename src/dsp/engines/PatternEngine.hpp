@@ -1193,6 +1193,26 @@ public:
     //   -1 → r = -R_MAX (max negative correlation = hocket/interlock)
     // r = slewKnob · R_MAX (direct, no inversion). See docs/design/SLEW_COPULA_PLAN.md.
     static constexpr int SCRUB_K = 6;   // the SCRUB span (Phase 2); NOT the copula K (64). Kept for the scrub callers.
+
+    // ── Draw-cache bound (DRAW_BUFFER_AND_PHILOX_EFFICIENCY.md: "prune the trailing edge beyond
+    // [N-j..N+j] to bound the cache (currently an unbounded map)"). The working set is the live
+    // window around the counter: K (MA/slew depth) + SCRUB_K (scrub span) + a small margin for the
+    // frac offset f. Kept SYMMETRIC (center ± span) so it is BIDIRECTIONAL-ready for reverse/phase
+    // mode (the window reaching N+j at a turnaround) — the forward half simply stays empty until
+    // reverse mode populates it. A miss just recomputes (the draw is a pure fn of pos), so pruning
+    // is BIT-IDENTICAL: eviction changes only WHAT is memoised, never a computed value. Does NOT
+    // build the maintained bidirectional buffer (turnaround-free extend-leading-edge) — that is the
+    // doc's separate reverse-mode perf item; this is only the memory bound.
+    static constexpr int64_t DRAW_CACHE_HALF_SPAN =
+        (int64_t)redDot::MovingAverageCopula::K + SCRUB_K + 16;
+    template <class Cache>
+    static void pruneDrawCache_(Cache& cache, int64_t center) {
+        const int64_t lo = center - DRAW_CACHE_HALF_SPAN, hi = center + DRAW_CACHE_HALF_SPAN;
+        for (auto it = cache.begin(); it != cache.end(); ) {
+            if (it->first < lo || it->first > hi) it = cache.erase(it);
+            else ++it;
+        }
+    }
     // r from a bipolar slew knob value: direct mapping, clamped to [-R_MAX, R_MAX]. Non-finite → 0.
     static inline float slewKnobToR(float slewKnob) {
         if (!(slewKnob >= -1.f && slewKnob <= 1.f)) return 0.f;
@@ -1203,6 +1223,7 @@ public:
     // bit-identity guarantee) — never routed through PhiInv/Phi. Full K-term recompute each call
     // (never a running sum); the cache memoises the per-draw PhiInv, which is the ~91% cost.
     inline void patternRhythmAt(int64_t pos, float slew, RhythmDraw& out) const {
+        pruneDrawCache_(rhythmDrawCache_, pos);   // bound the cache to the live window (before any cache ref is taken)
         const float r = slewKnobToR(slew);
         constexpr std::size_t K = redDot::MovingAverageCopula::K;
         if (r == 0.f) {                   // r == 0: raw draw at pos, bitwise (no PhiInv)
@@ -1236,6 +1257,7 @@ public:
         }
     }
     inline void patternMelodyAt(int64_t pos, float slew, MelodyDraw& out) const {
+        pruneDrawCache_(melodyDrawCache_, pos);
         const float r = slewKnobToR(slew);
         constexpr std::size_t K = redDot::MovingAverageCopula::K;
         if (r == 0.f) { const CachedMelodyDraw& e = cachedMelodyDraw(pos); out = e.draw; return; }
@@ -1257,6 +1279,7 @@ public:
     }
     // q-mix twin of patternMelodyAt — normal-space K-window copula over pos..pos-K+1.
     inline void patternQmixAt(int64_t pos, float slew, QmixDraw& out) const {
+        pruneDrawCache_(qmixDrawCache_, pos);
         const float r = slewKnobToR(slew);
         constexpr std::size_t K = redDot::MovingAverageCopula::K;
         if (r == 0.f) { const CachedQmixDraw& e = cachedQmixDraw(pos); out = e.draw; return; }
