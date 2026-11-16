@@ -140,6 +140,7 @@ int main() {
         eastLor[5 * 3 + 0] = 8; eastLor[5 * 3 + 1] = 20; eastLor[5 * 3 + 2] = 0;
         eastLocal[5] = 1.f; eastKind[5] = 1.f; eastBits[5] = ALL;
         pushLor(); pushMask();
+        eng.refreshVoiceLorLatches();   // (C1) the LOR change accepts at the phrase edge — the static gate check reads the accepted state
         bool ok = true;
         for (int s = 0; s < 32; ++s)
             ok = ok && passes(5, s) == (s >= 20 && s < 28);
@@ -147,11 +148,13 @@ int main() {
         // across the seam; the real end cuts).
         eastLor[5 * 3 + 0] = 4; eastLor[5 * 3 + 1] = 30;
         pushLor(); pushMask();
+        eng.refreshVoiceLorLatches();   // (C1) accept at the edge
         for (int s = 0; s < 32; ++s)
             ok = ok && passes(5, s) == (s >= 30 || s < 2);
         // the FULL window == no gate (the identity).
         eastLor[5 * 3 + 0] = 32; eastLor[5 * 3 + 1] = 0;
         pushLor(); pushMask();
+        eng.refreshVoiceLorLatches();   // (C1) accept at the edge
         for (int s = 0; s < 32; ++s)
             ok = ok && passes(5, s);
         check(ok, "4: abs1 + a non-full LOR — silent outside [O, O+L), the wrapped "

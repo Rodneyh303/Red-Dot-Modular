@@ -261,6 +261,12 @@ void SequencerEngine::reset() {
     // advancePlayhead derives them from the phases bit-identically to the old
     // f(counter) evaluation at t=1).
     anchorTransport(0);
+    // (C1) the latches sample the freshly seeded stores — the reset state IS the
+    // first frame's latch (the anchor above already ran the phrase-edge refresh
+    // via the park law; this pins it against any seed-order change).
+    refreshVoiceLorLatches();
+    for (int v = 0; v < kVoiceSlots; ++v) refreshLaneLatchesForVoice(v, true, true);
+    lorPrevLocked_ = locked;   // (C1b Stage A) the tracker seeds with the reset state
 }
 
 bool SequencerEngine::isStepInWindow(int idx) const {
@@ -663,19 +669,75 @@ int SequencerEngine::walkPeriod(LaneDir d, int len) {
     return L;   // Forward / Reverse: the lane's own length IS the period
 }
 
+// (CC_PROMPT_CADENCE_C1B STAGE B) THE CV COMMITS — the only writers of the
+// committed CV deltas, called at the Stage A gates (the advance head + the derive
+// head + the anchor + reset). The base is LIVE (the managers write it through the
+// stores); what the boundary freezes is the CV CONTRIBUTION: the pending deltas
+// (the manager's last push) become the committed sample. Under lock the pending
+// may churn — the committed holds until the gate opens (the Stage A pend, CV-ward).
+void SequencerEngine::refreshVoiceLorLatches() {
+    // (C1b Stage C) the suspended scopes HOLD their committed sample (the pending
+    // churns underneath): the Macro row's dragged items, and the ONE edited voice's
+    // dragged items. On release the suspend clears and the next boundary resumes.
+    for (int item = 0; item < LOR_ITEMS; ++item)
+        if (!lorCvSuspendMacro_[item]) voiceLorCvMacro_[item] = voiceLorCvPendMacro_[item];
+    for (int v = 0; v < kVoiceSlots; ++v)
+        for (int item = 0; item < LOR_ITEMS; ++item)
+            if (!(v == lorCvSuspendVoice_ && lorCvSuspendVoiceItems_[item]))
+                voiceLorCv_[v][item] = voiceLorCvPend_[v][item];
+}
+
+void SequencerEngine::refreshLaneLatchesForVoice(int v, bool atPhraseEdge, bool unlockNow) {
+    for (int el = 0; el < dotModular::NUM_STRANDS; ++el) {
+        // (C1b Stage A) per-lane scope gate: the lane's axis (MEL/OCT melody, the
+        // rest rhythm) must be live at the commit edge — else the lane's committed
+        // CV HOLDS (the pend; the pending churns underneath, the effective read of
+        // the CV contribution is frozen).
+        if (!lorLaneCommitGate_(el, atPhraseEdge, unlockNow)) continue;
+        for (int item = 0; item < LOR_ITEMS; ++item)
+            if (!(v == lorCvSuspendVoice_ && el == lorCvSuspendLane_ && lorCvSuspendLaneItems_[item]))
+                laneLorCv_[v][el][item] = laneLorCvPend_[v][el][item];
+    }
+}
+
+// (C1b Stage C) the suspend push — the manager's per-block snapshot. Absent scopes
+// (voiceIdx/laneIdx < 0) clear; present scopes set exactly the dragged items.
+void SequencerEngine::setLorCvSuspend(const bool* macro3, int voiceIdx, const bool* voice3, int laneIdx, const bool* lane3) {
+    for (int item = 0; item < LOR_ITEMS; ++item) lorCvSuspendMacro_[item] = macro3[item];
+    lorCvSuspendVoice_ = voiceIdx;
+    for (int item = 0; item < LOR_ITEMS; ++item) lorCvSuspendVoiceItems_[item] = (voiceIdx >= 0) ? voice3[item] : false;
+    lorCvSuspendLane_ = laneIdx;
+    for (int item = 0; item < LOR_ITEMS; ++item) lorCvSuspendLaneItems_[item] = (laneIdx >= 0) ? lane3[item] : false;
+}
+
+// (C1b Stage B) the CV-delta pushes — the PENDING side. The manager computes
+// delta = combined − base_only (the SAME fold law resolved twice, the same
+// rounding) and pushes per control block; the engine never sees a pre-combined
+// value. The pending overwrites each push (last-writer-wins per block).
+void SequencerEngine::pushVoiceLorCv(const int* macroDelta3, const int* eastDelta) {
+    for (int item = 0; item < LOR_ITEMS; ++item) voiceLorCvPendMacro_[item] = macroDelta3[item];
+    for (int v = 0; v < kVoiceSlots; ++v)
+        for (int item = 0; item < LOR_ITEMS; ++item)
+            voiceLorCvPend_[v][item] = eastDelta[v * LOR_ITEMS + item];
+}
+
+void SequencerEngine::pushLaneLorCvPoly(dotModular::VoiceSlot bank, int lane, const int* delta3) {
+    if (bank.v < 0 || bank.v >= kVoiceSlots) return;
+    const int el = editorLane(lane);
+    for (int item = 0; item < LOR_ITEMS; ++item)
+        laneLorCvPend_[bank.v][el][item] = delta3[item];
+}
+
 // THIS voice's LOR length for a strand (the walk's wrap point) — the same table the
 // old recomp carried as a lambda in two places; one mechanism now.
+// (C0 FAMILY 2) the length reads through the lane chokepoint (effectiveLaneLor) —
+// the same value each polyLenE/polyLOR case returned; the invalid-strand fallback
+// stays here (the full phrase), outside the accessor.
 int SequencerEngine::polyStrandLenOf(int v, int strand) const {
-    switch (strand) {
-        case dotModular::STRAND_MELODY:    return polyLenE(VoiceResolver::slot(v + 1), LaneId{PL_MELODY});
-        case dotModular::STRAND_OCTAVE:    return polyLenE(VoiceResolver::slot(v + 1), LaneId{PL_OCTAVE});
-        case dotModular::STRAND_QMIX:      return polyLenE(VoiceResolver::slot(v + 1), LaneId{PL_QMIX});
-        case dotModular::STRAND_RHYTHM:    return polyLenE(VoiceResolver::slot(v + 1), LaneId{PL_REST});
-        case dotModular::STRAND_ACCENT:    return polyLenE(VoiceResolver::slot(v + 1), LaneId{PL_ACCENT});
-        case dotModular::STRAND_VARIATION: return polyLOR(VoiceResolver::slot(v + 1), LaneId{EDITOR_LANE_VARIATION}, LOR_LEN);
-        case dotModular::STRAND_LEGATO:    return polyLOR(VoiceResolver::slot(v + 1), LaneId{EDITOR_LANE_LEGATO}, LOR_LEN);
-    }
-    return kPatternLengthCap;   // (CC_PROMPT_16_TRIAGE bucket 2) the invalid-strand fallback window = the full phrase (was the literal 16)
+    if (strand < 0 || strand >= dotModular::NUM_STRANDS) return kPatternLengthCap;   // (CC_PROMPT_16_TRIAGE bucket 2) the invalid-strand fallback window = the full phrase (was the literal 16)
+    int L, O, R; LaneDir d;
+    effectiveLaneLor(VoiceResolver::slot(v + 1), strandLaneId(strand), L, O, R, d);
+    return L;
 }
 
 // The voice-frame walk at an effective tick (the A6 row law, UNIFIED ADDRESSING
@@ -755,21 +817,37 @@ int64_t SequencerEngine::voiceFrameTickAt(int v, int64_t effTick1based,
 // Mode E phase snap at the phase-derived tick, Monsoon's Beat-1 hard reset at 0.
 void SequencerEngine::anchorTransport(int64_t tick1based) {
     transportTick_ = tick1based;   // THE WRITE SITE: the anchor IS the transport's own position update
+    // (C1) the anchor lands the phrase entry when it points at the window's start —
+    // the voice-family edge fires there (the re-entry law: the latch samples at the
+    // re-anchor, so the seeds below read the freshly latched rows). The lane latches
+    // re-check in the next derive's edge loop.
+    // (C1b Stage A) the re-entry commit is scope-gated too (no unlock flush here —
+    // that belongs to the step event's advance head).
+    if (pos_.phrasePos() == 0 && lorLive_(false)) refreshVoiceLorLatches();
     // (SLICE 5) the globalWalk_ seed line is DELETED — pos_.phaseClock(transportTick_)
     // yields wrapMod(tick−1, len_) on every read: the same value this seeded.
     const int64_t t0 = tick1based - 1;
     {
-        const int rLen = std::max(1, lor(dotModular::STRAND_RHYTHM, LOR_LEN));
+        // (C0 FAMILY 2) the global walk's window reads through the mono lane chokepoint.
+        int rl, ro, rr; LaneDir rd;
+        effectiveMonoLaneLor(dotModular::STRAND_RHYTHM, rl, ro, rr, rd);
+        const int rLen = std::max(1, rl);
         globalT0Phase_ = wrapMod(t0, rLen);
         globalT0Key_   = rLen;
     }
     for (int s = 0; s < dotModular::NUM_STRANDS; ++s) {
-        const int len = std::max(1, strandLen(s));
-        lanePhase_[s] = wrapMod(t0, walkPeriod(laneDir_[s], len));
-        laneKey_[s]   = walkKeyOf(laneDir_[s], len);
-        const int mlen = std::max(1, (s < dotModular::POLY_LANE_COUNT) ? macroLOR_[s] : strandLen(s));
-        macroLanePhase_[s] = wrapMod(t0, walkPeriod(macroLaneDir_[s], mlen));
-        macroLaneKey_[s]   = walkKeyOf(macroLaneDir_[s], mlen);
+        // (C0 FAMILY 2) the mono lanes' seeds read the mono chokepoint, the Macro
+        // lanes' the macro chokepoint — the same len/dir values the raw reads gave.
+        int lm, lom, rm; LaneDir dm;
+        effectiveMonoLaneLor(s, lm, lom, rm, dm);
+        const int len = std::max(1, lm);
+        lanePhase_[s] = wrapMod(t0, walkPeriod(dm, len));
+        laneKey_[s]   = walkKeyOf(dm, len);
+        int lx, lox, rx; LaneDir dx;
+        effectiveMacroLaneLor(s, lx, lox, rx, dx);
+        const int mlen = std::max(1, lx);
+        macroLanePhase_[s] = wrapMod(t0, walkPeriod(dx, mlen));
+        macroLaneKey_[s]   = walkKeyOf(dx, mlen);
     }
     // ── (CC_FIX_MACRO_LANE_SEED Part 2) the MACRO ROW's frame phase, seeded at the
     //    anchor like every mapped voice row's (the raw transport congruence under the
@@ -779,11 +857,15 @@ void SequencerEngine::anchorTransport(int64_t tick1based) {
     //    is not seeded — the walk-key re-anchor law covers a mid-run identity→mapped
     //    flip (the never-seeded key ≠ the new key → the closed form re-seeds) ──
     if (!macroRowIdentity()) {
-        int mL = macroVoiceLor_[LOR_LEN];
+        // (C0 FAMILY 1) the seed reads the row through effectiveMacroRowLor — the
+        // same values the raw macroVoiceLor_/macroVoiceLorDir_ reads returned.
+        int ML, MO, MR; LaneDir md;
+        effectiveMacroRowLor(ML, MO, MR, md);
+        int mL = ML;
         if (mL < 1) mL = 1;
         if (maskMacroKind_ == MASK_DYNAMIC) mL = kMaskRing;   // the macro row's abs1: the full phrase
-        macroFramePhase_ = wrapMod(t0, walkPeriod(macroVoiceLorDir_, mL));
-        macroFrameKey_   = walkKeyOf(macroVoiceLorDir_, mL);
+        macroFramePhase_ = wrapMod(t0, walkPeriod(md, mL));
+        macroFrameKey_   = walkKeyOf(md, mL);
     }
     for (int v = 0; v < kVoiceSlots; ++v) {
         // The voice's RAW effective clock: tEffV = tick + offset (the old bridge
@@ -801,9 +883,14 @@ void SequencerEngine::anchorTransport(int64_t tick1based) {
             frameKey_[v] = walkKeyOf(vd, L);
         }
         for (int s = 0; s < dotModular::NUM_STRANDS; ++s) {
-            const int vlen = std::max(1, polyStrandLenOf(v, s));
-            lanePhaseV_[v][s] = wrapMod(tEffV - 1, walkPeriod(laneDirV_[v][s], vlen));
-            laneKeyV_[v][s]   = walkKeyOf(laneDirV_[v][s], vlen);
+            // (C0 FAMILY 2) the per-voice lane seeds read the poly chokepoint — the
+            // same len/dir polyStrandLenOf/laneDirV_ returned (polyStrandLenOf itself
+            // now routes through the same accessor).
+            int lv, lov, rv; LaneDir dv;
+            effectiveLaneLor(VoiceResolver::slot(v + 1), strandLaneId(s), lv, lov, rv, dv);
+            const int vlen = std::max(1, lv);
+            lanePhaseV_[v][s] = wrapMod(tEffV - 1, walkPeriod(dv, vlen));
+            laneKeyV_[v][s]   = walkKeyOf(dv, vlen);
         }
         advOffSeen_[v] = advanceOffset_[v];   // the transport's shadow syncs at the anchor
     }
@@ -820,6 +907,17 @@ void SequencerEngine::tickHolders(int transportMotion, int signMotion, const int
     // The offsets-only refresh (motion 0) leaves it verbatim.
     transportTick_ += transportMotion;
     const int64_t t0Now = transportTick_ - 1;   // the post-event raw t0 (the re-anchor coordinate)
+    // (C1) THE VOICE-FAMILY LATCH EDGE — the GLOBAL phrase, re-read LIVE each
+    // advance (the 8→6 trace: the boundary moves with the parent's length). The
+    // holder reads below (the Macro row's frame, the voice frames) consume the
+    // latched rows for this step; the lane latches re-check in the derive.
+    // (C1b Stage A) the edge is the SHARED boundary-commit now: the unlock edge is
+    // consumed here ONCE per step event (the direction template's shadow law), and
+    // the commit is gated by the axis's ScopeBit (lorLive_ — the liveNow(Control::Lor)
+    // twin). Under lock the latch pends; at the unlock edge it flushes.
+    const bool lorUnlockNowC1b = (lorPrevLocked_ && !locked);
+    lorPrevLocked_ = locked;
+    if (lorCommitGate_(false, pos_.phrasePos() == 0, lorUnlockNowC1b)) refreshVoiceLorLatches();
     // (SLICE 5) the globalWalk_ increment line is DELETED — the congruence it maintained
     // (≡ (t−1) mod len) is pos_.phaseClock's closed form, read on demand.
     // ── the raw-clock congruences (config-independent; the RE-ANCHOR LAW on a walk-key
@@ -828,18 +926,24 @@ void SequencerEngine::tickHolders(int transportMotion, int signMotion, const int
     //    change — f(t, newParams) — from the transport's own position and continues
     //    locally from there, bit-identical to the old recompute in every case) ──
     {
-        const int rLen = std::max(1, lor(dotModular::STRAND_RHYTHM, LOR_LEN));
+        // (C0 FAMILY 2) the global walk's window reads through the mono lane chokepoint.
+        int rl, ro, rr; LaneDir rd;
+        effectiveMonoLaneLor(dotModular::STRAND_RHYTHM, rl, ro, rr, rd);
+        const int rLen = std::max(1, rl);
         globalT0Phase_ = (globalT0Key_ != rLen)
             ? wrapMod(t0Now, rLen)
             : wrapMod((int64_t)globalT0Phase_ + transportMotion, rLen);
         globalT0Key_ = rLen;
     }
     for (int s = 0; s < dotModular::NUM_STRANDS; ++s) {
-        const int mlen = std::max(1, (s < dotModular::POLY_LANE_COUNT) ? macroLOR_[s] : strandLen(s));
-        const int key = walkKeyOf(macroLaneDir_[s], mlen);
+        // (C0 FAMILY 2) the Macro lanes' advance reads the macro chokepoint.
+        int lx, lox, rx; LaneDir dx;
+        effectiveMacroLaneLor(s, lx, lox, rx, dx);
+        const int mlen = std::max(1, lx);
+        const int key = walkKeyOf(dx, mlen);
         macroLanePhase_[s] = (macroLaneKey_[s] != key)
-            ? wrapMod(t0Now, walkPeriod(macroLaneDir_[s], mlen))
-            : wrapMod((int64_t)macroLanePhase_[s] + transportMotion, walkPeriod(macroLaneDir_[s], mlen));
+            ? wrapMod(t0Now, walkPeriod(dx, mlen))
+            : wrapMod((int64_t)macroLanePhase_[s] + transportMotion, walkPeriod(dx, mlen));
         macroLaneKey_[s] = key;
     }
     // ── (CC_FIX_MACRO_LANE_SEED Part 2) the MACRO ROW's frame phase — the mapped row's
@@ -847,16 +951,22 @@ void SequencerEngine::tickHolders(int transportMotion, int signMotion, const int
     // voice rows' voiceFramePhase_ maintenance above, for the ONE shared row (the
     // follower voices' rows resolve to it; the Macro lanes need it independently of
     // any voice being live). The abs1 row reads the FULL PHRASE (the ring), same law.
-    if (macroVoiceLor_[LOR_LEN] != kPatternLengthCap || macroVoiceLor_[LOR_OFF] != 0
-        || macroVoiceLor_[LOR_ROT] != 0 || macroVoiceLorDir_ != LaneDir::Forward) {
-        int mL = macroVoiceLor_[LOR_LEN];
-        if (mL < 1) mL = 1;
-        if (maskMacroKind_ == MASK_DYNAMIC) mL = kMaskRing;   // the macro row's abs1: the full phrase
-        const int key = walkKeyOf(macroVoiceLorDir_, mL);
-        macroFramePhase_ = (macroFrameKey_ != key)
-            ? wrapMod(t0Now, walkPeriod(macroVoiceLorDir_, mL))
-            : wrapMod((int64_t)macroFramePhase_ + transportMotion, walkPeriod(macroVoiceLorDir_, mL));
-        macroFrameKey_ = key;
+    // (C0 FAMILY 1) the identity guard + the walk reads go through
+    // effectiveMacroRowLor — the guard is the same four compares (the accessor's
+    // outputs), the walk values the same the raw reads returned.
+    {
+        int ML, MO, MR; LaneDir md;
+        effectiveMacroRowLor(ML, MO, MR, md);
+        if (ML != kPatternLengthCap || MO != 0 || MR != 0 || md != LaneDir::Forward) {
+            int mL = ML;
+            if (mL < 1) mL = 1;
+            if (maskMacroKind_ == MASK_DYNAMIC) mL = kMaskRing;   // the macro row's abs1: the full phrase
+            const int key = walkKeyOf(md, mL);
+            macroFramePhase_ = (macroFrameKey_ != key)
+                ? wrapMod(t0Now, walkPeriod(md, mL))
+                : wrapMod((int64_t)macroFramePhase_ + transportMotion, walkPeriod(md, mL));
+            macroFrameKey_ = key;
+        }
     }
     // ── the voice frames + their lane phases (the RAW effective-clock deltas) ──
     for (int v = 0; v < kVoiceSlots; ++v) {
@@ -868,6 +978,18 @@ void SequencerEngine::tickHolders(int transportMotion, int signMotion, const int
         const int64_t kV = (int64_t)transportMotion + (advanceOffset_[v] - advOffSeen_[v]);
         advOffSeen_[v] = advanceOffset_[v];
         const int64_t t0EffNow = t0Now + advanceOffset_[v];   // this voice's raw walk coordinate
+        // (C1) THE VOICE-FRAME LATCH EDGE for this voice's lane rows — checked right
+        // AFTER its frame advance (the landed entry) and BEFORE its lane advances
+        // consume the row: a MAPPED row at its holder entry (phase==0); an IDENTITY
+        // row rides the global phrase edge (its pass-through cycle IS the phrase).
+        // Refreshing here means the lane advances below re-bound at the edge step
+        // itself — the re-anchor law fires with the key change, no transition step.
+        // (C1b Stage A) the per-lane commit gate lives inside the refresh (each
+        // lane's axis); the unlock flush reaches every voice regardless of its
+        // frame edge.
+        const bool vLaneEdgeC1b = voiceLorIdentity(v) ? (pos_.phrasePos() == 0) : (voiceFramePhase_[v] == 0);
+        if (vLaneEdgeC1b || lorUnlockNowC1b)
+            refreshLaneLatchesForVoice(v, vLaneEdgeC1b, lorUnlockNowC1b);
         if (!voiceLorIdentity(v)) {
             // Mapped row: the frame phase advances by the RAW delta too (its congruence
             // is the raw effective clock's), and the mapped frame's read path derives
@@ -883,22 +1005,29 @@ void SequencerEngine::tickHolders(int transportMotion, int signMotion, const int
             frameKey_[v] = key;
         }
         for (int s = 0; s < dotModular::NUM_STRANDS; ++s) {
-            const int vlen = std::max(1, polyStrandLenOf(v, s));
-            const int key = walkKeyOf(laneDirV_[v][s], vlen);
+            // (C0 FAMILY 2) the per-voice lane advance reads the poly chokepoint —
+            // the same len/dir polyStrandLenOf/laneDirV_ returned.
+            int lv, lov, rv; LaneDir dv;
+            effectiveLaneLor(VoiceResolver::slot(v + 1), strandLaneId(s), lv, lov, rv, dv);
+            const int vlen = std::max(1, lv);
+            const int key = walkKeyOf(dv, vlen);
             lanePhaseV_[v][s] = (laneKeyV_[v][s] != key)
-                ? wrapMod(t0EffNow, walkPeriod(laneDirV_[v][s], vlen))
-                : wrapMod((int64_t)lanePhaseV_[v][s] + kV, walkPeriod(laneDirV_[v][s], vlen));
+                ? wrapMod(t0EffNow, walkPeriod(dv, vlen))
+                : wrapMod((int64_t)lanePhaseV_[v][s] + kV, walkPeriod(dv, vlen));
             laneKeyV_[v][s] = key;
         }
     }
     // ── the MONO lane phases (V1's frame is their driver; k_0 = the transport motion:
     //     the offsets never move on slot 0 — the mono slot IS the transport) ──
     for (int s = 0; s < dotModular::NUM_STRANDS; ++s) {
-        const int len = std::max(1, strandLen(s));
-        const int key = walkKeyOf(laneDir_[s], len);
+        // (C0 FAMILY 2) the mono lane advance reads the mono chokepoint.
+        int lm, lom, rm; LaneDir dm;
+        effectiveMonoLaneLor(s, lm, lom, rm, dm);
+        const int len = std::max(1, lm);
+        const int key = walkKeyOf(dm, len);
         lanePhase_[s] = (laneKey_[s] != key)
-            ? wrapMod(t0Now, walkPeriod(laneDir_[s], len))
-            : wrapMod((int64_t)lanePhase_[s] + transportMotion, walkPeriod(laneDir_[s], len));
+            ? wrapMod(t0Now, walkPeriod(dm, len))
+            : wrapMod((int64_t)lanePhase_[s] + transportMotion, walkPeriod(dm, len));
         laneKey_[s] = key;
     }
     // ── derive every read cache from the (new) holders ──
@@ -921,19 +1050,30 @@ SequencerEngine::LaneSeed SequencerEngine::laneSeed(LaneWin win, int l, int v, b
         // macroLOR_ is EDITOR-lane indexed for the POLY lanes (0..4 = MEL/OCT/QMIX/REST/
         // ACC); VAR/LEG (5/6) have no global LOR, so they use the mono strandLen
         // (POLY_LANE_COUNT covers every poly lane — advancePlayhead's old note).
-        s.len      = std::max(1, (l < dotModular::POLY_LANE_COUNT) ? macroLOR_[l] : strandLen(l));
+        // (C0 FAMILY 2) the length reads through the macro lane chokepoint (the same
+        // value the conditional macroLOR_/strandLen read returned).
+        int lx, lox, rx; LaneDir dx;
+        effectiveMacroLaneLor(l, lx, lox, rx, dx);
+        s.len      = std::max(1, lx);
         phase      = (int64_t)macroLanePhase_[l];
         frameValue = macroFrameT0;
         identity   = macroRowIdentity();
         advOff     = 0;   // the macro frame IS the transport — no advance offset
     } else if (win == LaneWin::Mono) {
-        s.len      = std::max(1, strandLen(l));   // the mono strand length (the mono tick)
+        // (C0 FAMILY 2) the mono strand length reads through the mono lane chokepoint.
+        int lm, lom, rm; LaneDir dm;
+        effectiveMonoLaneLor(l, lm, lom, rm, dm);
+        s.len      = std::max(1, lm);   // the mono strand length (the mono tick)
         phase      = (int64_t)lanePhase_[l];
         frameValue = (int64_t)frameT0[0];
         identity   = voiceLorIdentity(0);
         advOff     = advanceOffset_[0];
     } else {
-        s.len      = std::max(1, polyStrandLenOf(v, l));   // THIS voice's LOR length
+        // (C0 FAMILY 2) the per-voice strand length reads through the poly lane
+        // chokepoint (polyStrandLenOf itself routes through the same accessor).
+        int lv, lov, rv; LaneDir dv;
+        effectiveLaneLor(VoiceResolver::slot(v + 1), strandLaneId(l), lv, lov, rv, dv);
+        s.len      = std::max(1, lv);   // THIS voice's LOR length
         phase      = (int64_t)lanePhaseV_[v][l];
         frameValue = (int64_t)frameT0[v];
         identity   = voiceLorIdentity(v);
@@ -975,6 +1115,23 @@ static inline int frameReadCell(int64_t frameValue, int windowOffset, int ring) 
 // the warm phases wait for a pass-through round-trip. Either representative yields the
 // exact values the old f(counter) recompute produced at the same instants.
 void SequencerEngine::deriveHolders(int signMotion, const int8_t* voiceMotion) {
+    // (C1) THE LATCH EDGES, re-checked per derive (covers the anchor-only and the
+    // offsets-only refresh flows): the global phrase edge for the voice family
+    // (idempotent — the advance head already sampled it this step), and the
+    // VOICE-FRAME edge per voice for the lane latches — a MAPPED row's holder
+    // phase AT its entry; an IDENTITY row's pass-through cycle IS the global
+    // phrase, so its lanes latch with the phrase edge. The refinement's negative
+    // holds: a mapped voice's lanes do NOT latch at the phrase edge unless its
+    // own frame is at its entry.
+    const bool atPhraseEdgeC1 = (pos_.phrasePos() == 0);
+    // (C1b Stage A) idempotent re-check under the same gate — the unlock edge was
+    // already consumed at the advance head this step event, so no flush here.
+    if (atPhraseEdgeC1 && lorLive_(false)) refreshVoiceLorLatches();
+    for (int v = 0; v < kVoiceSlots; ++v) {
+        const bool vLaneEdgeC1b = voiceLorIdentity(v) ? atPhraseEdgeC1 : (voiceFramePhase_[v] == 0);
+        if (vLaneEdgeC1b)
+            refreshLaneLatchesForVoice(v, vLaneEdgeC1b, false);
+    }
     const int  lenG = std::max(1, cachedLength);
     const int  offG = cachedOffset;
     // (Rodney's correction) the default-pattern pass-through is the POLYMETER LAW —
@@ -1001,10 +1158,13 @@ void SequencerEngine::deriveHolders(int signMotion, const int8_t* voiceMotion) {
         if (gd > 0)      macroFrameSign_ = +1;
         else if (gd < 0) macroFrameSign_ = -1;   // 0 = held repeat: keep the previous cue
     } else {
-        int L = macroVoiceLor_[LOR_LEN];
-        const int O = macroVoiceLor_[LOR_OFF];
-        const int R = macroVoiceLor_[LOR_ROT];
-        const LaneDir md = macroVoiceLorDir_;
+        // (C0 FAMILY 1) the mapped arm reads the row through effectiveMacroRowLor —
+        // the same L/O/R/dir the raw macroVoiceLor_/macroVoiceLorDir_ reads returned.
+        int ML, MO, MR; LaneDir md;
+        effectiveMacroRowLor(ML, MO, MR, md);
+        int L = ML;
+        const int O = MO;
+        const int R = MR;
         if (L < 1) L = 1;
         // The base-mode split (the voice rows' law, one tier up): ABS1 walks the FULL
         // PHRASE (the ring) with rho = (R−O) over the globally-wrapped driver; CYCLE
@@ -1180,11 +1340,17 @@ void SequencerEngine::deriveHolders(int signMotion, const int8_t* voiceMotion) {
     for (int l = 0; l < dotModular::NUM_STRANDS; ++l) {
         // The MONO lanes hang under V1's frame (LaneWin::Mono: strandLen + lanePhase_,
         // the row's identity/mapped branch inside the helper).
+        // (C0 FAMILY 2) the walk directions ride the lane chokepoints too — the same
+        // laneDir_/laneDirV_/macroLaneDir_ values the raw reads returned.
         const LaneSeed mono = laneSeed(LaneWin::Mono, l, 0, passG, wG, offG, lenG, frameT0, macroFrameT0);
-        laneRecomp(laneDir_[l], mono.len, mono.t0, frameStep[0], laneTick_[l], laneSign_[l]);
+        int lm, lom, rm; LaneDir dm;
+        effectiveMonoLaneLor(l, lm, lom, rm, dm);
+        laneRecomp(dm, mono.len, mono.t0, frameStep[0], laneTick_[l], laneSign_[l]);
         for (int v = 1; v <= numPolyVoices; ++v) {
             const LaneSeed vs = laneSeed(LaneWin::Poly, l, v, passG, wG, offG, lenG, frameT0, macroFrameT0);
-            laneRecomp(laneDirV_[v][l], vs.len, vs.t0, frameStep[v], laneTickV_[v][l], laneSignV_[v][l]);
+            int lv, lov, rv; LaneDir dv;
+            effectiveLaneLor(VoiceResolver::slot(v + 1), strandLaneId(l), lv, lov, rv, dv);
+            laneRecomp(dv, vs.len, vs.t0, frameStep[v], laneTickV_[v][l], laneSignV_[v][l]);
         }
     }
     for (int l = 0; l < dotModular::NUM_STRANDS; ++l) {
@@ -1192,7 +1358,9 @@ void SequencerEngine::deriveHolders(int signMotion, const int8_t* voiceMotion) {
         // for the poly lanes / the mono strandLen for VAR+LEG, the ROW's identity/
         // mapped branch inside the helper — the mapped arm seeds the macro frame value).
         const LaneSeed ms = laneSeed(LaneWin::Macro, l, 0, passG, wG, offG, lenG, frameT0, macroFrameT0);
-        laneRecomp(macroLaneDir_[l], ms.len, ms.t0, signMotion, macroLaneTick_[l], macroLaneSign_[l]);
+        int lx, lox, rx; LaneDir dx;
+        effectiveMacroLaneLor(l, lx, lox, rx, dx);
+        laneRecomp(dx, ms.len, ms.t0, signMotion, macroLaneTick_[l], macroLaneSign_[l]);
     }
 }
 
@@ -1380,11 +1548,14 @@ float SequencerEngine::getStepLightBrightness(int lightIdx) const {
         // walk coordinate (matching laneTick_, which laneTickFor returns 0-based).
         // getStrandIdx mods by the same len below, so this is congruent, negative-safe,
         // read-identical.
-        const int rLen = std::max(1, lor(dotModular::STRAND_RHYTHM, LOR_LEN));
+        // (C0 FAMILY 2) the light walk's window reads through the mono lane chokepoint.
+        int rl, ro, rr; LaneDir rd;
+        effectiveMonoLaneLor(dotModular::STRAND_RHYTHM, rl, ro, rr, rd);
+        const int rLen = std::max(1, rl);
         const int64_t tick64 = (int64_t)globalT0Phase_ + cachedOffset - relCurrent + relLight;
         const int tickForLight = (int)(((tick64 % rLen) + rLen) % rLen);
 
-        int dnaIdx = getStrandIdx(tickForLight, lor(dotModular::STRAND_RHYTHM,LOR_LEN), lor(dotModular::STRAND_RHYTHM,LOR_OFF), lor(dotModular::STRAND_RHYTHM,LOR_ROT));
+        int dnaIdx = getStrandIdx(tickForLight, rl, ro, rr);
         // (ITEM 1) The step LED's "is this a note" — the corrected LIVE prediction
         // (POLARITY_TABLE §3, Rodney-confirmed): the COMPLEMENT of the audio's rest
         // law (`r_rest < restTh` → rest), i.e. `draw >= restTh` is a note — evaluated
@@ -2366,9 +2537,17 @@ void SequencerEngine::executePolyVoice(VoiceSlot voiceIdx, const PatternInput& i
         // Each strand indexes with ITS OWN lane LOR (rest/melody/octave).
         // Per-voice tick (inherits mono's per-lane direction) so a reversed mono lane reverses
         // this voice's read on the same lane.
-        int restIdx = getStrandIdx(polyLaneTick(voiceIdx, LaneId{PL_REST}),   polyLenE(voiceIdx, LaneId{PL_REST}),   polyOffE(voiceIdx, LaneId{PL_REST}),   polyRotE(voiceIdx, LaneId{PL_REST}));
-        int melIdx  = getStrandIdx(polyLaneTick(voiceIdx, LaneId{PL_MELODY}), polyLenE(voiceIdx, LaneId{PL_MELODY}), polyOffE(voiceIdx, LaneId{PL_MELODY}), polyRotE(voiceIdx, LaneId{PL_MELODY}));
-        int octIdx  = getStrandIdx(polyLaneTick(voiceIdx, LaneId{PL_OCTAVE}), polyLenE(voiceIdx, LaneId{PL_OCTAVE}), polyOffE(voiceIdx, LaneId{PL_OCTAVE}), polyRotE(voiceIdx, LaneId{PL_OCTAVE}));
+        // (C0 FAMILY 2) each lane's L/O/R feeds come from the lane chokepoint — the
+        // same values the raw polyLenE/polyOffE/polyRotE reads returned.
+        int rstL, rstO, rstR; LaneDir rstD;
+        effectiveLaneLor(voiceIdx, LaneId{PL_REST}, rstL, rstO, rstR, rstD);
+        int melL, melO, melR; LaneDir melD;
+        effectiveLaneLor(voiceIdx, LaneId{PL_MELODY}, melL, melO, melR, melD);
+        int octL, octO, octR; LaneDir octD;
+        effectiveLaneLor(voiceIdx, LaneId{PL_OCTAVE}, octL, octO, octR, octD);
+        int restIdx = getStrandIdx(polyLaneTick(voiceIdx, LaneId{PL_REST}),   rstL, rstO, rstR);
+        int melIdx  = getStrandIdx(polyLaneTick(voiceIdx, LaneId{PL_MELODY}), melL, melO, melR);
+        int octIdx  = getStrandIdx(polyLaneTick(voiceIdx, LaneId{PL_OCTAVE}), octL, octO, octR);
         refreshPolyRandomCell(voiceIdx, LaneId{PL_REST}, restIdx);
         float r_rest = pe.warpRow(voiceIdx, LaneId{PL_REST})[restIdx];
 
@@ -2435,7 +2614,10 @@ void SequencerEngine::executePolyVoice(VoiceSlot voiceIdx, const PatternInput& i
         // qmixUseGenerated is only ever true in quantiser modes (voicePitch gates forceGenerated on
         // quantiserPitchSource); outside them it's inert and byte-identical to the legacy poly path.
         // POLARITY (§29): 0 = generated, 1 = quantised (draw crosses upward: r >= level → generated).
-        int qmixIdx = getStrandIdx(polyLaneTick(voiceIdx, LaneId{PL_QMIX}), polyLenE(voiceIdx, LaneId{PL_QMIX}), polyOffE(voiceIdx, LaneId{PL_QMIX}), polyRotE(voiceIdx, LaneId{PL_QMIX}));
+        // (C0 FAMILY 2) the qmix L/O/R feeds come from the lane chokepoint.
+        int qmL, qmO, qmR; LaneDir qmD;
+        effectiveLaneLor(voiceIdx, LaneId{PL_QMIX}, qmL, qmO, qmR, qmD);
+        int qmixIdx = getStrandIdx(polyLaneTick(voiceIdx, LaneId{PL_QMIX}), qmL, qmO, qmR);
         refreshPolyRandomCell(voiceIdx, LaneId{PL_QMIX}, qmixIdx);
         float r_qmix_voice = pe.warpRow(voiceIdx, LaneId{PL_QMIX})[qmixIdx];
         bool qmixUseGenerated = quantiserPitchSource && (r_qmix_voice >= v.qmixLevel);
@@ -2460,7 +2642,10 @@ void SequencerEngine::executePolyVoice(VoiceSlot voiceIdx, const PatternInput& i
                                   /*octForceGenerated=*/qmixOctUseGenerated);
         // Accent as a poly lane (modelled after rest): this voice draws its OWN accent at
         // its own accent LOR and compares to its own accentProb — not shared from mono.
-        int accIdx = getStrandIdx(polyLaneTick(voiceIdx, LaneId{PL_ACCENT}), polyLenE(voiceIdx, LaneId{PL_ACCENT}), polyOffE(voiceIdx, LaneId{PL_ACCENT}), polyRotE(voiceIdx, LaneId{PL_ACCENT}));
+        // (C0 FAMILY 2) the accent L/O/R feeds come from the lane chokepoint.
+        int acL, acO, acR; LaneDir acD;
+        effectiveLaneLor(voiceIdx, LaneId{PL_ACCENT}, acL, acO, acR, acD);
+        int accIdx = getStrandIdx(polyLaneTick(voiceIdx, LaneId{PL_ACCENT}), acL, acO, acR);
         refreshPolyRandomCell(voiceIdx, LaneId{PL_ACCENT}, accIdx);
         v.accented = (pe.warpRow(voiceIdx, LaneId{PL_ACCENT})[accIdx] < accTh);
         if (rd.gateType == MonoDecision::NewNote)
@@ -2514,13 +2699,16 @@ void SequencerEngine::executePolyVoice(VoiceSlot voiceIdx, const PatternInput& i
                              && (legTh >= 0.999f || r_polyLegato < legTh);
             v.gs.slurMember = v.gs.slurForward;   // SLEG: onset member iff it leads a slur
 #if RULE2_DEBUG
+            // (C0 FAMILY 2) the logged LOR reads through the lane chokepoint — same values.
+            int lgL, lgO, lgR; LaneDir lgD;
+            effectiveLaneLor(voiceIdx, LaneId{EDITOR_LANE_LEGATO}, lgL, lgO, lgR, lgD);
             INFO("[R2 roll ] v=%2d step=%3lld LE=%d legCell=%2d monoCell=%2d legLOR=(%2d,%2d,%2d) "
                  "r=%.3f prob=%.3f nvV=%d canLead=%d -> slur=%d",
                 voiceIdx.v, (long long)pos_.phaseClock(transportTick_), (int)!varlegDelegated(voiceIdx.v, 1),
                 getLegatoStepForVoice(voiceIdx), getLegatoStep(),
-                polyLOR(voiceIdx, LaneId{EDITOR_LANE_LEGATO}, LOR_LEN),
-                polyLOR(voiceIdx, LaneId{EDITOR_LANE_LEGATO}, LOR_OFF),
-                polyLOR(voiceIdx, LaneId{EDITOR_LANE_LEGATO}, LOR_ROT),
+                lgL,
+                lgO,
+                lgR,
                 r_polyLegato, voices[VoiceResolver::mono()].legatoProb, nvV, (int)noteCanLeadLegato(nvV),
                 (int)v.gs.slurForward);
 #endif
@@ -2585,8 +2773,13 @@ void SequencerEngine::executePolyVoice(VoiceSlot voiceIdx, const PatternInput& i
                     // committed legato → slide to own new pitch; opted out / not still sounding →
                     // re-articulate fresh. Either way this voice draws its OWN pitch (melody/octave
                     // LOR), never mono's.
-                    int melIdx = getStrandIdx(polyLaneTick(voiceIdx, LaneId{PL_MELODY}), polyLenE(voiceIdx, LaneId{PL_MELODY}), polyOffE(voiceIdx, LaneId{PL_MELODY}), polyRotE(voiceIdx, LaneId{PL_MELODY}));
-                    int octIdx = getStrandIdx(polyLaneTick(voiceIdx, LaneId{PL_OCTAVE}), polyLenE(voiceIdx, LaneId{PL_OCTAVE}), polyOffE(voiceIdx, LaneId{PL_OCTAVE}), polyRotE(voiceIdx, LaneId{PL_OCTAVE}));
+                    // (C0 FAMILY 2) the mel/oct L/O/R feeds come from the lane chokepoint.
+                    int melL, melO, melR; LaneDir melD;
+                    effectiveLaneLor(voiceIdx, LaneId{PL_MELODY}, melL, melO, melR, melD);
+                    int octL, octO, octR; LaneDir octD;
+                    effectiveLaneLor(voiceIdx, LaneId{PL_OCTAVE}, octL, octO, octR, octD);
+                    int melIdx = getStrandIdx(polyLaneTick(voiceIdx, LaneId{PL_MELODY}), melL, melO, melR);
+                    int octIdx = getStrandIdx(polyLaneTick(voiceIdx, LaneId{PL_OCTAVE}), octL, octO, octR);
                     int sem = 0;
                     refreshPolyRandomCell(voiceIdx, LaneId{PL_MELODY}, melIdx);
                     refreshPolyRandomCell(voiceIdx, LaneId{PL_OCTAVE}, octIdx);
@@ -2598,7 +2791,10 @@ void SequencerEngine::executePolyVoice(VoiceSlot voiceIdx, const PatternInput& i
                         // re-articulate: a fresh onset, so draw this voice's OWN accent (its accent
                         // LOR vs its own accentProb), exactly as the chain onset does — a re-struck
                         // note isn't stuck with the accent the chain opened on.
-                        int accIdx = getStrandIdx(polyLaneTick(voiceIdx, LaneId{PL_ACCENT}), polyLenE(voiceIdx, LaneId{PL_ACCENT}), polyOffE(voiceIdx, LaneId{PL_ACCENT}), polyRotE(voiceIdx, LaneId{PL_ACCENT}));
+                        // (C0 FAMILY 2) the accent L/O/R feeds come from the lane chokepoint.
+                        int acL, acO, acR; LaneDir acD;
+                        effectiveLaneLor(voiceIdx, LaneId{PL_ACCENT}, acL, acO, acR, acD);
+                        int accIdx = getStrandIdx(polyLaneTick(voiceIdx, LaneId{PL_ACCENT}), acL, acO, acR);
                         refreshPolyRandomCell(voiceIdx, LaneId{PL_ACCENT}, accIdx);
                         v.accented = (pe.warpRow(voiceIdx, LaneId{PL_ACCENT})[accIdx] < accTh);
                         v.gs.triggerNote(pitchV, sem, nvV);                   // re-articulate
@@ -2623,8 +2819,13 @@ void SequencerEngine::executePolyVoice(VoiceSlot voiceIdx, const PatternInput& i
                     // Mono slid to a NEW pitch (a real pitch move) → poly draws its OWN new pitch
                     // (its own melody/octave LOR) and slides to it. Poly tracks mono's articulation
                     // shape, never mono's actual notes.
-                    int melIdx = getStrandIdx(polyLaneTick(voiceIdx, LaneId{PL_MELODY}), polyLenE(voiceIdx, LaneId{PL_MELODY}), polyOffE(voiceIdx, LaneId{PL_MELODY}), polyRotE(voiceIdx, LaneId{PL_MELODY}));
-                    int octIdx = getStrandIdx(polyLaneTick(voiceIdx, LaneId{PL_OCTAVE}), polyLenE(voiceIdx, LaneId{PL_OCTAVE}), polyOffE(voiceIdx, LaneId{PL_OCTAVE}), polyRotE(voiceIdx, LaneId{PL_OCTAVE}));
+                    // (C0 FAMILY 2) the mel/oct L/O/R feeds come from the lane chokepoint.
+                    int melL, melO, melR; LaneDir melD;
+                    effectiveLaneLor(voiceIdx, LaneId{PL_MELODY}, melL, melO, melR, melD);
+                    int octL, octO, octR; LaneDir octD;
+                    effectiveLaneLor(voiceIdx, LaneId{PL_OCTAVE}, octL, octO, octR, octD);
+                    int melIdx = getStrandIdx(polyLaneTick(voiceIdx, LaneId{PL_MELODY}), melL, melO, melR);
+                    int octIdx = getStrandIdx(polyLaneTick(voiceIdx, LaneId{PL_OCTAVE}), octL, octO, octR);
                     int sem = 0;
                     refreshPolyRandomCell(voiceIdx, LaneId{PL_MELODY}, melIdx);
                     refreshPolyRandomCell(voiceIdx, LaneId{PL_OCTAVE}, octIdx);
@@ -2778,10 +2979,12 @@ int SequencerEngine::getVariationStepForVoice(VoiceSlot bank) const {
     if (varlegDelegated(bank, 0)) return getVariationStep();
     // Local East: read THIS voice's own window, advanced on its per-voice tick (which inherits
     // mono's per-lane direction — a reversed mono VARIATION lane reverses this voice too).
+    // (C0 FAMILY 2) the window feeds come from the lane chokepoint — the same values the
+    // raw polyLOR triple returned (the varlegDelegated early return above stays untouched).
+    int vlL, vlO, vlR; LaneDir vlD;
+    effectiveLaneLor(bank, LaneId{EDITOR_LANE_VARIATION}, vlL, vlO, vlR, vlD);
     return getStrandIdx(laneTickV_[bank.v][dotModular::STRAND_VARIATION],
-                        polyLOR(bank, LaneId{EDITOR_LANE_VARIATION}, LOR_LEN),
-                        polyLOR(bank, LaneId{EDITOR_LANE_VARIATION}, LOR_OFF),
-                        polyLOR(bank, LaneId{EDITOR_LANE_VARIATION}, LOR_ROT));
+                        vlL, vlO, vlR);
 }
 
 int SequencerEngine::getLegatoStepForVoice(VoiceSlot bank) const {
@@ -2792,10 +2995,11 @@ int SequencerEngine::getLegatoStepForVoice(VoiceSlot bank) const {
     if (varlegDelegated(bank, 1)) return getLegatoStep();
     // Local East: read THIS voice's own window, advanced on its per-voice tick (inherits mono's
     // per-lane direction — a reversed mono LEGATO lane reverses this voice's slur roll too).
+    // (C0 FAMILY 2) the window feeds come from the lane chokepoint (as the VAR getter).
+    int lgL2, lgO2, lgR2; LaneDir lgD2;
+    effectiveLaneLor(bank, LaneId{EDITOR_LANE_LEGATO}, lgL2, lgO2, lgR2, lgD2);
     return getStrandIdx(laneTickV_[bank.v][dotModular::STRAND_LEGATO],
-                        polyLOR(bank, LaneId{EDITOR_LANE_LEGATO}, LOR_LEN),
-                        polyLOR(bank, LaneId{EDITOR_LANE_LEGATO}, LOR_OFF),
-                        polyLOR(bank, LaneId{EDITOR_LANE_LEGATO}, LOR_ROT));
+                        lgL2, lgO2, lgR2);
 }
 
 int SequencerEngine::nvIdxForVoice(VoiceSlot bank, const PatternInput& input) const {
@@ -2818,8 +3022,11 @@ int SequencerEngine::nvIdxForVoice(VoiceSlot bank, const PatternInput& input) co
     return ceiling;
 }
 
-int SequencerEngine::getRhythmStep() const    { return getStrandIdx(laneTick_[dotModular::STRAND_RHYTHM],    lor(dotModular::STRAND_RHYTHM,LOR_LEN), lor(dotModular::STRAND_RHYTHM,LOR_OFF), lor(dotModular::STRAND_RHYTHM,LOR_ROT)); }
-int SequencerEngine::getVariationStep() const { return getStrandIdx(laneTick_[dotModular::STRAND_VARIATION], lor(dotModular::STRAND_VARIATION,LOR_LEN), lor(dotModular::STRAND_VARIATION,LOR_OFF), lor(dotModular::STRAND_VARIATION,LOR_ROT)); }
+// (C0 FAMILY 2) the mono strand windows read through the lane chokepoint
+// (monoLaneStep: effectiveMonoLaneLor feeds getStrandIdx — the same L/O/R the
+// raw lor() triples returned; the transform unchanged).
+int SequencerEngine::getRhythmStep() const    { return monoLaneStep(dotModular::STRAND_RHYTHM,    laneTick_[dotModular::STRAND_RHYTHM]); }
+int SequencerEngine::getVariationStep() const { return monoLaneStep(dotModular::STRAND_VARIATION, laneTick_[dotModular::STRAND_VARIATION]); }
 int SequencerEngine::stepAdvanceStrandIdx(VoiceSlot bank, int drawTickDelta) const {
     // THE ONE scanned-position expression (CC_PROMPT_VARIATION_SCAN_DISPLAY, factored
     // from stepAdvanceDrawAt — a PURE factoring; CC_FIX_PER_VOICE_ADVANCE_WANDER's DRY
@@ -2831,15 +3038,17 @@ int SequencerEngine::stepAdvanceStrandIdx(VoiceSlot bank, int drawTickDelta) con
     // VAR chevron) — the chevron sits at EXACTLY the index the engine read.
     // Display-reads-engine: no parallel tick math anywhere.
     if (bank.v < 1 || bank.v >= kVoiceSlots) {
-        return getStrandIdx(laneTick_[dotModular::STRAND_VARIATION] + drawTickDelta,
-                            lor(dotModular::STRAND_VARIATION, LOR_LEN),
-                            lor(dotModular::STRAND_VARIATION, LOR_OFF),
-                            lor(dotModular::STRAND_VARIATION, LOR_ROT));
+        // (C0 FAMILY 2) the mono window feeds come from the lane chokepoint.
+        return monoLaneStep(dotModular::STRAND_VARIATION,
+                            laneTick_[dotModular::STRAND_VARIATION] + drawTickDelta);
     }
+    // (C0 FAMILY 2) the per-voice window feeds come from the lane chokepoint —
+    // the same values the raw polyLOR triple returned (the decision structure's
+    // own-window read; draw production keeps its delegation, the D6 SWEEP ruling).
+    int pvL, pvO, pvR; LaneDir pvD;
+    effectiveLaneLor(bank, LaneId{EDITOR_LANE_VARIATION}, pvL, pvO, pvR, pvD);
     return getStrandIdx(laneTickV_[bank.v][dotModular::STRAND_VARIATION] + drawTickDelta,
-                        polyLOR(bank, LaneId{EDITOR_LANE_VARIATION}, LOR_LEN),
-                        polyLOR(bank, LaneId{EDITOR_LANE_VARIATION}, LOR_OFF),
-                        polyLOR(bank, LaneId{EDITOR_LANE_VARIATION}, LOR_ROT));
+                        pvL, pvO, pvR);
 }
 int SequencerEngine::stepAdvanceScanDelta(VoiceSlot bank) const {
     // The display's SIGNED scan (CC_PROMPT_VARIATION_SCAN_DISPLAY + the backward fix):
@@ -2855,11 +3064,11 @@ float SequencerEngine::stepAdvanceDrawAt(VoiceSlot bank, int drawTickDelta) cons
     // reading never mutates the ring (zero new draws).
     return pe.warpRow(bank, LaneId{PL_VARIATION})[stepAdvanceStrandIdx(bank, drawTickDelta)];
 }
-int SequencerEngine::getLegatoStep() const    { return getStrandIdx(laneTick_[dotModular::STRAND_LEGATO],    lor(dotModular::STRAND_LEGATO,LOR_LEN), lor(dotModular::STRAND_LEGATO,LOR_OFF), lor(dotModular::STRAND_LEGATO,LOR_ROT)); }
-int SequencerEngine::getAccentStep() const    { return getStrandIdx(laneTick_[dotModular::STRAND_ACCENT],    lor(dotModular::STRAND_ACCENT,LOR_LEN), lor(dotModular::STRAND_ACCENT,LOR_OFF), lor(dotModular::STRAND_ACCENT,LOR_ROT)); }
-int SequencerEngine::getMelodyStep() const    { return getStrandIdx(laneTick_[dotModular::STRAND_MELODY],    lor(dotModular::STRAND_MELODY,LOR_LEN), lor(dotModular::STRAND_MELODY,LOR_OFF), lor(dotModular::STRAND_MELODY,LOR_ROT)); }
-int SequencerEngine::getOctaveStep() const    { return getStrandIdx(laneTick_[dotModular::STRAND_OCTAVE],    lor(dotModular::STRAND_OCTAVE,LOR_LEN), lor(dotModular::STRAND_OCTAVE,LOR_OFF), lor(dotModular::STRAND_OCTAVE,LOR_ROT)); }
-int SequencerEngine::getQmixStep() const      { return getStrandIdx(laneTick_[dotModular::STRAND_QMIX],      lor(dotModular::STRAND_QMIX,LOR_LEN),   lor(dotModular::STRAND_QMIX,LOR_OFF),   lor(dotModular::STRAND_QMIX,LOR_ROT)); }
+int SequencerEngine::getLegatoStep() const    { return monoLaneStep(dotModular::STRAND_LEGATO,    laneTick_[dotModular::STRAND_LEGATO]); }
+int SequencerEngine::getAccentStep() const    { return monoLaneStep(dotModular::STRAND_ACCENT,    laneTick_[dotModular::STRAND_ACCENT]); }
+int SequencerEngine::getMelodyStep() const    { return monoLaneStep(dotModular::STRAND_MELODY,    laneTick_[dotModular::STRAND_MELODY]); }
+int SequencerEngine::getOctaveStep() const    { return monoLaneStep(dotModular::STRAND_OCTAVE,    laneTick_[dotModular::STRAND_OCTAVE]); }
+int SequencerEngine::getQmixStep() const      { return monoLaneStep(dotModular::STRAND_QMIX,      laneTick_[dotModular::STRAND_QMIX]); }
 
 void SequencerEngine::syncVisuals(const PatternInput& in) {
     pe.refreshVisualCache(in);

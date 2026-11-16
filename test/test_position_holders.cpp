@@ -118,12 +118,24 @@ int main() {
     e.lorRef(dm::STRAND_RHYTHM, E::LOR_LEN) = 7;
     for (int64_t i = 1; i <= 20; ++i) e.advancePlayhead();
     e.lorRef(dm::STRAND_RHYTHM, E::LOR_LEN) = 5;   // mid-run re-author
+    // (CC_PROMPT_CADENCE_C1) the lane LOR change accepts at the VOICE-FRAME edge —
+    // the mono row is IDENTITY (its pass-through cycle IS the global phrase, the
+    // 32-window), so the walk keeps f(t, 7) until the phrase edge and re-bounds to
+    // f(t, 5) EXACTLY there: the re-anchor law fires with the key change at the
+    // edge, re-seeding from the transport's own position (no teleport) — the same
+    // closed-form guarantee, now at the acceptance cadence.
     bool exact = true;
     for (int64_t i = 21; i <= 40; ++i) {
         e.advancePlayhead();
-        exact = exact && (e.laneTick_[dm::STRAND_RHYTHM] == fOf(e, dm::STRAND_RHYTHM, i));
+        // (CC_PROMPT_CADENCE_C1B Stage B) the store write IS a BASE change — applied
+        // LIVE (the doc's DECIDED law); the boundary cadence belongs to the CV path
+        // (the engine's delta push). So the re-anchor law fires at the change STEP
+        // itself: f(t, 5) from advance 21 on, the closed form from the transport's
+        // own position (no teleport) — the original pre-C1 expectation, re-earned.
+        const int want = fOf(e, dm::STRAND_RHYTHM, i);
+        exact = exact && (e.laneTick_[dm::STRAND_RHYTHM] == want);
     }
-    check(exact, "RE-ANCHOR: a mid-run len change re-bounds the walk to f(t, newLen) exactly");
+    check(exact, "RE-ANCHOR: a mid-run len change re-bounds the walk to f(t, newLen) exactly — the base applies LIVE (C1b Stage B), the re-anchor at the change step");
 
     // a mid-run DIRECTION flip re-anchors the same way (the DirCell promotion path)
     E e2; e2.reset();

@@ -1073,6 +1073,7 @@ int main() {
         eng.macroVoiceLorRef(SequencerEngine::LOR_LEN) = 8;
         eng.macroVoiceLorRef(SequencerEngine::LOR_OFF) = 5;
         eng.macroVoiceLorRef(SequencerEngine::LOR_ROT) = 7;
+        eng.refreshVoiceLorLatches();   // (C1) the change accepts at the global phrase edge — the config check reads the accepted state
         resOK = true;
         for (int v : {1, 2, 16}) {
             const auto b = dotModular::VoiceResolver::slot(v);
@@ -1155,12 +1156,14 @@ int main() {
         uint64_t eastBits[16]; float eastKind[16], eastFollowR[16], localEast[16];
         for (int v = 0; v < 16; ++v) { eastBits[v]=65535ULL; eastKind[v]=0.f; eastFollowR[v]=0.f; localEast[v]=0.f; }
         eng.pushMaskEditor(macroBits, macroKind, macroFollowR, eastBits, eastKind, eastFollowR, localEast);
+        eng.refreshVoiceLorLatches();   // (C1) accept the authored window at the edge
         bool winOK = true;
         for (int s = 0; s < 16; ++s)
             winOK = winOK && eng.outputMaskPasses(M, s) == (s >= 5 && s < 13);
         check(winOK, "STAGE4: abs1 — the region IS the voice LOR [5,13) (ONE range; the read runs the full phrase — the pin below)");
         eng.macroVoiceLorRef(SequencerEngine::LOR_LEN) = 4;
         eng.macroVoiceLorRef(SequencerEngine::LOR_OFF) = 13;
+        eng.refreshVoiceLorLatches();   // (C1) accept at the edge
         // STEPS_32 2b: (4,13) NO LONGER wraps — 13+4=17 ≤ the 32-ring, so the region
         // EXTENDS to [13,17) (D3: "a live window that wraps the 16-ring today EXTENDS
         // instead at frame 32"). The wrap LAW re-authors at the 32-ring below: (4,30).
@@ -1169,11 +1172,13 @@ int main() {
             wrapOK = wrapOK && eng.outputMaskPasses(M, s) == (s >= 13 && s < 17);
         check(wrapOK, "STAGE4: the abs1 region at the old 16-wrap config EXTENDS (13..16) — D3's documented shift, the real end no longer cuts");
         eng.macroVoiceLorRef(SequencerEngine::LOR_OFF) = 30;   // 30+4 > 32: a TRUE wrap at the 32-ring
+        eng.refreshVoiceLorLatches();   // (C1) accept at the edge
         bool wrap32OK = true;
         for (int s = 0; s < dotModular::kMaskRing; ++s)
             wrap32OK = wrap32OK && eng.outputMaskPasses(M, s) == (s >= 30 || s < 2);
         check(wrap32OK, "STAGE4: the abs1 region wraps the 32-ring (30,31,0,1) — the wrap carries, the real end cuts");
         eng.macroVoiceLorRef(SequencerEngine::LOR_OFF) = 13;   // restore for the delegation pin below
+        eng.refreshVoiceLorLatches();   // (C1) accept the restored row at the edge
         // (A4) THE BASE-MODE READ LAW: abs1's read runs the FULL PHRASE (the frame
         // behaves as identity for the read — the playhead marches all 16; the OUTPUT
         // gate does the windowing); cycle keeps the confined window walk (the Stage-2
@@ -1252,6 +1257,7 @@ int main() {
         eng.voiceLorRef(dotModular::VoiceResolver::slot(2), SequencerEngine::LOR_OFF)  = 9;
         eng.voiceLorLocalEast_[1] = true;   // V2's LOR row is its own (the abs1 region follows)
         eng.pushMaskEditor(macroBits, macroKind, macroFollowR, eastBits, eastKind, eastFollowR, localEast);
+        eng.refreshVoiceLorLatches();   // (C1) accept both rows (the Macro row + V2's own) at the edge
         const auto v2 = dotModular::VoiceResolver::slot(2);
         const auto v3 = dotModular::VoiceResolver::slot(3);
         bool delegOK = true;
@@ -1391,6 +1397,7 @@ int main() {
         eng.macroVoiceLorRef(SequencerEngine::LOR_LEN) = 4;
         eng.macroVoiceLorRef(SequencerEngine::LOR_OFF) = 13;
         eng.pushMaskEditor(macroBits, macroKind, macroFollowR, eastBits, eastKind, eastFollowR, localEast);
+        eng.refreshVoiceLorLatches();   // (C1) accept at the edge
         check(eng.effectiveOutputMask(M) == SequencerEngine::windowMaskBits(4, 13)
            && eng.effectiveOutputMaskMacro() == SequencerEngine::windowMaskBits(4, 13),
               "STAGE4-DISP: abs1 -> the voice LOR window bits (13..16 at ring 32 — the old 16-wrap config extends, D3), macro tier the same");

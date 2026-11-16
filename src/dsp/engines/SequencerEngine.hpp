@@ -608,9 +608,14 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
         // The window bound is selected BY BANK — the two stores are NOT interchangeable:
         // mono reads the STRAND store (lor), a poly voice its OWN lorStore_ row (polyLOR).
         // A swap here would silently change the mono vs poly window bound.
-        const int varLen = (bank.v == dotModular::kMonoVoiceSlot.v)
-            ? lor(dotModular::STRAND_VARIATION, LOR_LEN)
-            : polyLOR(bank, LaneId{EDITOR_LANE_VARIATION}, LOR_LEN);
+        // (C0 FAMILY 2) the bound reads through the lane chokepoints — the same
+        // values the raw lor()/polyLOR() reads returned, the same bank split.
+        int vl, vo, vrr; LaneDir vd;
+        if (bank.v == dotModular::kMonoVoiceSlot.v)
+            effectiveMonoLaneLor(dotModular::STRAND_VARIATION, vl, vo, vrr, vd);
+        else
+            effectiveLaneLor(bank, LaneId{EDITOR_LANE_VARIATION}, vl, vo, vrr, vd);
+        const int varLen = vl;
         scanOfsV_[bank.v] = (scanOfsV_[bank.v] + 1) % (varLen > 0 ? varLen : 1);
     }
     // PER-VOICE STEP-ADVANCE (PER_VOICE_STEP_ADVANCE_PLAN.md §59-99, ruled by
@@ -901,8 +906,96 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
         return (pat == kMaskLenMask) ? m : (m & pat);
     }
 
+    // ── (CC_PROMPT_CADENCE_C1) THE LATCHED EFFECTIVE LOR ────────────────────────
+    // The derive reads the LATCH; the live store is sampled into it ONLY at the
+    // level's ADDRESSED-AGAINST frame edge (DESIGN_POSITION_UNIFICATION.md, the
+    // CADENCE addendum's C1 refinement): the voice family (the effectiveVoiceLor
+    // rows + the Macro row) at the GLOBAL phrase edge (pos_.phrasePos()==0,
+    // re-read LIVE each advance — the 8→6 trace: the boundary moves with the
+    // parent's length), the lane family (the effectiveLaneLor rows) at the
+    // VOICE-FRAME edge (a mapped row's holder phase AT its entry; an IDENTITY
+    // row's pass-through cycle IS the global phrase, so its lanes latch with the
+    // phrase edge). Global length/offset stay STEP-rate (the MeloDicer-native
+    // class); direction stays LIVE (C3's slice). The Macro tier's own LANE store
+    // (macroLOR_, effectiveMacroLaneLor) is NOT latched — C1's mechanism list
+    // names the voice rows + the probability lanes; its cadence is Rodney's call
+    // (flagged in the C1 commit message).
+    // (CC_PROMPT_CADENCE_C1B STAGE B) THE BASE/CV SPLIT — the C1 combined latch is
+    // GONE. The effective row = the BASE (the live store rows, the pre-C1 delegation,
+    // a knob/drag edits it IMMEDIATELY while unlocked) + the COMMITTED CV DELTA
+    // (sampled at the Stage A commit gates — CV wiggles move the window only at the
+    // boundary). The manager writes base_only to the stores (the same fold law with
+    // the CV terms zeroed, the same rounding) and pushes delta = combined − base_only;
+    // the engine never sees a pre-combined value. With no CV patched the deltas are
+    // zero and every effective value is byte-identical to the no-CV world.
+    // PENDING: the manager's last push (overwritten per control block; under lock it
+    // may churn). COMMITTED: what the effective reads see — the Stage A pend, CV-ward.
+    std::array<int, LOR_ITEMS> voiceLorCvPendMacro_ = {0, 0, 0};
+    std::array<std::array<int, LOR_ITEMS>, kVoiceSlots> voiceLorCvPend_ = {};
+    std::array<int, LOR_ITEMS> voiceLorCvMacro_ = {0, 0, 0};
+    std::array<std::array<int, LOR_ITEMS>, kVoiceSlots> voiceLorCv_ = {};
+    // The lane deltas: slot 0 IS the mono strands' row (the F2 unified-store law —
+    // one storage, no mono twin).
+    std::array<std::array<std::array<int, LOR_ITEMS>, dotModular::NUM_STRANDS>, kVoiceSlots> laneLorCvPend_ = {};
+    std::array<std::array<std::array<int, LOR_ITEMS>, dotModular::NUM_STRANDS>, kVoiceSlots> laneLorCv_ = {};
+    // The row invariants (the authoring clamps, re-applied to the composed row):
+    // L >= 1; O in [0, kMaskRing); R in [0, L-1] (the lanes' convention).
+    static inline void lorRowClamp_(int& L, int& O, int& R) {
+        if (L < 1) L = 1;
+        if (O < 0) O = 0; else if (O > kMaskRing - 1) O = kMaskRing - 1;
+        if (R < 0) R = 0; else if (R > L - 1) R = L - 1;
+    }
+    // The refreshes — the ONLY writers of the latches, called at the gated commit
+    // edges (C1b Stage A: (phrase edge OR unlock flush) AND the axis live — the
+    // advance head + the derive head + the anchor + reset). Defined in the .cpp
+    // (they mint VoiceSlots through the resolver, which is forward-declared here).
+    // The defaulted args are the CONFIG-SIMULATION form (always commit) the
+    // configuration tests use to accept an authored row at the edge; the engine's
+    // advance paths pass the real edge flags.
+    void refreshVoiceLorLatches();
+    void refreshLaneLatchesForVoice(int v, bool atPhraseEdge = true, bool unlockNow = true);
+    // (C1b Stage B) the CV-delta pushes — the PENDING modulation. The manager pushes
+    // per control block (overwriting); the commit into the effective reads happens
+    // at the Stage A gates. Deltas are ROW deltas (combined − base_only, integer).
+    void pushVoiceLorCv(const int* macroDelta3, const int* eastDelta);   // macro [3]; east [kVoiceSlots*3] slot-major
+    void pushLaneLorCvPoly(dotModular::VoiceSlot bank, int lane, const int* delta3);   // slot 0 = the mono strands (the F2 law)
+    // ── (CC_PROMPT_CADENCE_C1B STAGE C) THE EDIT-SUSPEND ────────────────────────
+    // While an LOR gesture is active, the CV commit for the EDITED SCOPE is
+    // suspended: the pending churns (the jacks keep feeding it), the committed
+    // HOLDS the pre-gesture sample — the window tracks only the live base ("a
+    // stable target, miles better than a constantly moving one"). On release the
+    // suspend clears and the CV resumes at the NEXT boundary (the ordinary commit
+    // gate). The manager pushes the per-block snapshot from the visual modules'
+    // widget-written gesture fields; the scope rides the existing row/lane
+    // vocabulary — NOT a new scope concept. voiceIdx/laneIdx < 0 = absent.
+    std::array<bool, LOR_ITEMS> lorCvSuspendMacro_ = {};
+    int lorCvSuspendVoice_ = -1;
+    std::array<bool, LOR_ITEMS> lorCvSuspendVoiceItems_ = {};
+    int lorCvSuspendLane_ = -1;
+    std::array<bool, LOR_ITEMS> lorCvSuspendLaneItems_ = {};
+    void setLorCvSuspend(const bool* macro3, int voiceIdx, const bool* voice3, int laneIdx, const bool* lane3);
+
     // The EFFECTIVE voice LOR row (delegation + Macro tier) — the one resolution authority.
+    // (C1b Stage B) the L/O/R = the BASE rows (LIVE — the pre-C1 delegation; a knob
+    // edit lands immediately while unlocked) + the COMMITTED CV delta (the boundary
+    // sample); the row invariants re-applied; the direction stays live (C3's slice).
+    // effectiveVoiceLorLive is the BASE-only read (what the managers write).
     void effectiveVoiceLor(int v, int& L, int& O, int& R, LaneDir& d) const {
+        if (v < 0 || v >= kVoiceSlots) { L = kPatternLengthCap; O = 0; R = 0; d = LaneDir::Forward; return; }   // (bucket 2) the out-of-range fallback = the identity values (the cap — was the literal 16, which read as a MAPPED row)
+        if (voiceLorLocalEast_[v]) {
+            L = voiceLorStore_[v][LOR_LEN] + voiceLorCv_[v][LOR_LEN];
+            O = voiceLorStore_[v][LOR_OFF] + voiceLorCv_[v][LOR_OFF];
+            R = voiceLorStore_[v][LOR_ROT] + voiceLorCv_[v][LOR_ROT];
+            d = voiceLorDir_[v];
+        } else {
+            L = macroVoiceLor_[LOR_LEN] + voiceLorCvMacro_[LOR_LEN];
+            O = macroVoiceLor_[LOR_OFF] + voiceLorCvMacro_[LOR_OFF];
+            R = macroVoiceLor_[LOR_ROT] + voiceLorCvMacro_[LOR_ROT];
+            d = macroVoiceLorDir_;
+        }
+        lorRowClamp_(L, O, R);
+    }
+    void effectiveVoiceLorLive(int v, int& L, int& O, int& R, LaneDir& d) const {
         if (v < 0 || v >= kVoiceSlots) { L = kPatternLengthCap; O = 0; R = 0; d = LaneDir::Forward; return; }   // (bucket 2) the out-of-range fallback = the identity values (the cap — was the literal 16, which read as a MAPPED row)
         if (voiceLorLocalEast_[v]) {
             L = voiceLorStore_[v][LOR_LEN]; O = voiceLorStore_[v][LOR_OFF];
@@ -911,6 +1004,21 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
             L = macroVoiceLor_[LOR_LEN]; O = macroVoiceLor_[LOR_OFF];
             R = macroVoiceLor_[LOR_ROT]; d = macroVoiceLorDir_;
         }
+    }
+    // (CC_PROMPT_CADENCE_C0 FAMILY 1) the MACRO ROW's own effective read — the thin
+    // macro-row form of effectiveVoiceLor (the macro frame machinery hangs under the
+    // ROW itself, not under any voice's delegation switch — macroRowIdentity's law).
+    // (C1b Stage B) the L/O/R = the Macro row's BASE (live) + the committed CV delta.
+    void effectiveMacroRowLor(int& L, int& O, int& R, LaneDir& d) const {
+        L = macroVoiceLor_[LOR_LEN] + voiceLorCvMacro_[LOR_LEN];
+        O = macroVoiceLor_[LOR_OFF] + voiceLorCvMacro_[LOR_OFF];
+        R = macroVoiceLor_[LOR_ROT] + voiceLorCvMacro_[LOR_ROT];
+        lorRowClamp_(L, O, R);
+        d = macroVoiceLorDir_;
+    }
+    void effectiveMacroRowLorLive(int& L, int& O, int& R, LaneDir& d) const {
+        L = macroVoiceLor_[LOR_LEN]; O = macroVoiceLor_[LOR_OFF];
+        R = macroVoiceLor_[LOR_ROT]; d = macroVoiceLorDir_;
     }
     // Identity VALUES (cap/0/0/Forward) mean PASS-THROUGH — deliberately NOT the
     // mapped (L=cap) form, whose mod-cap bounding would move non-divisive lane
@@ -926,9 +1034,11 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
     // voiceLorIdentity's twin reading the shared row DIRECTLY (the Macro lanes and
     // the macro frame hang under the ROW itself, not under any voice's delegation
     // switch, so a localEast voice's row must not leak into the Macro tier's branch).
+    // (C0) now reads through effectiveMacroRowLor — the same four compares on the
+    // accessor's outputs, bit-identical.
     bool macroRowIdentity() const {
-        return macroVoiceLor_[LOR_LEN] == kPatternLengthCap && macroVoiceLor_[LOR_OFF] == 0
-            && macroVoiceLor_[LOR_ROT] == 0 && macroVoiceLorDir_ == LaneDir::Forward;
+        int L, O, R; LaneDir d; effectiveMacroRowLor(L, O, R, d);
+        return L == kPatternLengthCap && O == 0 && R == 0 && d == LaneDir::Forward;
     }
     // Store accessors (the manager/UI author these; tests author them rack-free).
     // dotModular::VoiceSlot spelled out: the VoiceSlot alias is declared further below.
@@ -1099,6 +1209,72 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
     int  polyOffE(VoiceSlot bank, LaneId lane) const { return lorStore_[bank.v][editorLane(lane.l)][LOR_OFF]; }
     int  polyRotE(VoiceSlot bank, LaneId lane) const { return lorStore_[bank.v][editorLane(lane.l)][LOR_ROT]; }
 
+    // ── (CC_PROMPT_CADENCE_C0 FAMILY 2) THE LANE-FAMILY CHOKEPOINTS ────────────
+    // ONE read point per store for the derive/holder-path lane LOR + dir; each
+    // returns EXACTLY what the raw reads return today (same stores, same clamps,
+    // same fallbacks). The existing delegation stays WITH ITS CALLERS
+    // (varlegDelegated's early returns, the mono-slot special forms — the D6
+    // SWEEP boundary) — this is the READ unification only, so C1's latch inside
+    // these catches every derive read by construction. Direction rides the same
+    // accessors (C3's benefit).
+    // The MONO form (V1 = slot 0): the STRAND store row + the mono lane dir.
+    // (C1b Stage B) the L/O/R = the BASE row (live) + the committed lane CV delta
+    // (slot 0's rows — the unified store).
+    void effectiveMonoLaneLor(int strand, int& L, int& O, int& R, LaneDir& d) const {
+        const int s = strandClamp(strand);
+        L = lor(s, LOR_LEN) + laneLorCv_[0][s][LOR_LEN];
+        O = lor(s, LOR_OFF) + laneLorCv_[0][s][LOR_OFF];
+        R = lor(s, LOR_ROT) + laneLorCv_[0][s][LOR_ROT];
+        lorRowClamp_(L, O, R);
+        d = (strand >= 0 && strand < dotModular::NUM_STRANDS) ? laneDir_[strand] : LaneDir::Forward;
+    }
+    void effectiveMonoLaneLorLive(int strand, int& L, int& O, int& R, LaneDir& d) const {
+        L = lor(strand, LOR_LEN); O = lor(strand, LOR_OFF); R = lor(strand, LOR_ROT);
+        d = (strand >= 0 && strand < dotModular::NUM_STRANDS) ? laneDir_[strand] : LaneDir::Forward;
+    }
+    // The POLY form: THIS voice's lorStore_ row (the editorLane conversion at the
+    // single storage boundary) + the voice's own lane dir row. Slot 0 reads the
+    // SAME row the mono form does (the unified store) but its OWN dir row
+    // (laneDirV_[0], maintained for store consistency) — exactly what
+    // polyStrandLenOf and the lane advance loops read today.
+    // (C1b Stage B) the L/O/R = the BASE row (live) + the committed lane CV delta;
+    // the dir stays live.
+    void effectiveLaneLor(dotModular::VoiceSlot bank, LaneId lane, int& L, int& O, int& R, LaneDir& d) const {
+        const int el = editorLane(lane.l);
+        const int vv = (bank.v >= 0 && bank.v < kVoiceSlots) ? bank.v : 0;
+        L = polyLOR(bank, LaneId{el}, LOR_LEN) + laneLorCv_[vv][el][LOR_LEN];
+        O = polyLOR(bank, LaneId{el}, LOR_OFF) + laneLorCv_[vv][el][LOR_OFF];
+        R = polyLOR(bank, LaneId{el}, LOR_ROT) + laneLorCv_[vv][el][LOR_ROT];
+        lorRowClamp_(L, O, R);
+        d = (bank.v >= 0 && bank.v < kVoiceSlots && el >= 0 && el < dotModular::NUM_STRANDS)
+            ? laneDirV_[bank.v][el] : LaneDir::Forward;
+    }
+    void effectiveLaneLorLive(dotModular::VoiceSlot bank, LaneId lane, int& L, int& O, int& R, LaneDir& d) const {
+        const int el = editorLane(lane.l);
+        L = polyLOR(bank, LaneId{el}, LOR_LEN); O = polyLOR(bank, LaneId{el}, LOR_OFF);
+        R = polyLOR(bank, LaneId{el}, LOR_ROT);
+        d = (bank.v >= 0 && bank.v < kVoiceSlots && el >= 0 && el < dotModular::NUM_STRANDS)
+            ? laneDirV_[bank.v][el] : LaneDir::Forward;
+    }
+    // The MACRO form (the THIRD store — the Macro tier's own lane lengths; lanes
+    // 0..4 carry macroLOR_, VAR/LEG (5/6) have no global LOR and use the mono
+    // strand length — the laneSeed/advance law verbatim; there is no Macro OFF/ROT
+    // store, the walk reads only the length, so O/R report 0):
+    void effectiveMacroLaneLor(int lane, int& L, int& O, int& R, LaneDir& d) const {
+        L = (lane >= 0 && lane < dotModular::POLY_LANE_COUNT)
+            ? macroLOR_[lane]
+            : ((lane >= 0 && lane < dotModular::NUM_STRANDS) ? lor(lane, LOR_LEN) : kPatternLengthCap);
+        O = 0; R = 0;
+        d = (lane >= 0 && lane < dotModular::NUM_STRANDS) ? macroLaneDir_[lane] : LaneDir::Forward;
+    }
+    // (C0 FAMILY 2) the mono strand step — the accessor feeds getStrandIdx (the ONE
+    // read point for the mono strand windows; the transform itself unchanged).
+    int monoLaneStep(int strand, int tick) const {
+        int L, O, R; LaneDir d;
+        effectiveMonoLaneLor(strand, L, O, R, d);
+        return getStrandIdx(tick, L, O, R);
+    }
+
     // ── Spread: the 4th probability modifier, now ENGINE STATE (MVC: was on the Mono visual, which the
     // engine reached into for the draws — model reading from view. Now the model owns it). Stored in the
     // SAME shape/order/index as lorStore_: spread[voiceSlot][editorLane], editor-ordered, slot 0 = V1
@@ -1209,6 +1385,44 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
     // Lives beside locked because the static LockManager::liveNow call sites already read
     // engine.locked; they pass engine.scopeLiveMask alongside. Persisted by PersistenceManager.
     uint32_t scopeLiveMask = 0;
+
+    // ── (CC_PROMPT_CADENCE_C1B STAGE A) the LOR latch commit's lock plumbing ────
+    // The C1 phrase-latch becomes the SHARED boundary-commit: it commits at the
+    // phrase edge (or flushes at the unlock edge — the engine-side twin of
+    // LockManager::queueFires()'s unlockNow) and is gated by the axis's ScopeBit —
+    // the engine-side twin of liveNow(Control::Lor, ...) — kept inline here (NOT
+    // routed through the manager) per dirLive_'s include-free audio-thread law.
+    // Under lock the store may churn (the managers keep writing it); the LATCH is
+    // the pending mechanism — it holds the committed values until the gate opens.
+    bool lorPrevLocked_ = false;   // the unlock-edge tracker (the direction template's shadow, LOR-ward)
+    inline bool lorLive_(bool melodyAxis) const {
+        if (!locked) return true;
+        constexpr uint32_t kSandsR = 1u << 2;   // == dotModular::SB_SANDS_R (dirLive_'s law)
+        constexpr uint32_t kSandsM = 1u << 3;   // == dotModular::SB_SANDS_M
+        return (scopeLiveMask & (melodyAxis ? kSandsM : kSandsR)) != 0;
+    }
+    // The commit gate: (phrase edge OR unlock flush) AND the axis live. The VOICE
+    // family (the voice rows + the Macro row — the play-window over the phrase)
+    // gates on the RHYTHM axis; the LANE family gates PER LANE through
+    // lorLaneCommitGate_ below.
+    inline bool lorCommitGate_(bool melodyAxis, bool atPhraseEdge, bool unlockNow) const {
+        return (atPhraseEdge || unlockNow) && lorLive_(melodyAxis);
+    }
+    // (C1b) the PER-LANE scope bit — the MANAGER's own lane law mirrored (the mono
+    // readStrand's gate): QMIX is its OWN Sands axis (SB_SANDS_Q, 1u<<13 — the
+    // split-brain fix), MEL/OCT the melody bit, the rest the rhythm bit.
+    static inline uint32_t lorLaneScopeBit_(int editorLane) {
+        if (editorLane == 2) return 1u << 13;   // editor lane 2 = QMIX -> dotModular::SB_SANDS_Q
+        return (editorLane == 0 || editorLane == 1) ? (1u << 3)   // MEL/OCT -> SB_SANDS_M
+                                                    : (1u << 2);  // the rest -> SB_SANDS_R
+    }
+    // The per-lane commit gate: unlocked or the unlock flush => commit (queueFires's
+    // law — the flush fires everything); locked => only at the phrase edge AND only
+    // if the lane's axis opted out of the freeze.
+    inline bool lorLaneCommitGate_(int editorLane, bool atPhraseEdge, bool unlockNow) const {
+        if (!locked || unlockNow) return true;
+        return atPhraseEdge && (scopeLiveMask & lorLaneScopeBit_(editorLane)) != 0;
+    }
 
     // ── Change Alley pin-matrix (CHANGE_ALLEY_DESIGN.md §3-REVISED) ──────────
     // The pin remap now lives UPSTREAM in the slewed buffers (pe.remapSlewedByPins,
@@ -1453,8 +1667,11 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
         // Follow this voice's own lane position, not the raw global tick: a reversed lane's
         // notes come from polyLaneTick, so its probability CV must too or the CV reports a
         // different cell than the one being played (they silently disagreed before).
-        int idx = getStrandIdx(polyLaneTick(voice, polyLane), polyLenE(voice, polyLane),
-                               polyOffE(voice, polyLane), polyRotE(voice, polyLane));
+        // (C0 FAMILY 2) the L/O/R feeds come from the lane chokepoint — the same
+        // values the raw polyLenE/polyOffE/polyRotE reads returned.
+        int pl, po, pr; LaneDir pd;
+        effectiveLaneLor(voice, polyLane, pl, po, pr, pd);
+        int idx = getStrandIdx(polyLaneTick(voice, polyLane), pl, po, pr);
         idx &= kMaskRing - 1;
         // Through the Change Alley remap + the ONE uniform source (CC_PROMPT_05):
         // the CV out reports what the voice will CONSUME — warpRow, every lane.
@@ -1473,8 +1690,10 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
     // Step indices (for S&H edge detection) matching the probability accessors above.
     inline int polyLaneStep(LaneId polyLane, VoiceSlot voice) const {
         if (voice.v < 0 || voice.v >= kVoiceSlots || polyLane.l < 0 || polyLane.l >= PL_LANES) return -1;
-        return getStrandIdx(polyLaneTick(voice, polyLane), polyLenE(voice, polyLane),
-                            polyOffE(voice, polyLane), polyRotE(voice, polyLane)) & (kMaskRing - 1);
+        // (C0 FAMILY 2) the L/O/R feeds come from the lane chokepoint (as polyLaneProbability).
+        int pl, po, pr; LaneDir pd;
+        effectiveLaneLor(voice, polyLane, pl, po, pr, pd);
+        return getStrandIdx(polyLaneTick(voice, polyLane), pl, po, pr) & (kMaskRing - 1);
     }
     // Engine poly lane (PL_REST..PL_LEGATO) → strand index. Single mapping (was inlined in
     // masterLaneStep and polyLaneTick). SANDS CONSOLIDATION: VAR/LEG are now full poly lanes
@@ -1488,6 +1707,22 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
              : (polyLane == PL_VARIATION) ? dotModular::STRAND_VARIATION
              : (polyLane == PL_LEGATO)    ? dotModular::STRAND_LEGATO
                                           : dotModular::STRAND_RHYTHM;  // fallback
+    }
+    // (C0 FAMILY 2) the strand→LaneId map — polyStrandLenOf's switch, factored: the
+    // ONE mapping the strand-indexed callers use to reach the poly accessor. The
+    // invalid fallback mirrors polyLaneStrand's (rhythm; polyStrandLenOf keeps its
+    // own cap fallback before the accessor call).
+    static LaneId strandLaneId(int strand) {
+        switch (strand) {
+            case dotModular::STRAND_MELODY:    return LaneId{PL_MELODY};
+            case dotModular::STRAND_OCTAVE:    return LaneId{PL_OCTAVE};
+            case dotModular::STRAND_QMIX:      return LaneId{PL_QMIX};
+            case dotModular::STRAND_RHYTHM:    return LaneId{PL_REST};
+            case dotModular::STRAND_ACCENT:    return LaneId{PL_ACCENT};
+            case dotModular::STRAND_VARIATION: return LaneId{EDITOR_LANE_VARIATION};
+            case dotModular::STRAND_LEGATO:    return LaneId{EDITOR_LANE_LEGATO};
+        }
+        return LaneId{PL_REST};
     }
     // Per-voice tick for an engine poly lane. The voice's direction is ABSOLUTE (its own DirCell),
     // so this tracks mono's laneTick_[strand] only while both the voice and mono's lane are
@@ -1507,8 +1742,11 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
         int strand = polyLaneStrand(polyLane);
         // Mono lane position, direction-aware (was the raw global tick, so the master
         // prob-out ignored per-lane direction while the notes followed it).
-        return getStrandIdx(laneTick_[strand], strandLen(strand),
-                            strandOff(strand), strandRot(strand)) & (kMaskRing - 1);
+        // (C0 FAMILY 2) the L/O/R feeds come from the mono lane chokepoint — for a
+        // valid strand the same values strandLen/strandOff/strandRot returned.
+        int ml, mo, mr; LaneDir md;
+        effectiveMonoLaneLor(strand, ml, mo, mr, md);
+        return getStrandIdx(laneTick_[strand], ml, mo, mr) & (kMaskRing - 1);
     }
     inline float masterLaneProbability(int polyLane) const {
         // UI-to-resolver FINISH (CC_PROMPT_UI_TO_RESOLVER_FINISH_START): the MASTER

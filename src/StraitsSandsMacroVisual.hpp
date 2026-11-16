@@ -237,6 +237,12 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
 }
 
 struct StraitsSandsMacroVisual : Module {
+    // (CC_PROMPT_CADENCE_C1B STAGE C) the widget-written Macro-strip gesture
+    // snapshot — a strip drag suspends the Macro row's dragged items (the followers
+    // all read the one row). The Macro LANES' store (macroLOR_) is live (un-latched),
+    // so lane gestures have nothing to suspend here.
+    bool lorGestureActive = false;
+    std::array<bool, 3> lorGestureItems = {};
     // P-A scope fix (ARRAY_CONTAINER_AUDIT): same law as the East visual — the Ids
     // struct's alias is a sibling scope; StepProbRow's P-B std::array member needs
     // the name in THIS class (the real-SDK g++ sweep rejects the unqualified use).

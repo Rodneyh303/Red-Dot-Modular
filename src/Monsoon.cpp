@@ -1886,9 +1886,14 @@ void Monsoon::process(const ProcessArgs& args) {
         // Identity defaults are byte-neutral (pass-through holds; the Stage-1/2a
         // goldens read the same store values). Runs here — the control-div block —
         // so the authoring works with or without any expander attached.
-        engine.pushVoiceLorEditor(
-            editor.voiceLorMacro, editor.voiceLorMacroDir,
-            editor.voiceLorEast, editor.voiceLorEastDir, editor.voiceLorLocalEast);
+        // (CC_PROMPT_CADENCE_C1B STAGE B) the BASE push is live-when-unlocked and
+        // PENDS under lock (the doc's answer 1A — the mono readStrand's existing
+        // law): the editor state IS the pending; the next ungated block commits it.
+        // The voice range rides the RHYTHM axis (the engine's Stage A family gate).
+        if (dotModular::LockManager::liveNow(dotModular::Control::Lor, engine.locked, engine.scopeLiveMask, /*melodyAxis=*/false))
+            engine.pushVoiceLorEditor(
+                editor.voiceLorMacro, editor.voiceLorMacroDir,
+                editor.voiceLorEast, editor.voiceLorEastDir, editor.voiceLorLocalEast);
 
         // UNIFIED ADDRESSING Stage 4: the OUTPUT-MASK rows (the one output layer) ->
         // the engine's mask store, the same one-block cadence. Runs AFTER the LOR push
@@ -1913,6 +1918,32 @@ void Monsoon::process(const ProcessArgs& args) {
         // BOTH modes: the control block is mode-independent and the voice frame is
         // per-voice (mono = slot 0 = East's V1 tab). A tier with no jacks connected is
         // skipped — the pushed base stands (the byte-neutral default).
+        // (CC_PROMPT_CADENCE_C1B STAGE C) THE EDIT-SUSPEND — the per-block push of
+        // the active gesture's scope: a MACRO strip gesture suspends the Macro row's
+        // dragged items (the followers all read the one row — "that lane across ALL
+        // macro-following voices"); an EAST gesture suspends the ONE edited voice's
+        // row items (the strip) or the lane's items (the lane strip). The committed
+        // CV holds the pre-gesture sample through the gesture; on release the
+        // suspend clears and the CV resumes at the NEXT boundary (the ordinary
+        // commit gate). The zone→items law is the widgets' (len+off for the window
+        // zones, rot for the rotation band).
+        {
+            std::array<bool, 3> macS = {false, false, false};
+            int voiceIdx = -1;
+            std::array<bool, 3> vS = {false, false, false};
+            int laneIdx = -1;
+            std::array<bool, 3> lS = {false, false, false};
+            auto* mVisS = expanderManager.cachedMacroSandsVisual;
+            auto* eVisS = expanderManager.cachedEastSandsVisual;
+            if (mVisS && mVisS->lorGestureActive) macS = mVisS->lorGestureItems;
+            if (eVisS && eVisS->lorGestureActive) {
+                voiceIdx = eVisS->lorGestureVoice;
+                if (eVisS->lorGestureOwner == 2 && eVisS->lorGestureLane >= 0) { laneIdx = eVisS->lorGestureLane; lS = eVisS->lorGestureItems; }
+                else vS = eVisS->lorGestureItems;
+            }
+            engine.setLorCvSuspend(macS.data(), voiceIdx, vS.data(), laneIdx, lS.data());
+        }
+
         {
             auto* eVis = expanderManager.cachedEastSandsVisual;
             auto* mVis = expanderManager.cachedMacroSandsVisual;
@@ -1935,9 +1966,21 @@ void Monsoon::process(const ProcessArgs& args) {
                 if (mVis && mVis->inputs[StraitsMacroVisualIds::vlCvId(item)].isConnected()) anyMacro = true;
                 if (eVis && eVis->inputs[StraitsEastVisualIds::vlCvId(item)].isConnected())  anyEast = true;
             }
+            // (CC_PROMPT_CADENCE_C1B STAGE B) the fold no longer OVERWRITES the store
+            // (that was the pre-combining) — the store keeps the pushed BASE row and
+            // the fold's total contribution goes to the engine's pending CV push as
+            // delta = combined − base (the same resolveVlorCv law, the same spans,
+            // the same R clamp against the store's LEN). effective = base_live +
+            // cv_committed reproduces today's folded row exactly when the commit gate
+            // is open; with no jack patched the delta is 0 and the base stands (the
+            // byte-neutral default). The pending pushes EVERY block (overwriting —
+            // a disconnected jack's row reads 0 delta, today's revert-to-base law).
+            std::array<int, 3> macroD = {0, 0, 0};
+            std::array<int, SequencerEngine::kVoiceSlots * 3> eastD = {0};
             if (anyMacro) {
                 for (int item = 0; item < 3; ++item) {
                     auto& in = mVis->inputs[StraitsMacroVisualIds::vlCvId(item)];
+                    const int baseRow = engine.macroVoiceLorRef(item);
                     const float v = in.isConnected()
                         ? redDot::resolveVlorCv(editor.voiceLorMacro[item],
                                                 in.getVoltage() / 10.f,
@@ -1946,13 +1989,14 @@ void Monsoon::process(const ProcessArgs& args) {
                         : editor.voiceLorMacro[item];
                     int row = (int)std::lround(v);
                     if (item == SequencerEngine::LOR_ROT) row = std::clamp(row, 0, rotHiOf(engine.macroVoiceLorRef(SequencerEngine::LOR_LEN)));
-                    engine.macroVoiceLorRef(item) = row;
+                    macroD[item] = row - baseRow;
                 }
             }
             if (anyEast) {
                 for (const auto vs : dotModular::VoiceResolver::allSlots()) {
                     for (int item = 0; item < 3; ++item) {
                         auto& in = eVis->inputs[StraitsEastVisualIds::vlCvId(item)];
+                        const int baseRow = engine.voiceLorRef(vs, item);
                         const float base = editor.voiceLorEast[vs.v * 3 + item];
                         const float val = in.isConnected()
                             ? redDot::resolveVlorCv(base,
@@ -1962,10 +2006,11 @@ void Monsoon::process(const ProcessArgs& args) {
                             : base;
                         int row = (int)std::lround(val);
                         if (item == SequencerEngine::LOR_ROT) row = std::clamp(row, 0, rotHiOf(engine.voiceLorRef(vs, SequencerEngine::LOR_LEN)));
-                        engine.voiceLorRef(vs, item) = row;
+                        eastD[vs.v * 3 + item] = row - baseRow;
                     }
                 }
             }
+            engine.pushVoiceLorCv(macroD.data(), eastD.data());
         }
 
         // Update CV2 modulation offsets (Throttled)

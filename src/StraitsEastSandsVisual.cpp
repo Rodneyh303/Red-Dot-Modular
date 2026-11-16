@@ -1556,6 +1556,20 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             redDot::sandsSnapStep(this, m->snap, fam, take);
         }
         if (!module || !paramMgr || !visualEditor) return;
+        // (CC_PROMPT_CADENCE_C1B STAGE C) publish the gesture snapshot for the
+        // manager's edit-suspend: the zone→items law — the WINDOW zones
+        // (START/END/WINDOW) move len+off, the ROTATION band moves rot. The voice =
+        // currentSlot() (the editor's own V1/poly selection).
+        if (auto* em = dynamic_cast<StraitsEastSandsVisual*>(module)) {
+            const auto& ld = visualEditor->lorDrag;
+            em->lorGestureActive = ld.active;
+            em->lorGestureOwner  = (int)ld.owner;
+            em->lorGestureVoice  = currentSlot();
+            em->lorGestureLane   = (ld.owner == SandsRangeGestureCore::LorDragState::O_LANE) ? ld.laneIdx : -1;
+            em->lorGestureItems  = { ld.zone != SandsRangeGestureCore::Z_ROTATION,
+                                     ld.zone != SandsRangeGestureCore::Z_ROTATION,
+                                     ld.zone == SandsRangeGestureCore::Z_ROTATION };
+        }
         Monsoon* monsoon = getMonsoon();
         // CC_PROMPT_04: close the curve popup when its bound target goes away — tab
         // switch or Monsoon detach (the popup binds the tab's voice AT OPEN; its store

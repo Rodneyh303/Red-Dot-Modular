@@ -209,6 +209,16 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
 }
 
 struct StraitsEastSandsVisual : Module {
+    // (CC_PROMPT_CADENCE_C1B STAGE C) the widget-written LOR gesture snapshot — the
+    // manager reads it per control block to suspend the CV commit for the edited
+    // scope while a drag is engaged. Written in the widget's step() from
+    // visualEditor->lorDrag + currentSlot(); owner 0 none / 1 strip (the voice row)
+    // / 2 lane; voice <0 or lane <0 = absent.
+    bool lorGestureActive = false;
+    int  lorGestureOwner  = 0;
+    int  lorGestureVoice  = -1;
+    int  lorGestureLane   = -1;
+    std::array<bool, 3> lorGestureItems = {};
     // P-A scope fix (ARRAY_CONTAINER_AUDIT): the ONE spelling of the voice/channel
     // capacity must live in THIS class too — StraitsEastVisualIds's copy is a sibling
     // scope, and the P-B std::array members below name it bare (the real-SDK g++

@@ -78,6 +78,7 @@ int main() {
         e.strandLenRef(VAR) = 7;
         e.strandOffRef(VAR) = 5;
         e.strandRotRef(VAR) = 3;
+        e.refreshLaneLatchesForVoice(0);   // (C1) the lane change accepts at the mono slot's voice-frame edge — the config check samples the accepted state
         const auto mono = VoiceResolver::mono();
         bool ok = true;
         for (int tick = -3; tick < 40; ++tick) {
@@ -101,6 +102,7 @@ int main() {
         e.polyLORRef(bank, dotModular::LaneId{SequencerEngine::EDITOR_LANE_VARIATION}, SequencerEngine::LOR_OFF) = 4;
         e.polyLORRef(bank, dotModular::LaneId{SequencerEngine::EDITOR_LANE_VARIATION}, SequencerEngine::LOR_ROT) = 2;
         e.setVarlegLocalEast(bank, 0, true);   // VAR: Local East — the dialed window now applies
+        e.refreshLaneLatchesForVoice(bank.v);   // (C1) accept at the voice's frame edge
         bool ok = true;
         for (int tick = -3; tick < 40; ++tick) {
             e.laneTickV_[bank.v][VAR] = tick;

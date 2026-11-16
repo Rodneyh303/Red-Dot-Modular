@@ -841,6 +841,16 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
 
     void step() override {
         ModuleWidget::step();
+        // (CC_PROMPT_CADENCE_C1B STAGE C) publish the Macro-strip gesture snapshot
+        // (the zone→items law as East's): only the STRIP owner touches the Macro
+        // row; lane gestures edit the live macroLOR_ store (nothing to suspend).
+        if (auto* mm = dynamic_cast<StraitsSandsMacroVisual*>(module)) {
+            const auto& ld = visualEditor ? visualEditor->lorDrag : redDot::SandsRangeGestureCore::LorDragState{};
+            mm->lorGestureActive = ld.active && ld.owner == redDot::SandsRangeGestureCore::LorDragState::O_STRIP;
+            mm->lorGestureItems  = { ld.active && ld.zone != redDot::SandsRangeGestureCore::Z_ROTATION,
+                                     ld.active && ld.zone != redDot::SandsRangeGestureCore::Z_ROTATION,
+                                     ld.active && ld.zone == redDot::SandsRangeGestureCore::Z_ROTATION };
+        }
         kitStep();   // kit: dev-mode live-reload poll (no-op unless enabled)
         // ── the Sands subpanel snap cluster (ui/SandsSnap.hpp): 0.1 s adjacency
         // poll + the event fast path + the one-shot consumer. The family run is
