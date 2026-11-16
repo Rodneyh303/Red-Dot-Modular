@@ -779,11 +779,15 @@ void SequencerEngine::anchorTransport(int64_t tick1based) {
     //    is not seeded — the walk-key re-anchor law covers a mid-run identity→mapped
     //    flip (the never-seeded key ≠ the new key → the closed form re-seeds) ──
     if (!macroRowIdentity()) {
-        int mL = macroVoiceLor_[LOR_LEN];
+        // (C0 FAMILY 1) the seed reads the row through effectiveMacroRowLor — the
+        // same values the raw macroVoiceLor_/macroVoiceLorDir_ reads returned.
+        int ML, MO, MR; LaneDir md;
+        effectiveMacroRowLor(ML, MO, MR, md);
+        int mL = ML;
         if (mL < 1) mL = 1;
         if (maskMacroKind_ == MASK_DYNAMIC) mL = kMaskRing;   // the macro row's abs1: the full phrase
-        macroFramePhase_ = wrapMod(t0, walkPeriod(macroVoiceLorDir_, mL));
-        macroFrameKey_   = walkKeyOf(macroVoiceLorDir_, mL);
+        macroFramePhase_ = wrapMod(t0, walkPeriod(md, mL));
+        macroFrameKey_   = walkKeyOf(md, mL);
     }
     for (int v = 0; v < kVoiceSlots; ++v) {
         // The voice's RAW effective clock: tEffV = tick + offset (the old bridge
@@ -847,16 +851,22 @@ void SequencerEngine::tickHolders(int transportMotion, int signMotion, const int
     // voice rows' voiceFramePhase_ maintenance above, for the ONE shared row (the
     // follower voices' rows resolve to it; the Macro lanes need it independently of
     // any voice being live). The abs1 row reads the FULL PHRASE (the ring), same law.
-    if (macroVoiceLor_[LOR_LEN] != kPatternLengthCap || macroVoiceLor_[LOR_OFF] != 0
-        || macroVoiceLor_[LOR_ROT] != 0 || macroVoiceLorDir_ != LaneDir::Forward) {
-        int mL = macroVoiceLor_[LOR_LEN];
-        if (mL < 1) mL = 1;
-        if (maskMacroKind_ == MASK_DYNAMIC) mL = kMaskRing;   // the macro row's abs1: the full phrase
-        const int key = walkKeyOf(macroVoiceLorDir_, mL);
-        macroFramePhase_ = (macroFrameKey_ != key)
-            ? wrapMod(t0Now, walkPeriod(macroVoiceLorDir_, mL))
-            : wrapMod((int64_t)macroFramePhase_ + transportMotion, walkPeriod(macroVoiceLorDir_, mL));
-        macroFrameKey_ = key;
+    // (C0 FAMILY 1) the identity guard + the walk reads go through
+    // effectiveMacroRowLor — the guard is the same four compares (the accessor's
+    // outputs), the walk values the same the raw reads returned.
+    {
+        int ML, MO, MR; LaneDir md;
+        effectiveMacroRowLor(ML, MO, MR, md);
+        if (ML != kPatternLengthCap || MO != 0 || MR != 0 || md != LaneDir::Forward) {
+            int mL = ML;
+            if (mL < 1) mL = 1;
+            if (maskMacroKind_ == MASK_DYNAMIC) mL = kMaskRing;   // the macro row's abs1: the full phrase
+            const int key = walkKeyOf(md, mL);
+            macroFramePhase_ = (macroFrameKey_ != key)
+                ? wrapMod(t0Now, walkPeriod(md, mL))
+                : wrapMod((int64_t)macroFramePhase_ + transportMotion, walkPeriod(md, mL));
+            macroFrameKey_ = key;
+        }
     }
     // ── the voice frames + their lane phases (the RAW effective-clock deltas) ──
     for (int v = 0; v < kVoiceSlots; ++v) {
@@ -1001,10 +1011,13 @@ void SequencerEngine::deriveHolders(int signMotion, const int8_t* voiceMotion) {
         if (gd > 0)      macroFrameSign_ = +1;
         else if (gd < 0) macroFrameSign_ = -1;   // 0 = held repeat: keep the previous cue
     } else {
-        int L = macroVoiceLor_[LOR_LEN];
-        const int O = macroVoiceLor_[LOR_OFF];
-        const int R = macroVoiceLor_[LOR_ROT];
-        const LaneDir md = macroVoiceLorDir_;
+        // (C0 FAMILY 1) the mapped arm reads the row through effectiveMacroRowLor —
+        // the same L/O/R/dir the raw macroVoiceLor_/macroVoiceLorDir_ reads returned.
+        int ML, MO, MR; LaneDir md;
+        effectiveMacroRowLor(ML, MO, MR, md);
+        int L = ML;
+        const int O = MO;
+        const int R = MR;
         if (L < 1) L = 1;
         // The base-mode split (the voice rows' law, one tier up): ABS1 walks the FULL
         // PHRASE (the ring) with rho = (R−O) over the globally-wrapped driver; CYCLE

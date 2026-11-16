@@ -912,6 +912,16 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
             R = macroVoiceLor_[LOR_ROT]; d = macroVoiceLorDir_;
         }
     }
+    // (CC_PROMPT_CADENCE_C0 FAMILY 1) the MACRO ROW's own effective read — the thin
+    // macro-row form of effectiveVoiceLor (the macro frame machinery hangs under the
+    // ROW itself, not under any voice's delegation switch — macroRowIdentity's law).
+    // Returns EXACTLY what the raw macroVoiceLor_/macroVoiceLorDir_ reads return;
+    // the derive/holder paths (anchorTransport's seed, tickHolders' guard, deriveHolders'
+    // mapped arm) read the row through HERE — the one read point C1 latches behind.
+    void effectiveMacroRowLor(int& L, int& O, int& R, LaneDir& d) const {
+        L = macroVoiceLor_[LOR_LEN]; O = macroVoiceLor_[LOR_OFF];
+        R = macroVoiceLor_[LOR_ROT]; d = macroVoiceLorDir_;
+    }
     // Identity VALUES (cap/0/0/Forward) mean PASS-THROUGH — deliberately NOT the
     // mapped (L=cap) form, whose mod-cap bounding would move non-divisive lane
     // lengths (the UA_NONDIV goldens pin the distinction). (bug 23,
@@ -926,9 +936,11 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
     // voiceLorIdentity's twin reading the shared row DIRECTLY (the Macro lanes and
     // the macro frame hang under the ROW itself, not under any voice's delegation
     // switch, so a localEast voice's row must not leak into the Macro tier's branch).
+    // (C0) now reads through effectiveMacroRowLor — the same four compares on the
+    // accessor's outputs, bit-identical.
     bool macroRowIdentity() const {
-        return macroVoiceLor_[LOR_LEN] == kPatternLengthCap && macroVoiceLor_[LOR_OFF] == 0
-            && macroVoiceLor_[LOR_ROT] == 0 && macroVoiceLorDir_ == LaneDir::Forward;
+        int L, O, R; LaneDir d; effectiveMacroRowLor(L, O, R, d);
+        return L == kPatternLengthCap && O == 0 && R == 0 && d == LaneDir::Forward;
     }
     // Store accessors (the manager/UI author these; tests author them rack-free).
     // dotModular::VoiceSlot spelled out: the VoiceSlot alias is declared further below.
