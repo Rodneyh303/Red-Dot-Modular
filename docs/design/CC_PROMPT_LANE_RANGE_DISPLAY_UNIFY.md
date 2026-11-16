@@ -157,31 +157,45 @@ like mod arcs."
 **STAGE B FOLLOW-UP — WINDOW MODEL DECIDED (Rodney, 2026-11-16). Supersedes the
 two-window phrasing in point 2 and resolves point 3's open item.** CC's Stage B
 (`c24f4eab`) built committed = solid + pending = wireframe and left the grab/base
-unattached (the disconnected grab Rodney saw in Rack). There are THREE windows; draw all
-three, collapsing to one when they coincide:
+unattached (the disconnected grab). **FINAL MODEL (Rodney, 2026-11-17) — supersedes the
+three-window text; collapse to TWO elements, not three.**
 
-1. **base / EDIT window = the grabbable SOLID OUTLINE.** The grab handle MUST stay on the
-   base (`length/offset/rotation`, `editStartBar`/`editBarInWindow`) or the user cannot
-   drag/drop the range (decision A). This is the always-present draggable element.
-2. **committed / effective window = the SOLID FILL** — what plays now, steps at the
-   boundary (the latched `effective*Lor`, what `setDisplayLOR` feeds). After an edit this is
-   where the released base + resumed CV settle (decision C — yes, it's the post-edit
-   latched window).
-3. **pending / preview window = the WIREFRAME** — the live video-rate CV
-   (`effective*Preview` = base + pending) (decision D). Keep CC's three-marker form.
+There is NO separate "base/authored" display copy. Authored and committed are the SAME
+window offset by the latched CV (`committed = base + committed CV`); with no CV they are
+identical — the only difference is the modulation. So draw exactly two things:
 
-When base == committed == pending (no CV, not editing), collapse to a single window as
-today.
+1. **THE SOLID WINDOW = committed/effective** (`effective*Lor`, what `setDisplayLOR` feeds —
+   what actually PLAYS). This IS the range: the grab sits on it, the lit/dim bars and the
+   fill are it, and under modulation it STEPS to where the CV committed. One window, always
+   present. DELETE the separate base-outline AND the divergence "echo" entirely — the echo
+   is the flicker-on-drag (it toggles on `lorDiverged()`); with no echo there is nothing to
+   toggle.
+2. **THE WIREFRAME = pending** (`effective*Preview` = base + pending) — the live video-rate
+   CV preview, CC's three-marker form.
 
-**Edit-suspend (decision B — DECIDED, not a feel item; this closes point 3 above).** An
-active LOR gesture on a scope (drag of START / END / WINDOW or ROTATION) DISCONNECTS
-modulation for that scope — the engine already does this (C1b Stage C `setLorCvSuspend`,
-keyed off the `lorDrag` / `lorGestureActive` snapshot). The DISPLAY must match: while that
-scope's gesture is active, **HIDE its wireframe** (no live-CV preview — modulation is
-disconnected), the grab/base OUTLINE follows the pointer, and the committed FILL holds the
-suspended window; on RELEASE the CV resumes at the next boundary and the wireframe returns.
-Key the hide off the SAME gesture signal the suspend uses — do not invent a second gesture
-state.
+**GRAB THE COMMITTED WINDOW WHERE IT IS DRAWN — no snap.** Hit-test against the committed
+window, NOT the base edges (CC currently hit-tests the base — a cause of the split feel). On
+press, modulation suspends (per-item, below) and the window follows the pointer FROM the
+grab point: the first frame the pointer is at the committed position, so the drag sets the
+base absolutely and NOTHING jumps. On release, the drop position IS the new base; modulation
+reconnects at the next boundary and re-applies CV from there (so with CV still patched the
+window shifts by the CV amount at that boundary — correct, modulation resuming on the new
+base, not a bug).
+
+**PER-ITEM SUSPEND — suspend EXACTLY what the gesture writes (mirror the reducer, drop the
+coarse blanket).** `SandsRangeGestureCore`'s reducer defines the per-zone writes;
+`lorGestureItems` must match them (today it is `{zone != ROTATION, zone != ROTATION, zone ==
+ROTATION}` — too coarse: it freezes offset+length for EVERY window drag, including a plain
+move that only touches offset and an end-drag that never touches offset):
+- `Z_WINDOW` (move the range) writes OFFSET only → suspend OFFSET mod; length AND rotation
+  mod keep running (rotation keeps moving the content inside the window as it slides — that
+  is the answer to "is rotation disabled while dragging": no).
+- `Z_START` (front edge) writes OFFSET + LENGTH (the end is anchored, so both move) →
+  suspend OFFSET + LENGTH.
+- `Z_END` (back edge) writes LENGTH only (start anchored) → suspend LENGTH.
+- `Z_ROTATION` writes ROTATION only → suspend ROTATION.
+Only the dimension under the finger stops; the others keep modulating live. The engine's
+`setLorCvSuspend` already takes per-item bools — feed it the reducer's per-zone item set.
 
 **WIREFRAME OFF-PISTE BUG (CC Stage B `c24f4eab`, `drawLanePreviewMarks` in
 `SandsVisualEditorV4.hpp` ~443) — fix in this follow-up.** The END tick is drawn at
@@ -198,29 +212,27 @@ grid, never over the buttons.
 
 **ACCEPTANCE (Stage B):** the preview pin fails-before/passes-after; battery still
 byte-identical (the preview accessor is read-only, no audio reader); build + warn sweep
-clean; Rodney Rack feel-test: (a) with CV and no drag — base-outline + committed-fill +
-pending-wireframe all legible, grab never detaches, no marker escapes the grid; (b) drag a
-range — the grab stays on the base and drags, no wireframe during the drag (modulation
-disconnected), on release the fill commits and the wireframe reappears at the next boundary.
+clean; Rodney Rack feel-test (per the FINAL MODEL above): (a) with CV and no drag — the ONE
+solid window (committed) steps to what plays, the pending wireframe tracks the live CV, no
+marker escapes the grid; (b) grab the window where it's drawn — it follows the pointer with
+NO snap, only the dimension(s) under the finger stop modulating while the others keep going,
+and on release the drop is the new base with CV/wireframe resuming at the next boundary.
 
 ---
 
 ## REMAINING BUGS — CC's follow-up (`b0008944`) missed these (Rodney, Rack, 2026-11-16)
 
-**BUG 1 — grab separated from the highlighted (lit/dim) bars [display].** CC attached the
-grab to the base/EDIT window but left the BAR DIMMING on the committed window.
-`SandsVisualEditorV4.hpp` ~885: `isInWindow = ghost ? L.editBarInWindow(step) :
-L.barInWindow(step)` — the normal (non-ghost) branch uses `barInWindow`, which reads the
-DISPLAY (committed) L/O/R, while the grab now reads EDIT/base. So they split under
-modulation (Rodney saw the lit bars at one position, the grab box at another). FIX: the
-dimming (which bars are lit vs dim = "your window") must follow the **EDIT/base** window —
-use `editBarInWindow` for it so it tracks the grab. The committed/effective window is shown
-by the SOLID FILL overlay (the decided model), NOT by the bar dimming; pending stays the
-wireframe. Audit the other `barInWindow`/`startBar`/`endBar` display reads in this file
-(e.g. ~944) and route the "your authored window" visuals to the EDIT edges, leaving
-`barInWindow`/disp only for the committed-fill overlay. Rack feel-test: the grab box and the
-lit bars coincide at all times, including under CV; the modulated window shows only as
-fill + wireframe.
+**BUG 1 — grab separated from the highlighted bars — RESOLVED BY THE FINAL MODEL ABOVE, not
+by the earlier "dimming follows base" note (that note is SUPERSEDED — do not implement it).**
+The split existed because the grab and the lit bars read DIFFERENT windows (base vs
+committed). The FINAL MODEL removes the split at the source: there is ONE solid window =
+committed, and the grab, the lit/dim bars, the fill AND the hit-test all read it. So route
+every "the window" display read (`barInWindow`/`startBar`/`endBar`, ~885 and ~944) AND the
+grab hit-test to the committed window; delete the base-outline and the divergence echo.
+`editBarInWindow`/the EDIT edges are used ONLY transiently during a drag, where suspend has
+frozen committed to the dragged base anyway. Rack feel-test: grab and lit bars are the same
+window at all times; under CV that one window steps to what plays; the wireframe shows the
+live CV.
 
 **BUG 2 — the double commit (the "two jumps one step apart", 16/8/8) [ENGINE — its own
 commit, reproduce-first].** NOT a Stage-A regression — a latent C1b engine bug Stage A made
