@@ -154,9 +154,41 @@ like mod arcs."
    correct/illustrative here (the wireframe shows modulation sliding the read position
    against a fixed mask). Do NOT repoint the mask anchor.
 
+**STAGE B FOLLOW-UP — WINDOW MODEL DECIDED (Rodney, 2026-11-16). Supersedes the
+two-window phrasing in point 2 and resolves point 3's open item.** CC's Stage B
+(`c24f4eab`) built committed = solid + pending = wireframe and left the grab/base
+unattached (the disconnected grab Rodney saw in Rack). There are THREE windows; draw all
+three, collapsing to one when they coincide:
+
+1. **base / EDIT window = the grabbable SOLID OUTLINE.** The grab handle MUST stay on the
+   base (`length/offset/rotation`, `editStartBar`/`editBarInWindow`) or the user cannot
+   drag/drop the range (decision A). This is the always-present draggable element.
+2. **committed / effective window = the SOLID FILL** — what plays now, steps at the
+   boundary (the latched `effective*Lor`, what `setDisplayLOR` feeds). After an edit this is
+   where the released base + resumed CV settle (decision C — yes, it's the post-edit
+   latched window).
+3. **pending / preview window = the WIREFRAME** — the live video-rate CV
+   (`effective*Preview` = base + pending) (decision D). Keep CC's three-marker form.
+
+When base == committed == pending (no CV, not editing), collapse to a single window as
+today.
+
+**Edit-suspend (decision B — DECIDED, not a feel item; this closes point 3 above).** An
+active LOR gesture on a scope (drag of START / END / WINDOW or ROTATION) DISCONNECTS
+modulation for that scope — the engine already does this (C1b Stage C `setLorCvSuspend`,
+keyed off the `lorDrag` / `lorGestureActive` snapshot). The DISPLAY must match: while that
+scope's gesture is active, **HIDE its wireframe** (no live-CV preview — modulation is
+disconnected), the grab/base OUTLINE follows the pointer, and the committed FILL holds the
+suspended window; on RELEASE the CV resumes at the next boundary and the wireframe returns.
+Key the hide off the SAME gesture signal the suspend uses — do not invent a second gesture
+state.
+
 **ACCEPTANCE (Stage B):** the preview pin fails-before/passes-after; battery still
 byte-identical (the preview accessor is read-only, no audio reader); build + warn sweep
-clean; Rodney Rack feel-test of the wireframe.
+clean; Rodney Rack feel-test: (a) with CV and no drag — base-outline + committed-fill +
+pending-wireframe all legible, grab never detaches; (b) drag a range — the grab stays on
+the base and drags, no wireframe during the drag (modulation disconnected), on release the
+fill commits and the wireframe reappears at the next boundary.
 
 ---
 
