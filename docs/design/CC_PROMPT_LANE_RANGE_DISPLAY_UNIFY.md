@@ -121,7 +121,18 @@ like mod arcs."
    suspends the CV commit but the pending keeps churning, so `base+pending` during a drag
    shows the dragged base + live CV. Decide in Rack whether the wireframe should track that
    or freeze during the gesture; leave both cheap to switch.
-4. **Honest connection to the mask anchor:** under R-CV the wireframe shows effective R
+4. **Gate on the EXISTING per-surface modViz flags (Rodney's requirement — reuse, don't
+   invent):** the wireframe overlay draws only when the surface's existing "Modulation
+   arcs" toggle is on — the same submenu in `MonsoonWidget.cpp` (~1082) that governs every
+   other mod visualisation. Use the bool flags already there: `modVizMacro` for the Sands
+   Macro strip, `modVizMono` for Sands Mono, `modVizEast` for Straits East (and
+   `modVizWest` if the West strip grows the same overlay). Do NOT add a new menu item or a
+   new flag. Update the submenu LABELS, which currently read "(spread)"
+   (`add("Sands Macro (spread)", &m->modVizMacro)` etc.), to reflect that the flag now also
+   governs the LOR-range modulation overlay — e.g. "Sands Macro (spread + range)". The
+   overlay must respect the flag's default-on and the user's toggle live, exactly like the
+   spread arcs.
+5. **Honest connection to the mask anchor:** under R-CV the wireframe shows effective R
    while the painted mask stays on base R (the UAS Stage-4 law). They diverge — and that's
    correct/illustrative here (the wireframe shows modulation sliding the read position
    against a fixed mask). Do NOT repoint the mask anchor.
