@@ -158,7 +158,7 @@ static void matrixMarch() {
         eng.numPolyVoices = 2;
         eng.macroVoiceLorDir_ = m.voice;                                   // the voice-frame level
         eng.laneDir_[0] = m.lane; eng.laneDirPending_[0] = m.lane;         // the mono lane level
-        eng.macroLaneDir_[0] = m.lane;                                     // the macro lane level
+        for (int vv = 1; vv < eng.kVoiceSlots; ++vv) eng.laneDirV_[vv][0] = m.lane;   // (retire) the macro lane level rides the per-voice lane dir — the view's LOR source
         char msg[120];
         bool colOK = true, pcOK = true;
         int  firstDelta = 0; bool deltaSignConsistent = true;
@@ -167,12 +167,13 @@ static void matrixMarch() {
             eng.advancePlayhead(+1, nullptr);
             colOK = colOK && eng.pos_.playedColumn() == eng.playedColumn();
             pcOK   = pcOK && eng.pos_.phaseClock(eng.transportTick_) == tickPhase(eng);   // (slice 5) the closed form
-            if (k == 8) prev = eng.macroLaneTick_[0];
+            int vt, vsgn; eng.macroLaneDisplay(0, vt, vsgn);   // (retire) the derived view replaces the holder tick
+            if (k == 8) prev = vt;
             if (k > 8 && k <= 14) {
-                const int d = eng.macroLaneTick_[0] - prev;
+                const int d = vt - prev;
                 if (k == 9) firstDelta = (d > 0) - (d < 0);
                 else if (((d > 0) - (d < 0)) != firstDelta || firstDelta == 0) deltaSignConsistent = false;
-                prev = eng.macroLaneTick_[0];
+                prev = vt;
             }
         }
         for (int k = 0; k < 20; ++k) {

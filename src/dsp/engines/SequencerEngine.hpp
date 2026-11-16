@@ -407,25 +407,27 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
         anchorTransport(0);
         for (int s = 0; s < dotModular::NUM_STRANDS; ++s) {
             laneTick_[s] = 0; laneSign_[s] = 1; lanePingPongHold_[s] = false;
-            macroLaneTick_[s] = 0; macroLaneSign_[s] = 1; macroPingPongHold_[s] = false;
             for (int v = 0; v < kVoiceSlots; ++v) {
                 laneTickV_[v][s] = 0; laneSignV_[v][s] = 1; lanePingPongHoldV_[v][s] = false;
             }
         }
     }
-    // Macro's own per-lane tick — always follows Macro's direction, independent of
-    // who owns the lane. Same bounce logic as laneTick_. Advanced in advancePlayhead.
-    // Macro's widget reads this for its playhead, so Macro's display always reflects
-    // Macro's DirCell, even when Mono owns the lane (engine's laneTick_ follows Mono).
-    std::array<int, dotModular::NUM_STRANDS> macroLaneTick_ = {};
-    std::array<int, dotModular::NUM_STRANDS> macroLaneSign_ = {1,1,1,1,1,1,1};   // NUM_STRANDS-sized (was 6-elem → LEGATO=0 pre-reset)
-    std::array<LaneDir, dotModular::NUM_STRANDS> macroLaneDir_ = {};
-    std::array<bool, dotModular::NUM_STRANDS> macroPingPongHold_ = {};
-    // (CC_PROMPT_16_TRIAGE bucket 2, option C's STAY-16 group) Macro's own LOR lengths
-    // (7 poly lanes: REST/MEL/OCT/ACC/QMIX/VAR/LEG) — the lane-window seed =
-    // kDefaultPatternLen (the classic 16-step pattern, NAMED; the cap move is the
-    // deferred round).
-    std::array<int, dotModular::NUM_STRANDS> macroLOR_ = {kDefaultPatternLen,kDefaultPatternLen,kDefaultPatternLen,kDefaultPatternLen,kDefaultPatternLen,kDefaultPatternLen,kDefaultPatternLen};
+    // (CC_PROMPT_RETIRE_MACRO_LANE_HOLDER) the MACRO-TIER LANE HOLDER IS GONE —
+    // macroLaneTick_/macroLaneSign_/macroLaneDir_/macroPingPongHold_/macroLOR_ (and
+    // the parallel macroLanePhase_/macroLaneKey_ phase machine) were a display-only
+    // second position tracker, O/R-blind and LEN-divergent from the per-voice latched
+    // truth (test_macro_lane_holder_retire P2). The Macro strip's playhead + direction
+    // cue now read macroLaneDisplay() — the DERIVED VIEW over the macro ROW's frame
+    // authority (macroFrameT0_, the same frame value the lanes always seeded off)
+    // mapped through the lane's FULL latched LOR from the per-voice path
+    // (effectiveLaneLor). No audio path ever consumed the holder — the battery's
+    // byte-identity is the proof the deletion is audio-safe.
+    // (CC_PROMPT_16_TRIAGE bucket 2, option C's STAY-16 group) the macro ROW's frame
+    // VALUE (the mapped arm's wnow) — the container the Macro lanes + the Macro strip
+    // hang under. Cached by the derive (the frame authority's own value, alongside
+    // macroFrameRead_/macroFrameSign_ — NOT a lane position tracker); the view below
+    // seeds the lanes' walk off it exactly as laneSeed's Macro arm did.
+    int64_t macroFrameT0_ = 0;
     // Per-voice per-strand accumulated tick (poly analogue of laneTick_). Advanced in advancePlayhead
     // by dir * polyLaneSign(v, s) — the effective sign is the voice's OWN, i.e. ABSOLUTE, not
     // relative to mono. laneSignV_ = +1 (default) = Forward; -1 = Reverse. A voice therefore does
@@ -479,7 +481,7 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
     // global window walk itself, ≡ (t−1) mod cachedLength. The voice lanes hang under their voice frames (which carry the
     // advanceOffset_ divergence — the shipped poly-advance bridge, whose offsets stay
     // live); the mono lanes hang under V1's frame; the macro lanes under the global walk.
-    // laneTick_/laneTickV_/macroLaneTick_/voiceRead_/voiceDriver_ remain the DERIVED
+    // laneTick_/laneTickV_/voiceRead_/voiceDriver_ remain the DERIVED
     // read positions every existing reader consumes — same values, same times.
     // Bit-identity: with unchanged parameters the phase walks reproduce the old
     // f(counter) closed forms EXACTLY (the walks are periodic in t0; the phase IS t0
@@ -506,7 +508,6 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
     // survives any window/LOR config round-trip (the WARM-PHASE law).
     std::array<int, dotModular::NUM_STRANDS> lanePhase_ = {};
     std::array<std::array<int, dotModular::NUM_STRANDS>, kVoiceSlots> lanePhaseV_ = {};   // per-voice: ≡ the RAW effective clock's t0 (mod the walk's period)
-    std::array<int, dotModular::NUM_STRANDS> macroLanePhase_ = {};   // macro lanes: ≡ the RAW transport t0 (mod the walk's period)
     std::array<int, kVoiceSlots> voiceFramePhase_ = {};   // mapped voice rows: ≡ the RAW effective clock's t0 (mod the row walk's period)
     // (CC_FIX_MACRO_LANE_SEED Part 2) the MACRO ROW's frame phase — the mapped macro
     // row's walk congruence, the container the Macro lanes hang under. Mirrors
@@ -524,7 +525,6 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
     // recompute-through-a-parameter-change in every case).
     std::array<int, dotModular::NUM_STRANDS> laneKey_ = {};
     std::array<std::array<int, dotModular::NUM_STRANDS>, kVoiceSlots> laneKeyV_ = {};
-    std::array<int, dotModular::NUM_STRANDS> macroLaneKey_ = {};
     std::array<int, kVoiceSlots> frameKey_ = {};
     int macroFrameKey_ = 0;   // (CC_FIX_MACRO_LANE_SEED) the macro row's walk key
     int globalT0Key_                               = 0;
@@ -917,7 +917,7 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
     // row's pass-through cycle IS the global phrase, so its lanes latch with the
     // phrase edge). Global length/offset stay STEP-rate (the MeloDicer-native
     // class); direction stays LIVE (C3's slice). The Macro tier's own LANE store
-    // (macroLOR_, effectiveMacroLaneLor) is NOT latched — C1's mechanism list
+    // (The retired macro lane holder) was NOT latched — C1's mechanism list
     // names the voice rows + the probability lanes; its cadence is Rodney's call
     // (flagged in the C1 commit message).
     // (CC_PROMPT_CADENCE_C1B STAGE B) THE BASE/CV SPLIT — the C1 combined latch is
@@ -1120,7 +1120,7 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
     // macro row's frame value for Macro). East's two loops are BIT-IDENTICAL through
     // here (the same expressions the inline seeds computed); laneRecomp is unchanged.
     struct LaneSeed { int len = 1; int64_t t0 = 0; };
-    enum class LaneWin { Mono, Poly, Macro };   // the three seed sites
+    enum class LaneWin { Mono, Poly };   // the two seed sites (the Macro arm retired with the holder)
     LaneSeed laneSeed(LaneWin win, int l, int v, bool passG, int wG, int offG, int lenG,
                       const int* frameT0, int64_t macroFrameT0) const;
 
@@ -1256,17 +1256,17 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
         d = (bank.v >= 0 && bank.v < kVoiceSlots && el >= 0 && el < dotModular::NUM_STRANDS)
             ? laneDirV_[bank.v][el] : LaneDir::Forward;
     }
-    // The MACRO form (the THIRD store — the Macro tier's own lane lengths; lanes
-    // 0..4 carry macroLOR_, VAR/LEG (5/6) have no global LOR and use the mono
-    // strand length — the laneSeed/advance law verbatim; there is no Macro OFF/ROT
-    // store, the walk reads only the length, so O/R report 0):
-    void effectiveMacroLaneLor(int lane, int& L, int& O, int& R, LaneDir& d) const {
-        L = (lane >= 0 && lane < dotModular::POLY_LANE_COUNT)
-            ? macroLOR_[lane]
-            : ((lane >= 0 && lane < dotModular::NUM_STRANDS) ? lor(lane, LOR_LEN) : kPatternLengthCap);
-        O = 0; R = 0;
-        d = (lane >= 0 && lane < dotModular::NUM_STRANDS) ? macroLaneDir_[lane] : LaneDir::Forward;
-    }
+    // (CC_PROMPT_RETIRE_MACRO_LANE_HOLDER) the Macro strip's lane playhead + direction
+    // cue — the DERIVED VIEW (the doc's option (a), confirmed): the macro ROW's frame
+    // authority (macroFrameT0_ — the mapped arm's frame value; the identity row's raw
+    // transport congruence) mapped through the lane's FULL latched LOR read from the
+    // per-voice path (effectiveLaneLor — the latched L/O/R the audio walks; all
+    // macro-following voices share the authored base, so the lowest-indexed follower
+    // is the LOR representative — the POSITION is the macro tier's own frame, no
+    // per-voice pick). The walk law is laneSeed's Macro arm + laneRecomp verbatim;
+    // the raw-congruence phase (the old macroLanePhase_, ≡ the transport mod the
+    // walk period by construction) is re-derived on demand, not stored.
+    void macroLaneDisplay(int lane, int& tick, int& sign) const;
     // (C0 FAMILY 2) the mono strand step — the accessor feeds getStrandIdx (the ONE
     // read point for the mono strand windows; the transform itself unchanged).
     int monoLaneStep(int strand, int tick) const {
