@@ -542,6 +542,85 @@ static void p8_edit_suspend() {
     }
 }
 
+// ── P9: the PREVIEW accessors — base + PENDING (the Option-3 wireframe's source) ──
+// (CC_PROMPT_LANE_RANGE_DISPLAY_UNIFY Stage B) Reproduce-first: the accessors are NEW
+// API — the pin fails to even COMPILE before they exist (the honest absence). The
+// law: preview == base + the PENDING CV (the live-modulated window the wireframe
+// tracks); effective == base + the COMMITTED CV (what the audio walks). With no CV
+// they agree; with a pend pushed but not committed they DIVERGE (the wireframe's
+// whole point); after the commit (the frame edge) they agree again.
+static void p9_preview_accessors() {
+    std::printf("P9 preview accessors: base+pending vs base+committed (the wireframe source)\n");
+    char msg[160];
+    {
+        // No CV pushed: preview == effective, every family.
+        SequencerEngine eng; eng.reset();
+        eng.updateWindow(8.f, 0.f, false, 0.f, 0.f, false);
+        eng.numPolyVoices = 2;
+        for (int t = 0; t < 5; ++t) eng.advancePlayhead(1, nullptr);
+        int eL, eO, eR; SequencerEngine::LaneDir eD;
+        int pL, pO, pR; SequencerEngine::LaneDir pD;
+        const int sRest = SequencerEngine::editorLane(SequencerEngine::PL_REST);
+        eng.effectiveMonoLaneLor(sRest, eL, eO, eR, eD);
+        eng.effectiveMonoLanePreview(sRest, pL, pO, pR, pD);
+        CHECK(eL == pL && eO == pO && eR == pR, "P9: the mono-lane preview == effective with no CV");
+        eng.effectiveLaneLor(v2(), dotModular::LaneId{SequencerEngine::PL_REST}, eL, eO, eR, eD);
+        eng.effectiveLanePreview(v2(), dotModular::LaneId{SequencerEngine::PL_REST}, pL, pO, pR, pD);
+        CHECK(eL == pL && eO == pO && eR == pR, "P9: the poly-lane preview == effective with no CV");
+        eng.effectiveVoiceLor(v2().v, eL, eO, eR, eD);
+        eng.effectiveVoiceLorPreview(v2().v, pL, pO, pR, pD);
+        CHECK(eL == pL && eO == pO && eR == pR, "P9: the voice preview == effective with no CV");
+        eng.effectiveMacroRowLor(eL, eO, eR, eD);
+        eng.effectiveMacroRowPreview(pL, pO, pR, pD);
+        CHECK(eL == pL && eO == pO && eR == pR, "P9: the macro-row preview == effective with no CV");
+    }
+    {
+        // A pend pushed but NOT committed: the A/B divergence, then the commit agreement.
+        SequencerEngine eng; eng.reset();
+        eng.updateWindow(8.f, 0.f, false, 0.f, 0.f, false);
+        eng.numPolyVoices = 2;
+        for (int t = 0; t < 5; ++t) eng.advancePlayhead(1, nullptr);
+        const int sRest = SequencerEngine::editorLane(SequencerEngine::PL_REST);
+        int bL, bO, bR; SequencerEngine::LaneDir bD;
+        eng.effectiveMonoLaneLor(sRest, bL, bO, bR, bD);   // the committed == the base (no CV yet)
+        std::vector<int> d3 = {2, 3, 1};
+        eng.pushLaneLorCvPoly(dotModular::VoiceResolver::mono(), SequencerEngine::PL_REST, d3.data());
+        int eL, eO, eR; SequencerEngine::LaneDir eD;
+        int pL, pO, pR; SequencerEngine::LaneDir pD;
+        eng.effectiveMonoLanePreview(sRest, pL, pO, pR, pD);
+        eng.effectiveMonoLaneLor(sRest, eL, eO, eR, eD);
+        std::snprintf(msg, sizeof msg, "P9: the mono-lane preview did not take the pending (got %d/%d/%d, want base+{2,3,1}=%d/%d/%d)",
+                      pL, pO, pR, bL + 2, bO + 3, bR + 1);
+        CHECK(pL == bL + 2 && pO == bO + 3 && pR == bR + 1, msg);
+        std::snprintf(msg, sizeof msg, "P9: the committed moved before the boundary (got %d/%d/%d, want the base %d/%d/%d)",
+                      eL, eO, eR, bL, bO, bR);
+        CHECK(eL == bL && eO == bO && eR == bR, msg);
+        // The poly lane + the macro row: the same divergence, one probe each.
+        eng.pushLaneLorCvPoly(v2(), SequencerEngine::PL_REST, d3.data());
+        eng.effectiveLanePreview(v2(), dotModular::LaneId{SequencerEngine::PL_REST}, pL, pO, pR, pD);
+        eng.effectiveLaneLor(v2(), dotModular::LaneId{SequencerEngine::PL_REST}, eL, eO, eR, eD);
+        CHECK(pL != eL || pO != eO || pR != eR, "P9: the poly-lane preview/effective diverge under the pending");
+        std::vector<int> mac3 = {1, 0, 0};
+        eng.pushVoiceLorCv(mac3.data(), zeroEast().data());
+        eng.effectiveMacroRowPreview(pL, pO, pR, pD);
+        eng.effectiveMacroRowLor(eL, eO, eR, eD);
+        CHECK(pL == eL + 1, "P9: the macro-row preview takes the pending macro delta");
+        // THE COMMIT (the frame edge): they agree again — the wireframe snaps into the solid.
+        eng.refreshLaneLatchesForVoice(0, true, false);
+        eng.refreshLaneLatchesForVoice(v2().v, true, false);
+        eng.refreshVoiceLorLatches();
+        eng.effectiveMonoLanePreview(sRest, pL, pO, pR, pD);
+        eng.effectiveMonoLaneLor(sRest, eL, eO, eR, eD);
+        CHECK(eL == pL && eO == pO && eR == pR, "P9: the mono lane agrees after the commit");
+        eng.effectiveLanePreview(v2(), dotModular::LaneId{SequencerEngine::PL_REST}, pL, pO, pR, pD);
+        eng.effectiveLaneLor(v2(), dotModular::LaneId{SequencerEngine::PL_REST}, eL, eO, eR, eD);
+        CHECK(eL == pL && eO == pO && eR == pR, "P9: the poly lane agrees after the commit");
+        eng.effectiveMacroRowPreview(pL, pO, pR, pD);
+        eng.effectiveMacroRowLor(eL, eO, eR, eD);
+        CHECK(eL == pL && eO == pO && eR == pR, "P9: the macro row agrees after the commit");
+    }
+}
+
 int main() {
     std::printf("== test_lor_phrase_latch (the cadence latch suite: C1 + C1b) ==\n");
     p1_voice_row();
@@ -552,6 +631,7 @@ int main() {
     p5p6_lock_aware_commit();
     p7_row_invariants_on_composed();
     p8_edit_suspend();
+    p9_preview_accessors();
     if (g_fail == 0) std::printf("all green\n");
     else std::printf("%d FAILED\n", g_fail);
     return g_fail ? 1 : 0;

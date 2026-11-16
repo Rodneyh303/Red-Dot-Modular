@@ -1875,6 +1875,14 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 eng.effectiveMonoLaneLor(el, cvLen, cvOff, cvRot, cvDir);
                 cvLen = std::max(1, cvLen);
                 visualEditor->currentState.lanes[el].setDisplayLOR(cvLen, cvOff, cvRot);
+                // (Stage B — Option 3) the mod-preview wireframe (see the Macro twin):
+                // base + PENDING, gated on the EXISTING modVizEast flag + the divergence.
+                {
+                    int pvL, pvO, pvR; SequencerEngine::LaneDir pvD;
+                    eng.effectiveMonoLanePreview(el, pvL, pvO, pvR, pvD);
+                    const bool diverged = (pvL != cvLen || pvO != cvOff || pvR != cvRot);
+                    visualEditor->setLanePreview(el, monsoon->modVizEast && diverged, pvL, pvO, pvR);
+                }
                 int ph1222 = eng.started() ? eng.laneTick_[el] : -1;
                 // (fix/variation-scan-display) non-VAR lanes draw the SHARED window playhead;
                 // the VAR lane draws the engine SCANNED read index (stepAdvanceStrandIdx +
@@ -1912,6 +1920,14 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                                       cvLen, cvOff, cvRot, cvDir);
                 cvLen = std::max(1, cvLen);
                 visualEditor->currentState.lanes[l].setDisplayLOR(cvLen, cvOff, cvRot);
+                // (Stage B — Option 3) the mod-preview wireframe, the poly form.
+                {
+                    int pvL, pvO, pvR; SequencerEngine::LaneDir pvD;
+                    eng.effectiveLanePreview(dotModular::VoiceResolver::slot(pv + 1), dotModular::LaneId{l},
+                                              pvL, pvO, pvR, pvD);
+                    const bool diverged = (pvL != cvLen || pvO != cvOff || pvR != cvRot);
+                    visualEditor->setLanePreview(l, monsoon->modVizEast && diverged, pvL, pvO, pvR);
+                }
                 // Use the PER-VOICE tick (laneTickV_), not mono's laneTick_ — otherwise
                 // the poly playhead always follows mono's direction, ignoring the DirCell.
                 int ph1253 = eng.started() ? eng.laneTickV_[pv][l] : -1;

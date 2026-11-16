@@ -1088,6 +1088,19 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
                                      ownLen, ownOff, ownRot, ownDir);
                 ownLen = std::max(1, ownLen);
                 visualEditor->currentState.lanes[l].setDisplayLOR(ownLen, ownOff, ownRot);
+                // (Stage B — Option 3) the mod-preview wireframe: base + PENDING — the
+                // three red markers, pushed ONLY when the surface's EXISTING modVizMacro
+                // flag is on AND the preview diverges from the latched window above (the
+                // divergence IS the live modulation; at each commit boundary the preview
+                // snaps into the solid). Tracks during an LOR drag by default (the
+                // dragged base + live CV) — flip to `false &&` to freeze during gestures.
+                {
+                    int pvL, pvO, pvR; SequencerEngine::LaneDir pvD;
+                    eng.effectiveLanePreview(macroLaneLorRep_(eng), dotModular::LaneId{l},
+                                             pvL, pvO, pvR, pvD);
+                    const bool diverged = (pvL != ownLen || pvO != ownOff || pvR != ownRot);
+                    visualEditor->setLanePreview(l, monsoon->modVizMacro && diverged, pvL, pvO, pvR);
+                }
                 // (CC_PROMPT_RETIRE_MACRO_LANE_HOLDER) the DERIVED VIEW replaces the
                 // retired macroLaneTick_ holder: the macro ROW's frame authority mapped
                 // through the lane's FULL latched LOR from the per-voice path — the same

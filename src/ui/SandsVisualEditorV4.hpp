@@ -410,6 +410,46 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
   void clearPlaySteps() {
     for (int l = 0; l < MAX_LANES; ++l) lanePlayStep[l] = -1;
   }
+
+  // (CC_PROMPT_LANE_RANGE_DISPLAY_UNIFY Stage B — Option 3, Rodney's three-marker
+  // variant) the per-lane LOR PREVIEW wireframe: the live-modulated window (base +
+  // the PENDING CV) as red markers over the lane rows — the START/END window bounds
+  // (vertical ticks at offset / offset+len) + the ROTATION tick (where content-step-1
+  // sits, the same fold calcPlayhead runs). The host pushes this ONLY when the
+  // surface's existing modViz flag is on AND the preview diverges from the displayed
+  // (latched) window — the divergence IS the live modulation; at each commit boundary
+  // the preview snaps into the solid (the push goes inactive). No new flag, no menu.
+  struct LanePreviewMark { bool active = false; int len = 1, off = 0, rot = 0; };
+  std::array<LanePreviewMark, MAX_LANES> lanePreview = {};
+  void setLanePreview(int lane, bool active, int len, int off, int rot) {
+    if (lane < 0 || lane >= MAX_LANES) return;
+    lanePreview[lane] = LanePreviewMark{active, len, off, rot};
+  }
+  void drawLanePreviewMarks(NVGcontext* vg) {
+    for (int lane = 0; lane < laneCount; ++lane) {
+      const LanePreviewMark& pv = lanePreview[lane];
+      if (!pv.active || pv.len < 1) continue;
+      const float y0 = layout.getLaneY(lane) + 2.f;
+      const float y1 = layout.getLaneY(lane) + layout.laneHeightF() - 2.f;
+      const auto tick = [&](float x, float w) {
+        nvgBeginPath(vg);
+        nvgMoveTo(vg, x, y0);
+        nvgLineTo(vg, x, y1);
+        nvgStrokeColor(vg, nvgRGBAf(0.95f, 0.25f, 0.2f, 0.9f));   // the red wireframe
+        nvgStrokeWidth(vg, w);
+        nvgStroke(vg);
+      };
+      // START / END: the preview window's bounds (the cells [off, off+len)).
+      tick(layout.getStepX(pv.off), 2.f);
+      tick(layout.getStepX(pv.off + pv.len), 2.f);
+      // ROTATION: content-step-1's cell — timelineIdx = (1 + rot) mod len, then + off
+      // mod the ring (calcPlayhead's fold; rot is clamped to [0, len-1] upstream).
+      const int ring = dotModular::kMaskRing;
+      const int rotCell = (((1 + pv.rot) % pv.len) + pv.len) % pv.len;
+      const int cell = (((rotCell + pv.off) % ring) + ring) % ring;
+      tick(layout.getStepCenterX(cell), 1.5f);
+    }
+  }
   
   struct Layout {
     // Layout derives ALL geometry from the owner's box.size so draw() and
@@ -600,6 +640,8 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
     }
     
     drawLanePlayheads(args.vg);
+
+    drawLanePreviewMarks(args.vg);   // (Stage B) the mod-preview wireframe, on top
     
     nvgBeginPath(args.vg);
     nvgRect(args.vg, 0, 0, box.size.x, box.size.y);

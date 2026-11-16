@@ -1256,6 +1256,53 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
         d = (bank.v >= 0 && bank.v < kVoiceSlots && el >= 0 && el < dotModular::NUM_STRANDS)
             ? laneDirV_[bank.v][el] : LaneDir::Forward;
     }
+    // (CC_PROMPT_LANE_RANGE_DISPLAY_UNIFY Stage B — Option 3) the PREVIEW twins: base +
+    // PENDING — the live-modulated window the wireframe overlay tracks (the manager
+    // pushes pending = round(knob+CV) − base every block, so base+pending IS the
+    // live-modulated window exactly; the EFFECTIVE accessors above read the COMMITTED
+    // laneLorCv_/voiceLorCv_ — what the audio walks, sampled at the voice-frame edge).
+    // Same clamp, same dir law; READ-ONLY (no audio reader — the display overlay only).
+    // The preview snaps into the solid at each commit (refreshLaneLatchesForVoice).
+    void effectiveMonoLanePreview(int strand, int& L, int& O, int& R, LaneDir& d) const {
+        const int s = strandClamp(strand);
+        L = lor(s, LOR_LEN) + laneLorCvPend_[0][s][LOR_LEN];
+        O = lor(s, LOR_OFF) + laneLorCvPend_[0][s][LOR_OFF];
+        R = lor(s, LOR_ROT) + laneLorCvPend_[0][s][LOR_ROT];
+        lorRowClamp_(L, O, R);
+        d = (strand >= 0 && strand < dotModular::NUM_STRANDS) ? laneDir_[strand] : LaneDir::Forward;
+    }
+    void effectiveLanePreview(dotModular::VoiceSlot bank, LaneId lane, int& L, int& O, int& R, LaneDir& d) const {
+        const int el = editorLane(lane.l);
+        const int vv = (bank.v >= 0 && bank.v < kVoiceSlots) ? bank.v : 0;
+        L = polyLOR(bank, LaneId{el}, LOR_LEN) + laneLorCvPend_[vv][el][LOR_LEN];
+        O = polyLOR(bank, LaneId{el}, LOR_OFF) + laneLorCvPend_[vv][el][LOR_OFF];
+        R = polyLOR(bank, LaneId{el}, LOR_ROT) + laneLorCvPend_[vv][el][LOR_ROT];
+        lorRowClamp_(L, O, R);
+        d = (bank.v >= 0 && bank.v < kVoiceSlots && el >= 0 && el < dotModular::NUM_STRANDS)
+            ? laneDirV_[bank.v][el] : LaneDir::Forward;
+    }
+    void effectiveVoiceLorPreview(int v, int& L, int& O, int& R, LaneDir& d) const {
+        if (v < 0 || v >= kVoiceSlots) { L = kPatternLengthCap; O = 0; R = 0; d = LaneDir::Forward; return; }
+        if (voiceLorLocalEast_[v]) {
+            L = voiceLorStore_[v][LOR_LEN] + voiceLorCvPend_[v][LOR_LEN];
+            O = voiceLorStore_[v][LOR_OFF] + voiceLorCvPend_[v][LOR_OFF];
+            R = voiceLorStore_[v][LOR_ROT] + voiceLorCvPend_[v][LOR_ROT];
+            d = voiceLorDir_[v];
+        } else {
+            L = macroVoiceLor_[LOR_LEN] + voiceLorCvPendMacro_[LOR_LEN];
+            O = macroVoiceLor_[LOR_OFF] + voiceLorCvPendMacro_[LOR_OFF];
+            R = macroVoiceLor_[LOR_ROT] + voiceLorCvPendMacro_[LOR_ROT];
+            d = macroVoiceLorDir_;
+        }
+        lorRowClamp_(L, O, R);
+    }
+    void effectiveMacroRowPreview(int& L, int& O, int& R, LaneDir& d) const {
+        L = macroVoiceLor_[LOR_LEN] + voiceLorCvPendMacro_[LOR_LEN];
+        O = macroVoiceLor_[LOR_OFF] + voiceLorCvPendMacro_[LOR_OFF];
+        R = macroVoiceLor_[LOR_ROT] + voiceLorCvPendMacro_[LOR_ROT];
+        lorRowClamp_(L, O, R);
+        d = macroVoiceLorDir_;
+    }
     // (CC_PROMPT_RETIRE_MACRO_LANE_HOLDER) the Macro strip's lane playhead + direction
     // cue — the DERIVED VIEW (the doc's option (a), confirmed): the macro ROW's frame
     // authority (macroFrameT0_ — the mapped arm's frame value; the identity row's raw
