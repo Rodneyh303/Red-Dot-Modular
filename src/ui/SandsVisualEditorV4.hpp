@@ -368,23 +368,38 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
     rangeStrip.blocked = blocked;
     if (label) rangeStrip.label = label;
   }
-  // (FINAL MODEL) the lane display feed's DRAG GUARD — the strip precedent
-  // (setRangeState's stripDragLive guard): while a lane drag owns `lane`, the
-  // drawn window stays the REDUCER's window (the move handler syncs it; the store
-  // push lags the drag, and an unconditional per-frame feed would fight the hand
-  // and re-detach the grab from the drawn solid — the disconnected-grab feel the
-  // doc reproduces). Not dragging (or dragging another lane): the host's effective
-  // feed applies untouched.
-  void setLaneDisplayLOR(int lane, int L, int O, int R) {
-    if (laneDragLive() && lorDrag.laneIdx == lane) return;
-    currentState.lanes[lane].setDisplayLOR(L, O, R);
+  // (BUG 4) THIS lane's drag-owned item mask — [len, off, rot]: true where the live
+  // drag's reducer OWNS the dimension (the SAME zone->items map the engine suspend
+  // uses — the drag and the suspend must agree on what the hand owns). The da66989d
+  // prompt left "track vs freeze during the drag" open; RESOLVED (Rodney, Rack
+  // 2026-11-17): PER-ITEM track.
+  std::array<bool, 3> laneDragItems(int lane) const {
+    if (!(lorDrag.active && lorDrag.owner == redDot::SandsRangeGestureCore::LorDragState::O_LANE
+          && lorDrag.laneIdx == lane))
+      return {false, false, false};
+    return redDot::SandsRangeGestureCore::lorGestureItemsFor(true, lorDrag.zone);
   }
-  // (FINAL MODEL) the lane PREVIEW feed — same guard (the wireframe does not
-  // fight the hand either); the drag-time wireframe decision (track vs freeze,
-  // doc Stage B point 3) stays a one-condition switch: add the drag check here.
+  // (FINAL MODEL + BUG 4) the lane display feed's DRAG GUARD, PER-ITEM: only the
+  // dimension(s) the reducer owns hold the drag's value (the move handler syncs them;
+  // the store push lags the drag); the OTHERS keep feeding from the host's effective —
+  // an offset-drag pins offset to the hand while length/rotation keep modulating live.
+  // Was a WHOLE-LANE skip: the instant you grabbed, all three dims of the solid AND
+  // the wireframe froze.
+  void setLaneDisplayLOR(int lane, int L, int O, int R) {
+    const std::array<bool, 3> held = laneDragItems(lane);
+    if (!held[0]) currentState.lanes[lane].dispLength   = std::max(1, std::min(L, STEP_COUNT));
+    if (!held[1]) currentState.lanes[lane].dispOffset   = ((O % STEP_COUNT) + STEP_COUNT) % STEP_COUNT;
+    if (!held[2]) currentState.lanes[lane].dispRotation = ((R % STEP_COUNT) + STEP_COUNT) % STEP_COUNT;
+  }
+  // (FINAL MODEL + BUG 4) the lane PREVIEW feed — the same PER-ITEM guard: the
+  // wireframe keeps breathing in the non-dragged dims while the dragged dim tracks
+  // the hand.
   void setLanePreviewLOR(int lane, int L, int O, int R) {
-    if (laneDragLive() && lorDrag.laneIdx == lane) return;
-    currentState.lanes[lane].setPreviewLOR(L, O, R);
+    const std::array<bool, 3> held = laneDragItems(lane);
+    if (!held[0]) currentState.lanes[lane].pLength   = std::max(1, std::min(L, STEP_COUNT));
+    if (!held[1]) currentState.lanes[lane].pOffset   = ((O % STEP_COUNT) + STEP_COUNT) % STEP_COUNT;
+    if (!held[2]) currentState.lanes[lane].pRotation = ((R % STEP_COUNT) + STEP_COUNT) % STEP_COUNT;
+    currentState.lanes[lane].previewValid = true;
   }
   // The strip's preview feed — the setRangeState precedent (guarded while a strip
   // drag is live). [L, O, R] in the LOR order, from the surface's effective*Preview.
