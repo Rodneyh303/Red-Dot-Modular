@@ -326,7 +326,43 @@ assert the committed length holds the edited base and the CV does NOT reconnect 
 drag a length with length CV patched, release mid-cycle — the edit holds, and the modulation
 only re-applies when the voice lane wraps.
 
-## NON-SCOPE
+**BUG 6 — the committed window lands one step AFTER the voice wrap (voice-wrap +1) [diagnose
+first: display-lag vs audio; Rodney Rack 2026-11-17].** On the Sands panel the voice-lane
+playhead wraps (returns to its frame start), advances ONE step, and only THEN does the
+probability-lane window move. It happens whether or not the lane was edited — so this is the
+general modulation-commit observable, not the BUG-5 edit path.
+
+LEADING HYPOTHESIS: display-only. The scope polymeter (3/3/2) read clean earlier, and the engine
+commits `laneLorCv_` at `voiceFramePhase_[v]==0` (the wrap). But DO NOT assume it — the existing
+pin `test_lor_phrase_latch.cpp` P2 measures its "edge" off the **post-advance** `voiceFramePhase_`
+(recorded after `advancePlayhead` returns, when the phase has already been bumped by `kV`). That
+reference is itself one step ahead of the commit gate (which tests the phase BEFORE the advance),
+so the test is self-consistent and GREEN while enshrining the shift — it cannot catch a one-step
+offset because it defined the edge there.
+
+STEP 1 — the TRUE-WRAP engine pin (reproduce-first, headless). Reference the wrap INDEPENDENTLY
+of the post-advance phase: the step at which the voice walk is actually at cell 0 (the frame
+entry / the playhead's visual return to start — `laneTickFor(dir, phase+1, L) == 0`), and assert
+the lane's `effectiveLaneLor` read changes to the new window AT that step, not one step later.
+Crucially, do NOT key the expected step off post-advance `voiceFramePhase==0` (that's the shifted
+reference P2 used). Outcomes:
+  - PASSES → the audio is correct; the +1 is DISPLAY-ONLY → STEP 2a.
+  - FAILS → the audio is +1 too (the commit/read reference is a step late) → STEP 2b.
+Either way, CORRECT P2 to use the true-wrap reference so it stops masking the shift.
+
+STEP 2a — DISPLAY fix (if STEP 1 passes). The Sands panel draws the live playhead from the
+current engine phase but reads the committed WINDOW from a step-stale source (the expander's
+own draw/step read, a frame behind). Align them: the window read (`effectiveLaneLor` /
+`effectiveMonoLaneLor`) must come from the SAME freshness/point in the frame as the playhead the
+panel draws, so the window update and the playhead wrap land on the same step. Widgets don't
+compile headless → Rack feel-test: the playhead wraps and the window moves on the SAME step, no
++1.
+
+STEP 2b — ENGINE fix (only if STEP 1 fails). The lane-commit/read reference is one step late:
+make the commit fire (or the read observe) such that the new window is live at the true wrap
+step. Keep the BUG-2 single-commit (no double-fire) and the voice-frame-edge cadence intact; this
+is a phase-reference correction, not a cadence change. Battery must stay byte-identical except
+the new true-wrap pin.
 - No audio/engine behaviour change in Stage A; Stage B adds only a read-only accessor.
 - The **voice-range** display (`effectiveMacroRowLor` / `effectiveVoiceLor`) is already
   unified — leave it.
