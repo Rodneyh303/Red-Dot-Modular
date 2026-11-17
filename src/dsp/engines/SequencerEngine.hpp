@@ -1275,7 +1275,6 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
     // byte-identical). Same row invariants: lorRowClamp_ re-applied; the dir has no
     // pending (C3's slice — live, same as the effective reads).
     void effectiveLanePreview(dotModular::VoiceSlot bank, LaneId lane, int& L, int& O, int& R, LaneDir& d) const {
-    void effectiveLanePreview(dotModular::VoiceSlot bank, LaneId lane, int& L, int& O, int& R, LaneDir& d) const {
         const int el = editorLane(lane.l);
         const int vv = (bank.v >= 0 && bank.v < kVoiceSlots) ? bank.v : 0;
         L = polyLOR(bank, LaneId{el}, LOR_LEN) + laneLorCvPend_[vv][el][LOR_LEN];

@@ -1925,8 +1925,10 @@ void Monsoon::process(const ProcessArgs& args) {
         // row items (the strip) or the lane's items (the lane strip). The committed
         // CV holds the pre-gesture sample through the gesture; on release the
         // suspend clears and the CV resumes at the NEXT boundary (the ordinary
-        // commit gate). The zone→items law is the widgets' (len+off for the window
-        // zones, rot for the rotation band).
+        // commit gate). The zone→items law is SandsRangeGestureCore::lorGestureItemsFor
+        // (THE ONE map, mirroring the reducer's per-zone writes: Z_WINDOW→offset,
+        // Z_START→offset+length, Z_END→length, Z_ROTATION→rotation — the widgets'
+        // snapshots are its output).
         {
             std::array<bool, 3> macS = {false, false, false};
             int voiceIdx = -1;

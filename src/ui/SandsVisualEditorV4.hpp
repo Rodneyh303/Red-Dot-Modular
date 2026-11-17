@@ -187,14 +187,13 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
   std::function<bool(int editorLane)> laneEditBlockedFn;
   bool laneEditBlocked(int editorLane) const { return laneEditBlockedFn && laneEditBlockedFn(editorLane); }
   // TRUE lock-mode state (engine.locked), distinct from laneEditBlockedFn (which is edit-PERMISSION and
-  // is deliberately false on Macro). The ghost echo needs actual lock, not edit-permission, because
-  // the display window also diverges from edit under normal CV modulation when UNLOCKED -- so
-  // divergence alone can't distinguish "locked" from "CV modulating". Host wires to engine.locked.
+  // is deliberately false on Macro). (CC_PROMPT_LANE_RANGE_DISPLAY_UNIFY, FINAL
+  // MODEL: the ghost echo is DELETED — under lock the drag still writes the live
+  // base and the suspend freezes the committed CV to it, so the ONE committed
+  // solid window tracks the hand; the wireframe (pending) is the only second
+  // element, gated on the modViz flags.)
   std::function<bool()> lockActiveFn;
   bool lockActive() const { return lockActiveFn && lockActiveFn(); }
-  // (REMAINING BUGS 1) lorGhost RETIRED: the lock-only ghost gate. The committed
-  // window now shows as the divergence echo on ANY split (CV or a moved LOR — the
-  // decided model's committed-fill), drawn directly off lorDiverged() at the sites.
   // Optional right-click callback: host registers this to open a context menu
   // when a lane row is right-clicked. Called with (lane, pos); return true to consume.
   std::function<bool(int lane, rack::math::Vec pos)> onLaneRightClick;
@@ -306,11 +305,24 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
     bool  paintPress = false;     // a paint stroke is ENGAGED (drag-paint)
     int   paintTarget = -1;       // the stroke's uniform target (latched by the first cell)
     unsigned paintApplied = 0u;   // cells already toggled this stroke (no double-toggle on wiggle)
+    // ── (Stage B, the FINAL MODEL) the strip's PENDING wireframe ────────────────
+    // base + pending CV (the engine's effective*Preview authority) — the WIREFRAME
+    // markers read it; the solid strip window (lor) stays committed. No CV ⇒
+    // pValid false (or equal to lor) ⇒ no wireframe.
+    std::array<int, 3> pLor = {16, 0, 0};
+    bool pValid   = false;
+    bool previewDiverged() const {
+      return pValid && (pLor[0] != lor[0] || pLor[1] != lor[1] || pLor[2] != lor[2]);
+    }
     // (§PLAN 1) the LOR drag state (the zone, the grab values, the before/after
     // pair) lives in lorDrag — the reducer; this keeps the strip's POINTER
     // accumulator (the arm, the paint stroke and the drag all accumulate here).
     math::Vec dragPos  = {};      // accumulated absolute position (DragMove gives delta)
   } rangeStrip;
+  // (Stage B) the wireframe overlay's MASTER GATE — the host sets it per frame from
+  // the surface's EXISTING modViz flag (modVizMacro / modVizMono / modVizEast — no
+  // new menu item, no new flag; the submenu labels now say "(spread + range)").
+  bool previewViz = false;
   // Live authoring callbacks (host-wired; the editor stays store-decoupled).
   std::function<void(int L, int O, int R)> onRangeEdit;                        // per move
   std::function<void(const int before[3], const int after[3])> onRangeCommit;  // on release
@@ -355,6 +367,33 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
     rangeStrip.dir     = (dir < 0) ? -1 : 1;
     rangeStrip.blocked = blocked;
     if (label) rangeStrip.label = label;
+  }
+  // (FINAL MODEL) the lane display feed's DRAG GUARD — the strip precedent
+  // (setRangeState's stripDragLive guard): while a lane drag owns `lane`, the
+  // drawn window stays the REDUCER's window (the move handler syncs it; the store
+  // push lags the drag, and an unconditional per-frame feed would fight the hand
+  // and re-detach the grab from the drawn solid — the disconnected-grab feel the
+  // doc reproduces). Not dragging (or dragging another lane): the host's effective
+  // feed applies untouched.
+  void setLaneDisplayLOR(int lane, int L, int O, int R) {
+    if (laneDragLive() && lorDrag.laneIdx == lane) return;
+    currentState.lanes[lane].setDisplayLOR(L, O, R);
+  }
+  // (FINAL MODEL) the lane PREVIEW feed — same guard (the wireframe does not
+  // fight the hand either); the drag-time wireframe decision (track vs freeze,
+  // doc Stage B point 3) stays a one-condition switch: add the drag check here.
+  void setLanePreviewLOR(int lane, int L, int O, int R) {
+    if (laneDragLive() && lorDrag.laneIdx == lane) return;
+    currentState.lanes[lane].setPreviewLOR(L, O, R);
+  }
+  // The strip's preview feed — the setRangeState precedent (guarded while a strip
+  // drag is live). [L, O, R] in the LOR order, from the surface's effective*Preview.
+  void setRangePreview(int L, int O, int R) {
+    if (stripDragLive()) return;
+    rangeStrip.pLor[0] = std::max(1, std::min(L, STEP_COUNT));
+    rangeStrip.pLor[1] = ((O % STEP_COUNT) + STEP_COUNT) % STEP_COUNT;
+    rangeStrip.pLor[2] = ((R % STEP_COUNT) + STEP_COUNT) % STEP_COUNT;
+    rangeStrip.pValid  = true;
   }
   // Strip window membership — (bug 11) the ONE window-contains law, shared with
   // ProbabilityLane::barInWindow (SandsRangeGestureCore::windowContains): the
@@ -420,57 +459,13 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
     for (int l = 0; l < MAX_LANES; ++l) lanePlayStep[l] = -1;
   }
 
-  // (CC_PROMPT_LANE_RANGE_DISPLAY_UNIFY Stage B — Option 3, Rodney's three-marker
-  // variant) the per-lane LOR PREVIEW wireframe: the live-modulated window (base +
-  // the PENDING CV) as red markers over the lane rows — the START/END window bounds
-  // (vertical ticks at offset / offset+len) + the ROTATION tick (where content-step-1
-  // sits, the same fold calcPlayhead runs). The host pushes this ONLY when the
-  // surface's existing modViz flag is on AND the preview diverges from the displayed
-  // (latched) window — the divergence IS the live modulation; at each commit boundary
-  // the preview snaps into the solid (the push goes inactive). No new flag, no menu.
-  struct LanePreviewMark { bool active = false; int len = 1, off = 0, rot = 0; };
-  std::array<LanePreviewMark, MAX_LANES> lanePreview = {};
-  void setLanePreview(int lane, bool active, int len, int off, int rot) {
-    if (lane < 0 || lane >= MAX_LANES) return;
-    lanePreview[lane] = LanePreviewMark{active, len, off, rot};
-  }
-  void drawLanePreviewMarks(NVGcontext* vg) {
-    for (int lane = 0; lane < laneCount; ++lane) {
-      const LanePreviewMark& pv = lanePreview[lane];
-      if (!pv.active || pv.len < 1) continue;
-      const float y0 = layout.getLaneY(lane) + 2.f;
-      const float y1 = layout.getLaneY(lane) + layout.laneHeightF() - 2.f;
-      // (the follow-up's wrap fix) THE GRID GUARD: a tick NEVER escapes the grid —
-      // skip any landing outside [padding, padding + gridW]. Belt-and-braces: with the
-      // end-wrap below nothing should, but nothing CAN again.
-      const auto tick = [&](float x, float w) {
-        if (x < layout.padding - 0.5f || x > layout.padding + layout.gridW() + 0.5f) return;
-        nvgBeginPath(vg);
-        nvgMoveTo(vg, x, y0);
-        nvgLineTo(vg, x, y1);
-        nvgStrokeColor(vg, nvgRGBAf(0.95f, 0.25f, 0.2f, 0.9f));   // the red wireframe
-        nvgStrokeWidth(vg, w);
-        nvgStroke(vg);
-      };
-      // START / END: the preview window's bounds (the cells [off, off+len)). The END
-      // WRAPS to the ring: STEP_COUNT == kMaskRing == 32, and off+len reaches 63
-      // (off <= 31, len <= 32) — an un-wrapped end drew right of the 32-cell grid,
-      // straight into the direction/delegation buttons (the stray red marker Rodney
-      // saw: the END of a wrapped preview window). (off+len) % STEP_COUNT with 0
-      // mapped to STEP_COUNT: a window ending exactly at the ring boundary keeps its
-      // tick at the right edge.
-      tick(layout.getStepX(pv.off), 2.f);
-      int endStep = (pv.off + pv.len) % STEP_COUNT;
-      if (endStep == 0) endStep = STEP_COUNT;
-      tick(layout.getStepX(endStep), 2.f);
-      // ROTATION: content-step-1's cell — timelineIdx = (1 + rot) mod len, then + off
-      // mod the ring (calcPlayhead's fold; rot is clamped to [0, len-1] upstream).
-      const int ring = dotModular::kMaskRing;
-      const int rotCell = (((1 + pv.rot) % pv.len) + pv.len) % pv.len;
-      const int cell = (((rotCell + pv.off) % ring) + ring) % ring;
-      tick(layout.getStepCenterX(cell), 1.5f);
-    }
-  }
+  // (The earlier session's editor-side preview plumbing — the LanePreviewMark array,
+  //  setLanePreview(lane, active, ...) and the no-arg drawLanePreviewMarks — is
+  //  SUPERSEDED by the FINAL MODEL shape and is not carried across the rebase: the
+  //  pending window now lives ON the lane core (setPreviewLOR/previewDiverged — the
+  //  same state object the solid window reads), the host feeds it through the
+  //  drag-guarded setLanePreviewLOR/setRangePreview, and the wireframe drawer is the
+  //  per-lane drawLanePreviewMarks(vg, lane) below, gated on previewViz + divergence.)
   
   struct Layout {
     // Layout derives ALL geometry from the owner's box.size so draw() and
@@ -658,11 +653,14 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
       }
       drawHandles(args.vg, lane);
       drawRotationIndicator(args.vg, lane);
+      // (Stage B, the FINAL MODEL) the PENDING wireframe — the SECOND (and only
+      // other) element: gated on the surface's modViz flag and on actually
+      // diverging from what plays. With no CV it never draws (one window).
+      if (previewViz && currentState.lanes[lane].previewDiverged())
+        drawLanePreviewMarks(args.vg, lane);
     }
     
     drawLanePlayheads(args.vg);
-
-    drawLanePreviewMarks(args.vg);   // (Stage B) the mod-preview wireframe, on top
     
     nvgBeginPath(args.vg);
     nvgRect(args.vg, 0, 0, box.size.x, box.size.y);
@@ -771,6 +769,39 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
       }
     }
 
+    // (Stage B, the FINAL MODEL) the strip's PENDING wireframe — the same
+    // three-marker line as the lanes (start/end/rotate), from the strip's preview
+    // row (base + pending CV), gated on the surface's modViz flag + actual
+    // divergence. Hidden while a strip drag is live (the drag IS the pending base
+    // landing; the wireframe would only duplicate it).
+    if (previewViz && !stripDragLive() && rangeStrip.previewDiverged()) {
+      const float lineY = r.pos.y + 3.5f;
+      const float gridL = layout.padding;
+      const float gridR = layout.padding + layout.gridW();
+      auto guardedX = [&](float x) { return std::clamp(x, gridL, gridR); };
+      const int sP = rangeStrip.pLor[1] % STEP_COUNT;
+      int eP = (rangeStrip.pLor[1] + std::max(1, std::min(rangeStrip.pLor[0], STEP_COUNT))) % STEP_COUNT;
+      if (eP == 0) eP = STEP_COUNT;   // the off-piste fix: a boundary end stays at the right edge
+      const int rP = (rangeStrip.pLor[1] + (rangeStrip.pLor[2] % std::max(1, rangeStrip.pLor[0]))) % STEP_COUNT;
+      const float startX = guardedX(layout.getStepX(sP));
+      const float endX   = guardedX(layout.getStepX(eP));
+      const float rotX   = guardedX(layout.getStepX(rP));
+      NVGcolor wire = nvgRGB(0xE8, 0x54, 0x4A); wire.a = 0.75f;
+      nvgBeginPath(vg);
+      nvgMoveTo(vg, startX, lineY); nvgLineTo(vg, endX, lineY);
+      nvgStrokeColor(vg, wire); nvgStrokeWidth(vg, 1.1f); nvgStroke(vg);
+      wire.a = 0.95f;
+      nvgBeginPath(vg);
+      nvgMoveTo(vg, startX, r.pos.y + 1.f); nvgLineTo(vg, startX, r.pos.y + r.size.y * 0.5f);
+      nvgMoveTo(vg, endX,   r.pos.y + 1.f); nvgLineTo(vg, endX,   r.pos.y + r.size.y * 0.5f);
+      nvgStrokeColor(vg, wire); nvgStrokeWidth(vg, 1.6f); nvgStroke(vg);
+      nvgBeginPath(vg);
+      nvgMoveTo(vg, rotX - 2.6f, lineY); nvgLineTo(vg, rotX, lineY - 2.6f);
+      nvgLineTo(vg, rotX + 2.6f, lineY); nvgLineTo(vg, rotX, lineY + 2.6f);
+      nvgClosePath(vg);
+      nvgFillColor(vg, wire); nvgFill(vg);
+    }
+
     // The read cell: the voice's current buffer cell, glowing + leading-edge bar.
     if (rangeStrip.readPos >= 0 && rangeStrip.readPos < STEP_COUNT) {
       rack::Rect cell = rack::Rect(layout.getStepX(rangeStrip.readPos), r.pos.y,
@@ -877,13 +908,14 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
     rack::Rect rect  = layout.getStepRect(lane, step);
     float prob       = L.probabilities[step];
     float barHeight  = prob * rect.size.y;
-    // (REMAINING BUGS 1 — the window model, display side) the lit/dim bars are YOUR
-    // AUTHORED window (the EDIT/base L/O/R) — ALWAYS, so the lit run coincides with
-    // the grab at all times, including under CV. Was: the display/committed window
-    // when unlocked — the lit bars and the grab box SPLIT under modulation (the lit
-    // bars at one position, the grab at another). The committed/effective window now
-    // shows as the echo overlay below (on divergence); the pending as the wireframe.
-    bool  isInWindow = L.editBarInWindow(step);
+    // (CC_PROMPT_LANE_RANGE_DISPLAY_UNIFY, FINAL MODEL) the ONE solid window =
+    // COMMITTED (the display L/O/R — base + committed CV, what plays). The lit/dim
+    // bars, the fill, the edge markers AND the grab hit-test all read it; there is
+    // NO base-outline branch and NO divergence echo (both deleted — under a drag the
+    // per-item suspend freezes committed to the dragged base, so the solid tracks
+    // the hand; the pending wireframe is the only second element, drawn by
+    // drawLanePreviewMarks when the modViz flag is on and the preview diverges).
+    bool  isInWindow = L.barInWindow(step);
     float dimAlpha   = isInWindow ? 1.f : 0.22f;
 
     // Background
@@ -923,8 +955,8 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
     // the cells, so even a 1-wide window shows both edges on the same cell
     // unambiguously (the old brackets collided and got stuck in that case).
     NVGcolor edge = getLaneColor(lane); edge.a = 0.95f;
-    const int solidStart = L.editStartBar();   // (BUG 1) the authored window's edges — always the EDIT bars
-    const int solidEnd   = L.editEndBar();
+    const int solidStart = L.startBar();
+    const int solidEnd   = L.endBar();
     if (step == solidStart) {
       nvgBeginPath(vg);
       nvgRect(vg, rect.pos.x, rect.pos.y, 2.5f, rect.size.y);
@@ -936,31 +968,6 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
       nvgRect(vg, rect.pos.x + rect.size.x - 2.5f, rect.pos.y, 2.5f, rect.size.y);
       nvgFillColor(vg, edge);
       nvgFill(vg);
-    }
-
-    // (BUG 1) the COMMITTED/effective window as a faint echo — on ANY divergence from
-    // the authored window (CV modulation unlocked, or a moved LOR under lock: either
-    // way the still-playing window splits from the solid one). Was the lock-only
-    // ghost; this is the decided model's committed-fill. Committed window =
-    // barInWindow/startBar/endBar (display L/O). Collapsed (not drawn) when equal.
-    if (L.lorDiverged()) {
-      if (L.barInWindow(step)) {
-        nvgBeginPath(vg);
-        nvgRect(vg, rect.pos.x, rect.pos.y, rect.size.x, rect.size.y);
-        nvgFillColor(vg, nvgRGBAf(1.f, 1.f, 1.f, 0.05f));
-        nvgFill(vg);
-      }
-      NVGcolor gedge = getLaneColor(lane); gedge.a = 0.30f;   // faint = echo
-      if (step == L.startBar()) {
-        nvgBeginPath(vg);
-        nvgRect(vg, rect.pos.x, rect.pos.y, 2.5f, rect.size.y);
-        nvgFillColor(vg, gedge); nvgFill(vg);
-      }
-      if (step == L.endBar()) {
-        nvgBeginPath(vg);
-        nvgRect(vg, rect.pos.x + rect.size.x - 2.5f, rect.pos.y, 2.5f, rect.size.y);
-        nvgFillColor(vg, gedge); nvgFill(vg);
-      }
     }
   }
   
@@ -978,7 +985,9 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
   // (bug 10) a 1-WIDE window has no in-window middle to preserve — its edges are
   // the OUTSIDE bands (Rodney's ruling), so the cap does not apply at length 1.
   float windowEdgeW(const ProbabilityLane& L) const {
-    const int lenC = std::max(1, std::min(L.length, STEP_COUNT));
+    // (FINAL MODEL) the grab geometry reads the COMMITTED length — the grab sits on
+    // the window that is drawn (the solid = committed). Was the EDIT length.
+    const int lenC = std::max(1, std::min(L.dispLength, STEP_COUNT));
     const float want = std::max(layout.stepWidthF(), mm2px(4.f));
     if (lenC <= 1) return want;
     const float spanPx = lenC * layout.stepWidthF();
@@ -989,8 +998,14 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
     if (lane < 0 || lane >= laneCount) return DragState::NONE;
     const ProbabilityLane& L = currentState.lanes[lane];
     rack::Rect laneR = layout.getLaneRect(lane);
-    const int startBar = L.editStartBar();
-    const int endBar   = L.editEndBar();
+    // (FINAL MODEL) GRAB THE COMMITTED WINDOW WHERE IT IS DRAWN — the hit-test
+    // classifies against the committed bars (the display L/O), NOT the base edges
+    // (the base hit-test was a cause of the split feel: the grab detached from the
+    // highlighted bars under CV). The press seeds the reducer with the committed
+    // LOR ("forget the suspended sample"), so the drag sets the base absolutely
+    // from the committed position and nothing jumps.
+    const int startBar = L.startBar();
+    const int endBar   = L.endBar();
     float halfStep = layout.stepWidthF() * 0.5f;
 
     // The ROTATION band's extent (the window's INCLUSIVE cell run — unchanged
@@ -1024,7 +1039,7 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
       const float gridL = layout.padding;
       const float gridR = layout.padding + layout.gridW();
       const float stepW = layout.stepWidthF();
-      const int   lenC  = std::max(1, std::min(L.length, STEP_COUNT));
+      const int   lenC  = std::max(1, std::min(L.dispLength, STEP_COUNT));
       switch (redDot::SandsRangeGestureCore::classifyWindow(
                  x, startBoundX, endBoundX, windowEdgeW(L), gridL, gridR,
                  lenC * stepW, stepW)) {
@@ -1090,16 +1105,19 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
     rack::Rect laneR = layout.getLaneRect(lane);
     float bandTop = laneR.pos.y;
     float bandH   = laneR.size.y * 0.65f;       // matches the hit-zone band
-    int lenC = std::max(1, std::min(L.length, STEP_COUNT));
+    // (FINAL MODEL) the fill, the ribbons and the lenC all read the COMMITTED
+    // window — the grab affordance IS the window that is drawn (hitTestHandle
+    // classifies the same committed bars; during a drag the per-item suspend
+    // freezes committed to the dragged base, so the affordance tracks the hand).
+    // Was the EDIT bars (the pre-FINAL-MODEL split: the affordance detached from
+    // the tinted window under CV).
+    int lenC = std::max(1, std::min(L.dispLength, STEP_COUNT));
 
-    // Window body fill across the EDIT range (matches inWindowX / the MOVE hit
-    // zone). Iterate from editStartBar so the fill = the grabbable body.
-    // (BUG 1) stronger body/edge whenever the authored window splits from the
-    // committed — the grab draws the eye when the windows diverge.
-    const bool splitHandles = L.lorDiverged();
-    NVGcolor body = nvgRGBAf(1.f, 1.f, 1.f, splitHandles ? 0.20f : 0.10f);
+    // Window body fill across the committed range (matches inWindowX / the MOVE
+    // hit zone). Iterate from startBar so the fill = the grabbable body.
+    NVGcolor body = nvgRGBAf(1.f, 1.f, 1.f, 0.10f);
     for (int k = 0; k < lenC; ++k) {
-      int bar = (L.editStartBar() + k) % STEP_COUNT;
+      int bar = (L.startBar() + k) % STEP_COUNT;
       rack::Rect c = layout.getStepRect(lane, bar);
       nvgBeginPath(vg);
       nvgRect(vg, c.pos.x, bandTop, c.size.x, bandH);
@@ -1108,15 +1126,14 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
     }
 
     // START / END edge ribbons — drawn at the actual grab-zone width so the user
-    // can SEE where to grab (was an invisible 30%-cell zone before).
-    // Edge ribbons use the EDIT bars (editStartBar/editEndBar) so the drawn grab
-    // affordance lands exactly where hitTestHandle grabs — even while CV is
-    // modulating the DISPLAYED window (which the probability bars/playhead show).
+    // can SEE where to grab (was an invisible 30%-cell zone before). Ribbons sit
+    // on the COMMITTED bars — the same bars the tint, the edge markers and the
+    // hit-test use (the ONE window).
     float edgeW = windowEdgeW(L);
-    rack::Rect cs = layout.getStepRect(lane, L.editStartBar());
-    rack::Rect ce = layout.getStepRect(lane, L.editEndBar());
-    bool oneWide = (L.editStartBar() == L.editEndBar());
-    NVGcolor edge = getLaneColor(lane); edge.a = splitHandles ? 0.95f : 0.55f;
+    rack::Rect cs = layout.getStepRect(lane, L.startBar());
+    rack::Rect ce = layout.getStepRect(lane, L.endBar());
+    bool oneWide = (L.startBar() == L.endBar());
+    NVGcolor edge = getLaneColor(lane); edge.a = 0.55f;
 
     auto fillRect = [&](float x, float w, NVGcolor col) {
       nvgBeginPath(vg); nvgRect(vg, x, bandTop, w, bandH);
@@ -1150,7 +1167,7 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
         else         fillRect(ce.pos.x + ce.size.x - edgeW, edgeW, hi);
       } else if (hoverZone == DragState::WINDOW) {
         for (int k = 0; k < lenC; ++k) {
-          int bar = (L.editStartBar() + k) % STEP_COUNT;
+          int bar = (L.startBar() + k) % STEP_COUNT;
           rack::Rect c = layout.getStepRect(lane, bar);
           fillRect(c.pos.x, c.size.x, hi);
         }
@@ -1228,6 +1245,64 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
     chevrons();                                          // white core
     { NVGcolor core = nvgRGB(0xf2, 0xf2, 0xf6); core.a = 0.95f * on;
       nvgStrokeColor(vg, core); nvgStrokeWidth(vg, 1.6f); nvgStroke(vg); }
+  }
+
+  // ── (CC_PROMPT_LANE_RANGE_DISPLAY_UNIFY Stage B, the FINAL MODEL) the WIREFRAME
+  // ── the pending window's three-marker line (Rodney's straight mod-arc-line form:
+  // start / end / rotate ticks on a thin line above the window band — rotation
+  // reads better as its OWN marker than as a box outline, since rotation moves the
+  // CONTENT within the window, not the window). Reads the lane's PENDING preview
+  // window (base + pending CV — effective*Preview); the SOLID window is committed
+  // and never drawn from this. OFF-PISTE FIX BUILT IN (the doc's named bug): the
+  // END tick wraps — endStep = (off + len) % STEP_COUNT, with 0 → STEP_COUNT so a
+  // window ending exactly at the boundary stays at the RIGHT edge (off ∈ [0,31],
+  // len ∈ [1,32] ⇒ off+len reaches 63; unwrapped it drew past the grid into the
+  // direction/delegation buttons) — AND every tick is bounds-guarded into
+  // [padding, padding + gridW], belt-and-braces for all three markers.
+  void drawLanePreviewMarks(NVGcontext* vg, int lane) {
+    const ProbabilityLane& L = currentState.lanes[lane];
+    if (!L.previewValid) return;
+    rack::Rect laneR = layout.getLaneRect(lane);
+    const float bandTop = laneR.pos.y;
+    const float bandH   = laneR.size.y * 0.65f;
+    const float lineY   = bandTop + 3.5f;
+    const float gridL   = layout.padding;
+    const float gridR   = layout.padding + layout.gridW();
+    auto guardedX = [&](float x) { return std::clamp(x, gridL, gridR); };
+    const int startStep = L.pOffset % STEP_COUNT;
+    int endStep = (L.pOffset + std::max(1, std::min(L.pLength, STEP_COUNT))) % STEP_COUNT;
+    if (endStep == 0) endStep = STEP_COUNT;   // a boundary-ending window stays at the right edge
+    // The ROTATION tick: content-step-1's cell — the same fold calcPlayhead runs
+    // (timelineIdx = (1 + rot) mod len, then + off mod the ring; the doc's letter,
+    // adopted from the earlier session's faithful reading of it).
+    const int rotCell = ((1 + L.pRotation) % std::max(1, L.pLength) + std::max(1, L.pLength)) % std::max(1, L.pLength);
+    const int rotStep = (rotCell + L.pOffset) % STEP_COUNT;
+    const float startX = guardedX(layout.getStepX(startStep));
+    const float endX   = guardedX(layout.getStepX(endStep));
+    const float rotX   = guardedX(layout.getStepX(rotStep));
+
+    NVGcolor wire = nvgRGB(0xE8, 0x54, 0x4A);   // the mod-arc red family — this IS a mod preview
+    // the straight line between start and end (through the wrap it stays simple:
+    // the ticks carry the information, the line spans the drawn extent)
+    wire.a = 0.75f;
+    nvgBeginPath(vg);
+    nvgMoveTo(vg, startX, lineY);
+    nvgLineTo(vg, endX, lineY);
+    nvgStrokeColor(vg, wire);
+    nvgStrokeWidth(vg, 1.1f);
+    nvgStroke(vg);
+    // START tick (tall) / END tick (tall) — the window edges;
+    // ROTATION tick (short + centred diamond) — content position, not window edge
+    wire.a = 0.95f;
+    nvgBeginPath(vg);
+    nvgMoveTo(vg, startX, bandTop + 1.f); nvgLineTo(vg, startX, bandTop + bandH * 0.5f);
+    nvgMoveTo(vg, endX,   bandTop + 1.f); nvgLineTo(vg, endX,   bandTop + bandH * 0.5f);
+    nvgStrokeColor(vg, wire); nvgStrokeWidth(vg, 1.6f); nvgStroke(vg);
+    nvgBeginPath(vg);
+    nvgMoveTo(vg, rotX - 2.6f, lineY); nvgLineTo(vg, rotX, lineY - 2.6f);
+    nvgLineTo(vg, rotX + 2.6f, lineY); nvgLineTo(vg, rotX, lineY + 2.6f);
+    nvgClosePath(vg);
+    nvgFillColor(vg, wire); nvgFill(vg);
   }
   
   // Draw a per-lane playhead highlight.
@@ -1404,9 +1479,17 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
           prs.owner = redDot::SandsRangeGestureCore::LorDragState::O_LANE;
           prs.laneIdx = lane;
           prs.step = getStepAtX(e.pos.x);
-          prs.win[0] = currentState.lanes[lane].length;
-          prs.win[1] = currentState.lanes[lane].offset;
-          prs.win[2] = currentState.lanes[lane].rotation;
+          // (FINAL MODEL) the press seeds the reducer with the COMMITTED window
+          // ("forget the suspended sample"): grabOff/grabLen = base + the CV
+          // displacing it, so the drag sets the base absolutely from the committed
+          // position — the window follows the pointer FROM the grab point, nothing
+          // snaps back, and the one CV sample folded into the base is discarded.
+          // Only the suspended item(s) forget their grab-time CV; every other item
+          // keeps modulating through the drag. Was the EDIT (base) window — under
+          // CV the grab detached from the drawn window and the release snapped.
+          prs.win[0] = currentState.lanes[lane].dispLength;
+          prs.win[1] = currentState.lanes[lane].dispOffset;
+          prs.win[2] = currentState.lanes[lane].dispRotation;
           lorDrag = redDot::SandsRangeGestureCore::lorDragReduce(lorDrag, prs, STEP_COUNT);
           e.consume(this);
           return;

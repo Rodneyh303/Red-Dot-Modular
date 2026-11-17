@@ -68,11 +68,6 @@ extern Plugin* pluginInstance;
     // CV-modulated value); set = the SPREAD_* param. Both normalised (v+1)/2.
    
 
-// (CC_PROMPT_LANE_RANGE_DISPLAY_UNIFY Stage A) the Macro strip's LANE-RANGE
-// representative is the ENGINE-side macroLaneRepVoice() (SequencerEngine.hpp) —
-// macroLaneDisplay's exact choice hoisted into the engine so the display reads and
-// the derived view share ONE derivation. The file-local helper this replaces is gone.
-
 struct StraitsSandsMacroVisualWidget : ModuleWidget,
     dotModular::Compose<StraitsSandsMacroVisualWidget,
                         dotModular::ShapeQuery, dotModular::Bind, dotModular::Reload> {
@@ -852,9 +847,13 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         if (auto* mm = dynamic_cast<StraitsSandsMacroVisual*>(module)) {
             const auto& ld = visualEditor ? visualEditor->lorDrag : redDot::SandsRangeGestureCore::LorDragState{};
             mm->lorGestureActive = ld.active && ld.owner == redDot::SandsRangeGestureCore::LorDragState::O_STRIP;
-            mm->lorGestureItems  = { ld.active && ld.zone != redDot::SandsRangeGestureCore::Z_ROTATION,
-                                     ld.active && ld.zone != redDot::SandsRangeGestureCore::Z_ROTATION,
-                                     ld.active && ld.zone == redDot::SandsRangeGestureCore::Z_ROTATION };
+            // (CC_PROMPT_LANE_RANGE_DISPLAY_UNIFY, FINAL MODEL) PER-ITEM suspend —
+            // the ONE zone→items map (lorGestureItemsFor) mirroring the reducer's
+            // per-zone writes: Z_WINDOW suspends OFFSET only, Z_START OFFSET+LENGTH,
+            // Z_END LENGTH only, Z_ROTATION ROTATION only. Was the coarse blanket
+            // ({zone != Z_ROTATION, ·, ·}) that froze offset+length for every drag.
+            mm->lorGestureItems  = redDot::SandsRangeGestureCore::lorGestureItemsFor(
+                mm->lorGestureActive, ld.zone);
         }
         kitStep();   // kit: dev-mode live-reload poll (no-op unless enabled)
         // ── the Sands subpanel snap cluster (ui/SandsSnap.hpp): 0.1 s adjacency
@@ -1077,15 +1076,17 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
                 eng.effectiveLaneLor(dotModular::VoiceResolver::slot(repVoice + 1),
                                      eng.strandLaneId(l), ownLen, ownOff, ownRot, ownDir);
                 ownLen = std::max(1, ownLen);
-                visualEditor->currentState.lanes[l].setDisplayLOR(ownLen, ownOff, ownRot);
-                // (The two Stage-B-side blocks that sat here — the per-frame base→edit
-                //  feed keeping the grab on the BASE window, and the base+PENDING
-                //  preview push through the old setLanePreview API — are SUPERSEDED by
-                //  the FINAL MODEL and are NOT carried across the rebase: the FINAL
-                //  MODEL grabs the COMMITTED window (the press seeds the reducer from
-                //  dispLOR — "forget the suspended sample"), draws ONE solid window =
-                //  committed, and its preview feed (setLanePreviewLOR, the drag-guarded
-                //  editor-side API) is re-established in the Stage B widget commit.)
+                visualEditor->setLaneDisplayLOR(l, ownLen, ownOff, ownRot);
+                // (Stage B, the FINAL MODEL) the lane's WIREFRAME row — base + PENDING
+                // (the live-modulated window) through the SAME representative; drawn
+                // only when the surface's modViz flag is on AND it diverges from the
+                // committed window (no CV ⇒ no wireframe).
+                {
+                    int pl_, po_, pr_; SequencerEngine::LaneDir pd_;
+                    eng.effectiveLanePreview(dotModular::VoiceResolver::slot(repVoice + 1),
+                                             eng.strandLaneId(l), pl_, po_, pr_, pd_);
+                    visualEditor->setLanePreviewLOR(l, pl_, po_, pr_);
+                }
                 // (CC_PROMPT_RETIRE_MACRO_LANE_HOLDER) the DERIVED VIEW replaces the
                 // retired macroLaneTick_ holder: the macro ROW's frame authority mapped
                 // through the lane's FULL latched LOR from the per-voice path — the same
@@ -1149,6 +1150,17 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
             int rp = eng.started() ? eng.macroFrameRead() : -1;
             int sg = eng.macroFrameSign();
             visualEditor->setRangeState(mL, mO, mR, rp, sg, false, rangeLabel_);
+            // (Stage B, the FINAL MODEL) the strip's WIREFRAME row — base + PENDING
+            // (the live-modulated window), the twin of the committed feed above;
+            // gated on the surface's existing modViz flag, drawn only when it
+            // diverges from what plays. The drag-time wireframe call (track vs
+            // freeze) stays the editor-side one-condition switch.
+            {
+                int pl_, po_, pr_; SequencerEngine::LaneDir pd_;
+                se->effectiveMacroRowPreview(pl_, po_, pr_, pd_);
+                visualEditor->setRangePreview(pl_, po_, pr_);
+            }
+            visualEditor->previewViz = monsoon->modVizMacro;
             // The mask surface reads the ENGINE's effective pattern (the UI-completion
             // unify — display-reads-engine, East's twin note): cycle = all-lit, range
             // = the window, painted = the ANCHORED working copy (rotates with R when

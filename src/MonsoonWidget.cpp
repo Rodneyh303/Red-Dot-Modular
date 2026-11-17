@@ -1082,14 +1082,10 @@ void MonsoonWidget::appendContextMenu(ui::Menu* menu) {
             add("Monsoon — pitch/octave sliders", &m->modVizMonsoonMelody);
             add("Monsoon — knobs (probability, slew, mix)", &m->modVizMonsoonOther);
             sm->addChild(new ui::MenuSeparator);
-            // (CC_PROMPT_LANE_RANGE_DISPLAY_UNIFY Stage B) the flags now ALSO govern the
-            // LOR-range mod-preview wireframe on their surfaces (the doc's amendment:
-            // reuse, no new flag) — the labels say so. Mono/West keep "(spread)"/
-            // "(per-voice)" until their strips grow the overlay.
-            add("Straits East (per-voice + range)", &m->modVizEast);
+            add("Straits East (per-voice + range)", &m->modVizEast);   // (FINAL MODEL) now also gates the LOR-range pending wireframe
             add("Straits West (per-voice)", &m->modVizWest);
-            add("Sands Macro (spread + range)", &m->modVizMacro);
-            add("Sands Mono (spread)", &m->modVizMono);
+            add("Sands Macro (spread + range)", &m->modVizMacro);      // (FINAL MODEL) now also gates the LOR-range pending wireframe
+            add("Sands Mono (spread)", &m->modVizMono);   // the Mono grid's own range overlay is the flagged follow-up — label unchanged until it draws
             add("Change Alley (grain/step)", &m->modVizChangeAlley);
         }));
         // Rhythm behaviour: the two leading-edge policy toggles (RHYTHM_BEHAVIOUR_POLICIES.md).

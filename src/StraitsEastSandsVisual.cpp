@@ -1541,11 +1541,18 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             em->lorGestureOwner  = (int)ld.owner;
             em->lorGestureVoice  = currentSlot();
             em->lorGestureLane   = (ld.owner == SandsRangeGestureCore::LorDragState::O_LANE) ? ld.laneIdx : -1;
-            em->lorGestureItems  = { ld.zone != SandsRangeGestureCore::Z_ROTATION,
-                                     ld.zone != SandsRangeGestureCore::Z_ROTATION,
-                                     ld.zone == SandsRangeGestureCore::Z_ROTATION };
+            // (CC_PROMPT_LANE_RANGE_DISPLAY_UNIFY, FINAL MODEL) PER-ITEM suspend —
+            // the ONE zone→items map (lorGestureItemsFor) mirroring the reducer's
+            // per-zone writes (Z_WINDOW→offset, Z_START→offset+length, Z_END→length,
+            // Z_ROTATION→rotation); was the coarse zone!=Z_ROTATION blanket. Only
+            // the dimension under the finger stops; the others keep modulating live.
+            em->lorGestureItems  = SandsRangeGestureCore::lorGestureItemsFor(ld.active, ld.zone);
         }
         Monsoon* monsoon = getMonsoon();
+        // (Stage B, the FINAL MODEL) the wireframe overlay's master gate — the
+        // surface's EXISTING modViz flag (no new menu item); set per frame so a
+        // skipped strip branch can't leave it stale.
+        if (visualEditor) visualEditor->previewViz = monsoon && monsoon->modVizEast;
         // CC_PROMPT_04: close the curve popup when its bound target goes away — tab
         // switch or Monsoon detach (the popup binds the tab's voice AT OPEN; its store
         // resolver would otherwise be dead).
@@ -1876,14 +1883,15 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 int cvLen, cvOff, cvRot; SequencerEngine::LaneDir cvDir;
                 eng.effectiveMonoLaneLor(el, cvLen, cvOff, cvRot, cvDir);
                 cvLen = std::max(1, cvLen);
-                visualEditor->currentState.lanes[el].setDisplayLOR(cvLen, cvOff, cvRot);
-                // (The two Stage-B-side blocks that sat here — the per-frame base→edit
-                //  feed keeping the grab on the BASE window, and the base+PENDING
-                //  preview push through the old setLanePreview API — are SUPERSEDED by
-                //  the FINAL MODEL and are NOT carried across the rebase: the FINAL
-                //  MODEL grabs the COMMITTED window, draws ONE solid window = committed,
-                //  and its preview feed (setLanePreviewLOR) is re-established in the
-                //  Stage B widget commit.)
+                visualEditor->setLaneDisplayLOR(el, cvLen, cvOff, cvRot);
+                // (Stage B, the FINAL MODEL) the lane's WIREFRAME row — base + PENDING
+                // (effectiveMonoLanePreview); drawn only under the modViz flag AND
+                // when it diverges from the committed window (no CV ⇒ no wireframe).
+                {
+                    int pl_, po_, pr_; SequencerEngine::LaneDir pd_;
+                    eng.effectiveMonoLanePreview(el, pl_, po_, pr_, pd_);
+                    visualEditor->setLanePreviewLOR(el, pl_, po_, pr_);
+                }
                 int ph1222 = eng.started() ? eng.laneTick_[el] : -1;
                 // (fix/variation-scan-display) non-VAR lanes draw the SHARED window playhead;
                 // the VAR lane draws the engine SCANNED read index (stepAdvanceStrandIdx +
@@ -1921,10 +1929,15 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 eng.effectiveLaneLor(dotModular::VoiceResolver::slot(pv + 1), dotModular::LaneId{l},
                                      cvLen, cvOff, cvRot, cvDir);
                 cvLen = std::max(1, cvLen);
-                visualEditor->currentState.lanes[l].setDisplayLOR(cvLen, cvOff, cvRot);
-                // (The Stage-B-side blocks that sat here — the poly base→edit feed and
-                //  the setLanePreview push — are SUPERSEDED by the FINAL MODEL and are
-                //  NOT carried across the rebase; see the mono tab's note.)
+                visualEditor->setLaneDisplayLOR(l, cvLen, cvOff, cvRot);
+                // (Stage B, the FINAL MODEL) the poly lane's WIREFRAME row —
+                // effectiveLanePreview (base + pending) for THIS voice's lane.
+                {
+                    int pl_, po_, pr_; SequencerEngine::LaneDir pd_;
+                    eng.effectiveLanePreview(dotModular::VoiceResolver::slot(pv + 1),
+                                             dotModular::LaneId{l}, pl_, po_, pr_, pd_);
+                    visualEditor->setLanePreviewLOR(l, pl_, po_, pr_);
+                }
                 // Use the PER-VOICE tick (laneTickV_), not mono's laneTick_ — otherwise
                 // the poly playhead always follows mono's direction, ignoring the DirCell.
                 int ph1253 = eng.started() ? eng.laneTickV_[pv][l] : -1;
@@ -1968,6 +1981,15 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             const int sg = eng.voiceReadSign(vslot);
             snprintf(rangeLabel_, sizeof(rangeLabel_), "V%d", v + 1);
             visualEditor->setRangeState(std::max(1, L), O, R, rp, sg, !independent, rangeLabel_);
+            // (Stage B, the FINAL MODEL) the strip's WIREFRAME row — base + PENDING
+            // (effectiveVoicePreview), the twin of the committed feed above; gated on
+            // the surface's existing modViz flag, drawn only when it diverges.
+            {
+                int pl_, po_, pr_; SequencerEngine::LaneDir pd_;
+                eng.effectiveVoicePreview(v, pl_, po_, pr_, pd_);
+                visualEditor->setRangePreview(pl_, po_, pr_);
+            }
+            visualEditor->previewViz = monsoon->modVizEast;
             // The mask surface reads the ENGINE's effective pattern (the UI-completion
             // unify — display-reads-engine): cycle = all-lit (visibly different from
             // Range), range = the window, painted = the ANCHORED working copy (which
