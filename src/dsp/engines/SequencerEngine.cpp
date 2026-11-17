@@ -1027,25 +1027,38 @@ void SequencerEngine::tickHolders(int transportMotion, int signMotion, const int
         // here is exactly (d_v − dMain) and k_v = d_v — the voice's OWN decision. A
         // hand-seeded or activation-zeroed offset jumps the diff — the same jump the
         // old f(t + offset) read saw. [0] ≡ 0 ALWAYS: k_0 = the transport motion.
-        // (REMAINING BUGS 2) the snapshot at this iteration's head — BEFORE this
-        // voice's edge check + frame advance below — so the derive's re-check
-        // evaluates the SAME pre-advance phase the head tests (each voice's phase is
-        // untouched until its own iteration, so per-voice == the whole-loop snap).
-        voiceFramePhaseEdgeSnap_[v] = voiceFramePhase_[v];
-        laneEdgeSnapValid_ = true;
         const int64_t kV = (int64_t)transportMotion + (advanceOffset_[v] - advOffSeen_[v]);
         advOffSeen_[v] = advanceOffset_[v];
         const int64_t t0EffNow = t0Now + advanceOffset_[v];   // this voice's raw walk coordinate
-        // (C1) THE VOICE-FRAME LATCH EDGE for this voice's lane rows — checked right
-        // AFTER its frame advance (the landed entry) and BEFORE its lane advances
-        // consume the row: a MAPPED row at its holder entry (phase==0); an IDENTITY
-        // row rides the global phrase edge (its pass-through cycle IS the phrase).
-        // Refreshing here means the lane advances below re-bound at the edge step
-        // itself — the re-anchor law fires with the key change, no transition step.
-        // (C1b Stage A) the per-lane commit gate lives inside the refresh (each
-        // lane's axis); the unlock flush reaches every voice regardless of its
-        // frame edge.
-        const bool vLaneEdgeC1b = voiceLorIdentity(v) ? (pos_.phrasePos() == 0) : (voiceFramePhase_[v] == 0);
+        // (C1) THE VOICE-FRAME LATCH EDGE for this voice's lane rows — the LANDED
+        // entry (the phase THIS call's frame advance lands on), checked BEFORE the
+        // lane advances consume the row: a MAPPED row at its holder entry; an
+        // IDENTITY row rides the global phrase edge (its pass-through cycle IS the
+        // phrase). Refreshing here means the lane advances below re-bound at the
+        // edge step itself — the re-anchor law fires with the key change, no
+        // transition step. (C1b Stage A) the per-lane commit gate lives inside the
+        // refresh (each lane's axis); the unlock flush reaches every voice
+        // regardless of its frame edge.
+        // (REMAINING BUGS 6 — the voice-wrap +1) the edge is the phase this call
+        // LANDS ON, not the one it entered with: testing the entry phase fired the
+        // commit one step AFTER the wrap — the playhead returns to cell 0, advances
+        // one step, and only then does the window move (P12's table). The landed
+        // phase is wrapMod(t0EffNow, period) in BOTH arms of the advance below (the
+        // stable arm: phase + kV ≡ t0EffNow by the congruence; the re-seed arm:
+        // exactly it), taken against the row as it stands NOW — the walk the
+        // playhead has been drawing — so the commit lands ON the wrap step and the
+        // reads at that step already consume the new window.
+        int eL, eO, eR; LaneDir eD;
+        effectiveVoiceLor(v, eL, eO, eR, eD);
+        const bool vIdentityRow = (eL == kPatternLengthCap && eO == 0 && eR == 0 && eD == LaneDir::Forward);
+        bool vLaneEdgeC1b;
+        if (vIdentityRow) {
+            vLaneEdgeC1b = (pos_.phrasePos() == 0);
+        } else {
+            if (eL < 1) eL = 1;
+            if (voiceFrameReadsFullPhrase(v)) eL = kMaskRing;   // the SAME shaping the frame advance below applies
+            vLaneEdgeC1b = (wrapMod(t0EffNow, walkPeriod(eD, eL)) == 0);
+        }
         // (REMAINING BUGS 5) the TRUE frame edge is the lane sticky's reconnect
         // point — clear it on the same pass the commit runs, so the held-off pend
         // lands exactly here. The unlock flush alone does NOT clear it (and the
@@ -1053,10 +1066,11 @@ void SequencerEngine::tickHolders(int transportMotion, int signMotion, const int
         if (vLaneEdgeC1b) clearLorCvStickyLaneFor_(v);
         if (vLaneEdgeC1b || lorUnlockNowC1b)
             refreshLaneLatchesForVoice(v, vLaneEdgeC1b, lorUnlockNowC1b);
-        if (!voiceLorIdentity(v)) {
+        if (!vIdentityRow) {
             // Mapped row: the frame phase advances by the RAW delta too (its congruence
             // is the raw effective clock's), and the mapped frame's read path derives
-            // from it under the pass-through window (in deriveHolders).
+            // from it under the pass-through window (in deriveHolders). The row is
+            // RE-READ here: the commit above may have just changed it (the CV).
             int L, O, R; LaneDir vd;
             effectiveVoiceLor(v, L, O, R, vd);
             if (L < 1) L = 1;
@@ -1067,6 +1081,14 @@ void SequencerEngine::tickHolders(int transportMotion, int signMotion, const int
                 : wrapMod((int64_t)voiceFramePhase_[v] + kV, walkPeriod(vd, L));
             frameKey_[v] = key;
         }
+        // (REMAINING BUGS 2 + 6) the LANDED-phase snapshot — taken AFTER this
+        // voice's frame advance so the derive's re-check evaluates the SAME landed
+        // phase the head's edge test predicted (the wrap step; the identity rows'
+        // phase is untouched by the advance above, so their snapshot is their
+        // steady value). ONE-SHOT: consumed by the first derive of the event so a
+        // later derive cannot double-fire either.
+        voiceFramePhaseEdgeSnap_[v] = voiceFramePhase_[v];
+        laneEdgeSnapValid_ = true;
         for (int s = 0; s < dotModular::NUM_STRANDS; ++s) {
             // (C0 FAMILY 2) the per-voice lane advance reads the poly chokepoint —
             // the same len/dir polyStrandLenOf/laneDirV_ returned.
@@ -1180,11 +1202,12 @@ void SequencerEngine::deriveHolders(int signMotion, const int8_t* voiceMotion) {
     // already consumed at the advance head this step event, so no flush here.
     if (atPhraseEdgeC1 && lorLive_(false)) refreshVoiceLorLatches();
     // (REMAINING BUGS 2 — the double commit) the lane-edge re-check must evaluate the
-    // SAME pre-advance phases the tickHolders head tested. When this derive follows an
-    // advance (the snapshot valid), the current voiceFramePhase_ is already the NEXT
-    // step's — re-testing it fired one step early, committing the lane at TWO ADJACENT
-    // steps per cycle. The anchor-only / offsets-only flows (no advance this event)
-    // keep testing the current phases — the re-check's original purpose. ONE-SHOT:
+    // SAME LANDED phases the tickHolders head's edge test predicted (REMAINING
+    // BUGS 6: the head fires on the phase the call LANDS on — the wrap step — and
+    // the snapshot is taken after the frame advance, so it holds exactly that
+    // value; re-testing anything else double-fires at TWO ADJACENT steps per
+    // cycle). The anchor-only / offsets-only flows (no advance this event) keep
+    // testing the current phases — the re-check's original purpose. ONE-SHOT:
     // consumed here so a later derive in the same event cannot double-fire either.
     const bool edgeSnap = laneEdgeSnapValid_;
     laneEdgeSnapValid_ = false;

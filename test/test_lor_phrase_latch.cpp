@@ -34,6 +34,7 @@ struct March {
     std::vector<int> read;      // the observable per step (post-advance)
     std::vector<int> pp;        // pos_.phrasePos() per step (post-advance)
     std::vector<int> phase;     // voiceFramePhase_[v] per step (post-advance)
+    std::vector<int> cell;      // the row walk's cell per step (laneTickFor(dir, phase+1, L) — the TRUE-WRAP reference, BUG 6)
 };
 
 // The engine voice slot for V2 (the first poly voice).
@@ -219,11 +220,23 @@ static void p2_lane() {
                 march[which].read.push_back(eng.laneTickV_[v2().v][strand]);
                 march[which].pp.push_back(eng.pos_.phrasePos());
                 march[which].phase.push_back(eng.voiceFramePhase_[v2().v]);
+                {   // (REMAINING BUGS 6) the TRUE-WRAP reference: the row walk's
+                    // cell, computed the way the reads consume it (laneTickFor(dir,
+                    // phase+1, L) on the post-advance phase) — NOT the bare phase
+                    // field, whose indexing convention enshrined the shift.
+                    int rL, rO, rR; SequencerEngine::LaneDir rd;
+                    eng.effectiveVoiceLor(v2().v, rL, rO, rR, rd);
+                    march[which].cell.push_back((int)SequencerEngine::laneTickFor(rd, (int64_t)eng.voiceFramePhase_[v2().v] + 1, rL));
+                }
             }
         }
+        // (REMAINING BUGS 6) the edge reference CORRECTED: the TRUE WRAP — the
+        // step at which the voice walk is actually at cell 0 (the playhead's
+        // return) — not the bare post-advance phase==0 loop that enshrined
+        // whatever shift the engine had.
         int edge = -1;
         for (int t = 2; t < STEPS; ++t)
-            if (march[2].phase[t] == 0) { edge = t; break; }
+            if (march[2].cell[t] == 0) { edge = t; break; }
         std::snprintf(msg, sizeof(msg), "P2-cv: no voice-frame edge found after the change (edge=%d)", edge);
         CHECK(edge > 2, msg);
         if (edge <= 2) return;
@@ -703,21 +716,95 @@ static void p11_sticky_suspend_to_edge() {
     std::snprintf(msg, sizeof msg, "P11: the CV reconnected ON RELEASE (committed %d, want the held %d) — the edit is clobbered mid-cycle",
                   eng.laneLorCv_[v][el][SequencerEngine::LOR_LEN], heldBefore);
     CHECK(eng.laneLorCv_[v][el][SequencerEngine::LOR_LEN] == heldBefore, msg);
-    // Advance to the frame edge: the committed takes the pending EXACTLY there.
+    // Advance to the frame edge — THE TRUE WRAP (REMAINING BUGS 6's corrected
+    // reference): the step whose LANDED phase is 0 (the walk's entry into cell 0 —
+    // the playhead's return), not the departure from it. The committed takes the
+    // pending EXACTLY there.
     int edgeStep = -1;
     for (int t = 0; t < 9; ++t) {
-        const int phaseBefore = eng.voiceFramePhase_[v];
         eng.advancePlayhead(1, nullptr);
-        if (phaseBefore == 0) { edgeStep = t; break; }
-        std::snprintf(msg, sizeof msg, "P11: the CV reconnected BEFORE the edge (step %d, phase %d != 0, committed %d)",
-                      t, phaseBefore, eng.laneLorCv_[v][el][SequencerEngine::LOR_LEN]);
+        if (eng.voiceFramePhase_[v] == 0) {
+            edgeStep = t;
+            std::snprintf(msg, sizeof msg, "P11: the CV did not reconnect AT the wrap (step %d, committed %d, want the pending 7)",
+                          t, eng.laneLorCv_[v][el][SequencerEngine::LOR_LEN]);
+            CHECK(eng.laneLorCv_[v][el][SequencerEngine::LOR_LEN] == 7, msg);
+            break;
+        }
+        std::snprintf(msg, sizeof msg, "P11: the CV reconnected BEFORE the wrap (step %d, committed %d, want the held %d)",
+                      t, eng.laneLorCv_[v][el][SequencerEngine::LOR_LEN], heldBefore);
         CHECK(eng.laneLorCv_[v][el][SequencerEngine::LOR_LEN] == heldBefore, msg);
     }
-    std::snprintf(msg, sizeof msg, "P11: no frame edge observed in 9 steps");
+    std::snprintf(msg, sizeof msg, "P11: no frame wrap observed in 9 steps");
     CHECK(edgeStep >= 0, msg);
-    std::snprintf(msg, sizeof msg, "P11: the CV did not reconnect AT the edge (committed %d, want the pending 7)",
-                  eng.laneLorCv_[v][el][SequencerEngine::LOR_LEN]);
-    CHECK(eng.laneLorCv_[v][el][SequencerEngine::LOR_LEN] == 7, msg);
+}
+
+// ── P12: the TRUE-WRAP commit — the window moves ON the wrap step, not one later ─
+// (CC_PROMPT_LANE_RANGE_DISPLAY_UNIFY REMAINING BUGS 6, Rodney Rack 2026-11-17,
+// diagnose-first.) On the Sands panel the voice-lane playhead wraps (returns to
+// its frame start), advances ONE step, and only THEN does the lane window move —
+// whether or not the lane was edited: the general modulation-commit observable,
+// not the BUG-5 edit path. P2's edge loop keyed its expected step off the
+// post-advance voiceFramePhase==0 and so enshrined whatever shift the engine
+// had; THIS pin references the wrap the way the READS themselves do — the voice
+// walk at cell 0, laneTickFor(dir, phase+1, L)==0 on the post-advance phase
+// (the derive's own read law) — with the drawn playhead (the lane tick, the
+// panel's own source) as the cross-check. THE LAW: the lane's effective window
+// (the committed CV) changes AT that step — the wrap and the window move land
+// together. THE RIG: P10/P11's (global 16, V2 mapped L=8) + the lane's OWN
+// walk at L=8 so its wrap sits ON the frame edge; the pend is an OFFSET +2
+// (the window's lit cells shift; the walk's own L — and so the tick — is
+// untouched: the +1 lands clean, no re-seed noise). The per-step table is the
+// diagnosis the doc asks for: it shows exactly which step the commit lands on.
+static void p12_true_wrap_commit() {
+    std::printf("P12 true-wrap commit: the window moves ON the wrap step, not one later\n");
+    char msg[240];
+    SequencerEngine eng; eng.reset();
+    eng.updateWindow(16.f, 0.f, false, 0.f, 0.f, false);   // the global 16
+    eng.numPolyVoices = 2;
+    eng.setVoiceLorLocalEast(v2(), true);
+    eng.voiceLorRef(v2(), SequencerEngine::LOR_LEN) = 8;  // V2's row MAPPED at L=8
+    eng.polyLORRef(v2(), dotModular::LaneId{SequencerEngine::PL_REST}, SequencerEngine::LOR_LEN) = 8;   // the lane's own walk = 8: its wrap sits ON the frame edge
+    eng.refreshVoiceLorLatches();   // settle the config
+    const int el = SequencerEngine::editorLane(SequencerEngine::PL_REST);
+    const int v = v2().v;
+    const int strand = dotModular::STRAND_RHYTHM;   // PL_REST's strand — the tick the panel draws
+    eng.advancePlayhead(1, nullptr);   // t=0
+    eng.advancePlayhead(1, nullptr);   // t=1
+    {   // the modulation pend, mid-cycle: OFFSET +2 — the window moves, the walk does not
+        std::vector<int> d3 = {0, 2, 0};
+        eng.pushLaneLorCvPoly(v2(), SequencerEngine::PL_REST, d3.data());
+    }
+    int wrapT = -1, moveT = -1;
+    std::vector<int> off(26, -1);
+    for (int t = 2; t < 26; ++t) {
+        eng.advancePlayhead(1, nullptr);
+        int L, O, R; SequencerEngine::LaneDir d;
+        eng.effectiveLaneLor(v2(), dotModular::LaneId{SequencerEngine::PL_REST}, L, O, R, d);
+        off[t] = O;
+        int rL, rO, rR; SequencerEngine::LaneDir rd;
+        eng.effectiveVoiceLor(v, rL, rO, rR, rd);
+        const bool atCell0 = SequencerEngine::laneTickFor(rd, (int64_t)eng.voiceFramePhase_[v] + 1, rL) == 0;
+        if (atCell0 && wrapT < 0) wrapT = t;
+        if (O == 2 && moveT < 0) moveT = t;
+        if (t < 11 || (wrapT >= 0 && t < wrapT + 3))
+            std::printf("  t=%2d phase=%2d tick=%2d O=%d committedO=%d%s\n", t, eng.voiceFramePhase_[v],
+                        eng.laneTickV_[v][strand], O, eng.laneLorCv_[v][el][SequencerEngine::LOR_OFF],
+                        atCell0 ? "   <== the walk at cell 0 (THE WRAP)" : "");
+    }
+    std::snprintf(msg, sizeof msg, "P12: no wrap (the voice walk at cell 0) observed in 24 steps (wrapT=%d)", wrapT);
+    CHECK(wrapT > 2, msg);
+    if (wrapT < 0) return;
+    std::snprintf(msg, sizeof msg, "P12: the window never moved (moveT=%d — the pend never committed)", moveT);
+    CHECK(moveT >= 0, msg);
+    if (moveT < 0) return;
+    std::snprintf(msg, sizeof msg,
+                  "P12: the window landed ONE STEP AFTER the wrap (wrap t=%d, move t=%d) — the commit must land ON the wrap step (the playhead's return), not one later",
+                  wrapT, moveT);
+    CHECK(moveT == wrapT, msg);
+    for (int t = 2; t < wrapT; ++t) {
+        std::snprintf(msg, sizeof msg, "P12: the window moved BEFORE the wrap (t=%d, O=%d, want 0)", t, off[t]);
+        CHECK(off[t] == 0, msg);
+    }
 }
 
 int main() {
@@ -733,6 +820,7 @@ int main() {
     p9_preview_accessors();
     p10_single_commit_per_frame_cycle();
     p11_sticky_suspend_to_edge();
+    p12_true_wrap_commit();
     if (g_fail == 0) std::printf("all green\n");
     else std::printf("%d FAILED\n", g_fail);
     return g_fail ? 1 : 0;
