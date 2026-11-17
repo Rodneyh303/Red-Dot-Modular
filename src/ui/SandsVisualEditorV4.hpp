@@ -1182,10 +1182,13 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
     float stripTop = laneR.pos.y + laneR.size.y * 0.70f;
     float stripH   = laneR.size.y * 0.30f;
 
-    // Faint track ONLY across the start–end window. (BUG 1) the AUTHORED window —
-    // in step with the lit bars + the grab (the EDIT L/O). Was the DISPLAY window.
-    int startBar = L.offset % STEP_COUNT;
-    int lenC = std::max(1, std::min(L.length, STEP_COUNT));
+    // Faint track ONLY across the start–end window. (BUG 3) the COMMITTED window —
+    // in step with the lit bars + the fill + the grab (they all read disp*, so the
+    // rotation layer rides the committed window like everything else and cannot
+    // detach under modulation). Was L.offset/L.length — the last bare EDIT-window
+    // reader in the draw path.
+    int startBar = L.dispOffset % STEP_COUNT;
+    int lenC = std::max(1, std::min(L.dispLength, STEP_COUNT));
     NVGcolor track = nvgRGB(0x00, 0x00, 0x00); track.a = 0.07f;   // faint neutral darkening (was teal)
     for (int k = 0; k < lenC; ++k) {
       int bar = (startBar + k) % STEP_COUNT;
@@ -1197,10 +1200,11 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
     }
 
     // Rotation marker sits WITHIN the start-end window: physical bar =
-    // (offset + rotation) % STEP_COUNT. (BUG 1) the AUTHORED rotation — one coherent
-    // authored-window layer (track + marker + grab); the LIVE modulated rotation is
-    // the wireframe's rotation tick. Was the DISPLAY values.
-    int rotBar = (L.offset + (L.rotation % std::max(1, L.length))) % STEP_COUNT;
+    // (offset + rotation) % STEP_COUNT. (BUG 3) the COMMITTED rotation — one
+    // coherent committed-window layer (track + tint + marker), riding disp* with
+    // the bars/fill/grab; the LIVE modulated rotation stays the wireframe's
+    // rotation tick (unchanged).
+    int rotBar = (L.dispOffset + (L.dispRotation % std::max(1, L.dispLength))) % STEP_COUNT;
     rack::Rect cell = layout.getStepRect(lane, rotBar);
     float cx = cell.pos.x + cell.size.x * 0.5f;
     float cyc = stripTop + stripH * 0.5f;
@@ -1217,13 +1221,15 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
     // IS colors.rotation (teal), where the old fixed-teal marker vanished. Any single hue
     // collides with the lane sharing it, so use luminance contrast instead: darken the cell
     // (works over any colour) and draw the chevrons as a white core with a dark halo (legible
-    // over bright OR dark fills). Brighter when rotation > 0.
-    const float on = (L.rotation > 0) ? 1.f : 0.55f;
+    // over bright OR dark fills). Brighter when the COMMITTED rotation > 0 (BUG 3:
+    // the whole rotation layer keys off disp* — with no CV it is the authored
+    // rotation exactly; under CV the marker stays coherent with the window it rides).
+    const float on = (L.dispRotation > 0) ? 1.f : 0.55f;
 
     // block baseline tint — DARKEN the rotation cell (universal across lane hues)
     nvgBeginPath(vg);
     nvgRect(vg, cell.pos.x + 1.f, stripTop, cell.size.x - 2.f, stripH);
-    NVGcolor blockTint = nvgRGB(0x00, 0x00, 0x00); blockTint.a = (L.rotation > 0) ? 0.32f : 0.16f;
+    NVGcolor blockTint = nvgRGB(0x00, 0x00, 0x00); blockTint.a = (L.dispRotation > 0) ? 0.32f : 0.16f;
     nvgFillColor(vg, blockTint);
     nvgFill(vg);
 
