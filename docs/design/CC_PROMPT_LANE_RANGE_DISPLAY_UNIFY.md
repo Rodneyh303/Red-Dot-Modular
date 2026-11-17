@@ -308,10 +308,13 @@ and nothing holds it past release. So on mouse-up `ld.active` → false → the 
 IMMEDIATELY → the modulation reconnects and overwrites the just-made edit — even when the voice
 is mid-cycle. This DIRECTLY violates the FINAL MODEL's own words ("fresh CV reconnects on all
 items at the next boundary"): the reconnect must happen at the next voice-frame edge
-(`voiceFramePhase_[v]==0`), NOT at release. The base edit itself commits on release (the drop IS
-the new base — that stays), but the suspended item's CV stays suspended and the edit HOLDS until
-the next voice-frame edge, where the CV reconnects and the window re-resolves from the new base
-(the groove updates on the downbeat — clean for the polymeter). This is a latched-at-boundary
+(`voiceFramePhase_[v]==0`), NOT at release. MODEL (Rodney confirmed B1,
+2026-11-17): the base edit is IMMEDIATE on release — the drop IS the new base and takes effect at
+once; do NOT latch the base to the voice-frame edge (a manual edit is the user in direct control
+and wants instant feedback). ONLY the suspended item's CV waits: it stays suspended so the edit is
+not overwritten, and reconnects at the next voice-frame edge, where the window re-resolves from
+the new base (automatic modulation lands on the downbeat — clean for the polymeter). Human edit =
+live; machine modulation = latched. This is a latched-at-boundary
 event (the CA1 family): the edit's CV-reconnect rides the same voice-frame edge the modulation
 commits on. FIX (behaviour, implementer picks mechanism): make the suspend STICKY past release —
 either the engine latches the suspended-item set when the widget drops it and clears it at the
