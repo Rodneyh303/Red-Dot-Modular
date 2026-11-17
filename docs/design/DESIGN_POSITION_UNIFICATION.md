@@ -118,6 +118,22 @@ per-level but GATED on the position-holder migration (POSITION_HOLDER_MODEL.md) 
 counter removal, not the cadence slice. Design-ahead; still NOT slice 1 (slice 1 keeps today's
 cadence to stay golden-identical).
 
+C1 CADENCE FORK — RESOLVED (Rodney, 2026-11-17). During Sands display feel-testing the
+voice-frame-edge cadence was briefly questioned (should the probability lane re-latch its LOR
+mod on the voice-frame edge, as C1 says, or on the lane's OWN cycle?). RESOLVED: **voice-frame
+edge, as C1 already specifies — and not as a compromise but as the feature.** The voice-frame
+edge makes the lane LENGTH a polymeter control: the short lane runs free against the voice
+meter and the voice edge is the downbeat that re-anchors it. 8-step voice / 3-step lane → the
+lane subdivides the frame as `3 3 2`; lane→4 → `4 4`; lane→2 → `2 2 2 2`. Re-latching on the
+lane's own cycle would make the lane merely restate itself every N — the cross-rhythm is gone —
+so "lane's own cycle" is the musically dead option. NOTE for whoever reads the feel-test logs:
+the "range jumping at step 4/5, drifting across the lane" that read as a bug 2026-11-16 WAS this
+polymeter (the short lane against the voice frame); it only looked like jitter because two real
+faults masked it — the double-commit (lane latching twice per voice-frame cycle, fixed in
+`c8ac2cf2`) and the dishonest display (frozen-range / disconnected-grab, fixed by the FINAL
+window model in CC_PROMPT_LANE_RANGE_DISPLAY_UNIFY.md). Cadence was correct throughout; do not
+"fix" it.
+
 ### Why this belongs in the resolver
 THE PROPOSAL computes position "once per advance, from the transport motion + the window +
 the per-level LaneDir composition" — but it ASSUMES those inputs are already the right
