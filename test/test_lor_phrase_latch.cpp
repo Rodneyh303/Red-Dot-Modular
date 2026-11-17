@@ -568,7 +568,7 @@ static void p9_preview_accessors() {
         eng.effectiveLanePreview(v2(), dotModular::LaneId{SequencerEngine::PL_REST}, pL, pO, pR, pD);
         CHECK(eL == pL && eO == pO && eR == pR, "P9: the poly-lane preview == effective with no CV");
         eng.effectiveVoiceLor(v2().v, eL, eO, eR, eD);
-        eng.effectiveVoiceLorPreview(v2().v, pL, pO, pR, pD);
+        eng.effectiveVoicePreview(v2().v, pL, pO, pR, pD);
         CHECK(eL == pL && eO == pO && eR == pR, "P9: the voice preview == effective with no CV");
         eng.effectiveMacroRowLor(eL, eO, eR, eD);
         eng.effectiveMacroRowPreview(pL, pO, pR, pD);

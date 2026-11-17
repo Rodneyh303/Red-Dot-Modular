@@ -1266,21 +1266,15 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
         d = (bank.v >= 0 && bank.v < kVoiceSlots && el >= 0 && el < dotModular::NUM_STRANDS)
             ? laneDirV_[bank.v][el] : LaneDir::Forward;
     }
-    // (CC_PROMPT_LANE_RANGE_DISPLAY_UNIFY Stage B — Option 3) the PREVIEW twins: base +
-    // PENDING — the live-modulated window the wireframe overlay tracks (the manager
-    // pushes pending = round(knob+CV) − base every block, so base+pending IS the
-    // live-modulated window exactly; the EFFECTIVE accessors above read the COMMITTED
-    // laneLorCv_/voiceLorCv_ — what the audio walks, sampled at the voice-frame edge).
-    // Same clamp, same dir law; READ-ONLY (no audio reader — the display overlay only).
-    // The preview snaps into the solid at each commit (refreshLaneLatchesForVoice).
-    void effectiveMonoLanePreview(int strand, int& L, int& O, int& R, LaneDir& d) const {
-        const int s = strandClamp(strand);
-        L = lor(s, LOR_LEN) + laneLorCvPend_[0][s][LOR_LEN];
-        O = lor(s, LOR_OFF) + laneLorCvPend_[0][s][LOR_OFF];
-        R = lor(s, LOR_ROT) + laneLorCvPend_[0][s][LOR_ROT];
-        lorRowClamp_(L, O, R);
-        d = (strand >= 0 && strand < dotModular::NUM_STRANDS) ? laneDir_[strand] : LaneDir::Forward;
-    }
+    // ── (CC_PROMPT_LANE_RANGE_DISPLAY_UNIFY Stage B) the PENDING-PREVIEW twins ──
+    // The wireframe's authority: base + PENDING (the live-modulated window exactly —
+    // the manager pushes pending = round(knob+CV) − base every control block), vs the
+    // effective reads' base + COMMITTED (what plays, latched at the C1b commit gates).
+    // The FINAL MODEL draws committed as THE SOLID window and pending as the wireframe;
+    // NO audio path ever reads these (read-only display authorities — the battery stays
+    // byte-identical). Same row invariants: lorRowClamp_ re-applied; the dir has no
+    // pending (C3's slice — live, same as the effective reads).
+    void effectiveLanePreview(dotModular::VoiceSlot bank, LaneId lane, int& L, int& O, int& R, LaneDir& d) const {
     void effectiveLanePreview(dotModular::VoiceSlot bank, LaneId lane, int& L, int& O, int& R, LaneDir& d) const {
         const int el = editorLane(lane.l);
         const int vv = (bank.v >= 0 && bank.v < kVoiceSlots) ? bank.v : 0;
@@ -1291,7 +1285,15 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
         d = (bank.v >= 0 && bank.v < kVoiceSlots && el >= 0 && el < dotModular::NUM_STRANDS)
             ? laneDirV_[bank.v][el] : LaneDir::Forward;
     }
-    void effectiveVoiceLorPreview(int v, int& L, int& O, int& R, LaneDir& d) const {
+    void effectiveMonoLanePreview(int strand, int& L, int& O, int& R, LaneDir& d) const {
+        const int s = strandClamp(strand);
+        L = lor(s, LOR_LEN) + laneLorCvPend_[0][s][LOR_LEN];
+        O = lor(s, LOR_OFF) + laneLorCvPend_[0][s][LOR_OFF];
+        R = lor(s, LOR_ROT) + laneLorCvPend_[0][s][LOR_ROT];
+        lorRowClamp_(L, O, R);
+        d = (strand >= 0 && strand < dotModular::NUM_STRANDS) ? laneDir_[strand] : LaneDir::Forward;
+    }
+    void effectiveVoicePreview(int v, int& L, int& O, int& R, LaneDir& d) const {
         if (v < 0 || v >= kVoiceSlots) { L = kPatternLengthCap; O = 0; R = 0; d = LaneDir::Forward; return; }
         if (voiceLorLocalEast_[v]) {
             L = voiceLorStore_[v][LOR_LEN] + voiceLorCvPend_[v][LOR_LEN];
