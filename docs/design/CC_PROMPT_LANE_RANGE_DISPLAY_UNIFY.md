@@ -288,6 +288,41 @@ feel-test: patch CV to a lane's ROTATION (and OFFSET); the chevron and faint tra
 to the lit bars and fill at every modulation value — no drift; during a drag the rotation
 layer follows the committed window the drag-guard draws, same as the bars.
 
+**BUG 4 — the wireframe freezes WHOLE-LANE during a drag; it must be PER-ITEM [display; Rodney
+Rack 2026-11-17].** `setLanePreviewLOR` / `setLaneDisplayLOR` (SandsVisualEditorV4.hpp ~378/385)
+do `if (laneDragLive() && lorDrag.laneIdx == lane) return;` — a WHOLE-LANE skip, so the instant
+you grab, all three dimensions of the wireframe (and the solid) stop updating. That contradicts
+the per-item table: dragging OFFSET (Z_WINDOW) should leave LENGTH and ROTATION mod running, so
+the wireframe must keep moving in the non-suspended dims. (The da66989d prompt left "track vs
+freeze during the drag" as an open Rack feel-item — RESOLVED now: per-item track.) FIX: the
+drag-guard protects only the dimension(s) the reducer OWNS (the suspended ones, from
+`lorGestureItemsFor(active, zone)`); the non-suspended dims keep feeding both the preview and the
+display from the store. So an offset-drag shows offset pinned to the hand while length/rotation
+keep modulating live. Rack feel-test: drag the window position with length/rotation CV patched —
+the wireframe keeps breathing in length/rotation while offset tracks the cursor.
+
+**BUG 5 — a mid-cycle edit is CLOBBERED on release; the CV-suspend must persist to the next
+voice-frame edge [engine+widget; reproduce-first; Rodney Rack 2026-11-17].** The LOR-CV suspend
+is tied straight to the drag: `lorGestureActive = ld.active` (StraitsEastSandsVisual.cpp:1540),
+and nothing holds it past release. So on mouse-up `ld.active` → false → the suspend lifts
+IMMEDIATELY → the modulation reconnects and overwrites the just-made edit — even when the voice
+is mid-cycle. This DIRECTLY violates the FINAL MODEL's own words ("fresh CV reconnects on all
+items at the next boundary"): the reconnect must happen at the next voice-frame edge
+(`voiceFramePhase_[v]==0`), NOT at release. The base edit itself commits on release (the drop IS
+the new base — that stays), but the suspended item's CV stays suspended and the edit HOLDS until
+the next voice-frame edge, where the CV reconnects and the window re-resolves from the new base
+(the groove updates on the downbeat — clean for the polymeter). This is a latched-at-boundary
+event (the CA1 family): the edit's CV-reconnect rides the same voice-frame edge the modulation
+commits on. FIX (behaviour, implementer picks mechanism): make the suspend STICKY past release —
+either the engine latches the suspended-item set when the widget drops it and clears it at the
+next `voiceFramePhase_[v]==0`, or the widget holds `lorGestureActive` for those items until the
+edge. REPRODUCE-FIRST (headless, engine side): patch length CV; `setLorCvSuspend` the length
+item (simulating a drag), then DROP the suspend mid-cycle (release), advance the transport, and
+assert the committed length holds the edited base and the CV does NOT reconnect until
+`voiceFramePhase_[v]==0` — fails before (reconnects on release), passes after. Rack feel-test:
+drag a length with length CV patched, release mid-cycle — the edit holds, and the modulation
+only re-applies when the voice lane wraps.
+
 ## NON-SCOPE
 - No audio/engine behaviour change in Stage A; Stage B adds only a read-only accessor.
 - The **voice-range** display (`effectiveMacroRowLor` / `effectiveVoiceLor`) is already
