@@ -1324,6 +1324,15 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
     // the raw-congruence phase (the old macroLanePhase_, ≡ the transport mod the
     // walk period by construction) is re-derived on demand, not stored.
     void macroLaneDisplay(int lane, int& tick, int& sign) const;
+    // The ONE macro-row LOR-representative voice: the lowest macro-following voice
+    // (the row delegation), falling back to V2. macroLaneDisplay reads its latched
+    // lane LOR through it; the lane-RANGE display reads (CC_PROMPT_LANE_RANGE_DISPLAY_
+    // UNIFY Stage A) reuse this exact choice so the range and the playhead agree.
+    int macroLaneRepVoice() const {
+        for (int v = 1; v < kVoiceSlots; ++v)
+            if (!voiceLorLocalEast_[v]) return v;
+        return 1;
+    }
     // (C0 FAMILY 2) the mono strand step — the accessor feeds getStrandIdx (the ONE
     // read point for the mono strand windows; the transform itself unchanged).
     int monoLaneStep(int strand, int tick) const {

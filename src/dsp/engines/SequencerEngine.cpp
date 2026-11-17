@@ -1386,10 +1386,9 @@ void SequencerEngine::macroLaneDisplay(int lane, int& tick, int& sign) const {
                     || (lenG == kPatternLengthCap && offG == 0);
     const int  wG = pos_.phaseClock(transportTick_);
     // The FULL lane LOR from the per-voice path: the lowest macro-following voice
-    // (the row delegation), falling back to V2.
-    int rep = 1;
-    for (int v = 1; v < kVoiceSlots; ++v)
-        if (!voiceLorLocalEast_[v]) { rep = v; break; }
+    // (the row delegation), falling back to V2 — the ONE representative
+    // (macroLaneRepVoice), shared with the lane-RANGE display reads.
+    const int rep = macroLaneRepVoice();
     int lv, lov, rv; LaneDir dv;
     effectiveLaneLor(dotModular::VoiceResolver::slot(rep + 1), strandLaneId(lane), lv, lov, rv, dv);
     const int len = std::max(1, lv);

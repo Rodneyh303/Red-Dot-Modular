@@ -1024,15 +1024,14 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
     }
     // (saveVoiceMacro/loadVoiceMacro DELETED — MVC step 1d: all four groups (owner, varlegDeleg,
     //  atten, varlegAtten) are store-backed, so the per-voice proxy↔bank flush apparatus is dead.)
-    // Iterate EDITOR lanes 0..5 directly — currentState.lanes[] is editor-indexed, and VAR(4)/LEG(5)
-    // have no PolyLane id, so the old engine-lane loop could not reach them. lorIdEditor() maps.
-    // On the V1/mono tab, editor lanes 4/5 DISPLAY mono's VARIATION/LEGATO (they are mono strands;
-    // (CC_PROMPT_LANE_RANGE_DISPLAY_UNIFY Stage A) mirrorMonoExtraLanes() DELETED:
-    // its [POLY_LANES, EAST_LANES) == [7,7) loop never ran — POLY_LANES and
-    // EAST_LANES are both 7 since the all-7-are-poly consolidation (SandsGrid.hpp),
-    // and the V1 tab's main display loop (step()'s selectedVoice == 0 branch) already
-    // covers all seven lanes. Dead is dead; the C4 repoint inside it stood "for the
-    // day the loop revives" — the loop is not reviving.
+    // (mirrorMonoExtraLanes DELETED — CC_PROMPT_LANE_RANGE_DISPLAY_UNIFY Stage A item 4:
+    //  its only loop ran `[POLY_LANES, EAST_LANES)` == `[7,7)` after the Sands consolidation
+    //  (POLY_LANES == EAST_LANES == 7) — it never executed a single iteration. The VAR/LEG
+    //  mono-tab display it once seeded is served by step()'s v1Editable branch, which
+    //  refreshes ALL 7 editor lanes from the engine mono strands every frame (through the
+    //  C4-effective reads), so no explicit load is needed — the caller's own comment says
+    //  exactly that. Deleted, not re-bounded: there is no intended VAR/LEG path beyond 7
+    //  lanes for the loop to reach.)
 
     void onVoiceTabChanged(int nv) {
         if (!paramMgr || !visualEditor) return;
@@ -1064,8 +1063,10 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         // v1Editable() display branch in step(); no explicit load needed. Owner cell
         // proxy is restored from the persistent mono owner store.
         if (selectedVoice == 0) {
-            // (Stage A) the mirrorMonoExtraLanes() call is DELETED with the dead [7,7)
-            // loop — it never ran, so the v1Editable seed below is the whole story.
+            // (The mirrorMonoExtraLanes seed call DELETED with the function — the [7,7)
+            //  loop never ran; step()'s v1Editable branch refreshes all 7 lanes from the
+            //  engine mono strands every frame, which IS the seed this call once claimed
+            //  to force. See the deletion note at the old function site.)
             // Force the v1Editable seed on the next frame: the editor currently still holds the
             // OUTGOING poly voice's LOR/spread, so we must restore V1's stores rather than mirror
             // that stale data into them.
@@ -1865,37 +1866,24 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             // display->store mirror above stays (View->Model); the manager reads that store.
             // Display: reflect the engine's current mono strand LOR back to the editor.
             // Seven lanes (identity: editor lane == strand index); VAR/LEG are East-owned on V1 here.
+            // (CC_PROMPT_LANE_RANGE_DISPLAY_UNIFY Stage A item 2) the display reads the
+            // LATCHED authority — effectiveMonoLaneLor (base live + CV committed at the
+            // phrase edge) — not the raw base store. C1b moved the CV into the separate
+            // latched laneLorCv_, so the store read showed a FROZEN window under lane-LOR
+            // CV (the East lane ranges "do not move at all" bug); what the panel shows is
+            // what PLAYS, and the playhead uses the same trio (range == playhead).
             for (int el = 0; el < dotModular::SandsGrid::EAST_LANES; ++el) {
-                // (CC_PROMPT_LANE_RANGE_DISPLAY_UNIFY Stage A) the lane range reads the
-                // LATCHED authority — effectiveMonoLaneLor (base + the CV committed at
-                // the voice-frame edge): what the engine PLAYS. Was the raw strand*Ref
-                // base store — pre-C1b it moved (overwritten with base+CV every block);
-                // post-C1b it is the static base, so this display FROZE.
                 int cvLen, cvOff, cvRot; SequencerEngine::LaneDir cvDir;
                 eng.effectiveMonoLaneLor(el, cvLen, cvOff, cvRot, cvDir);
                 cvLen = std::max(1, cvLen);
                 visualEditor->currentState.lanes[el].setDisplayLOR(cvLen, cvOff, cvRot);
-                // (Stage B follow-up — the window model DECIDED) the BASE/EDIT window:
-                // the grab stays on the base; the push stands down during this lane's
-                // drag (the drag owns the edit values; the release commit re-syncs).
-                if (!visualEditor->laneDragLive(el)) {
-                    auto& ed = visualEditor->currentState.lanes[el];
-                    ed.length   = eng.lor(el, SequencerEngine::LOR_LEN);
-                    ed.offset   = eng.lor(el, SequencerEngine::LOR_OFF);
-                    ed.rotation = eng.lor(el, SequencerEngine::LOR_ROT);
-                }
-                // (Stage B — Option 3) the mod-preview wireframe (see the Macro twin):
-                // base + PENDING, gated on the EXISTING modVizEast flag + the divergence
-                // — and HIDDEN during this lane's edit gesture (decision B: the SAME
-                // lorDrag signal the suspend keys on; modulation is disconnected).
-                {
-                    int pvL, pvO, pvR; SequencerEngine::LaneDir pvD;
-                    eng.effectiveMonoLanePreview(el, pvL, pvO, pvR, pvD);
-                    const bool diverged = (pvL != cvLen || pvO != cvOff || pvR != cvRot);
-                    visualEditor->setLanePreview(el, monsoon->modVizEast && diverged
-                                                         && !visualEditor->laneDragLive(el),
-                                                 pvL, pvO, pvR);
-                }
+                // (The two Stage-B-side blocks that sat here — the per-frame base→edit
+                //  feed keeping the grab on the BASE window, and the base+PENDING
+                //  preview push through the old setLanePreview API — are SUPERSEDED by
+                //  the FINAL MODEL and are NOT carried across the rebase: the FINAL
+                //  MODEL grabs the COMMITTED window, draws ONE solid window = committed,
+                //  and its preview feed (setLanePreviewLOR) is re-established in the
+                //  Stage B widget commit.)
                 int ph1222 = eng.started() ? eng.laneTick_[el] : -1;
                 // (fix/variation-scan-display) non-VAR lanes draw the SHARED window playhead;
                 // the VAR lane draws the engine SCANNED read index (stepAdvanceStrandIdx +
@@ -1924,34 +1912,19 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         } else if (selectedVoice >= 1) {
             const int pv = polyVoice();
             // l = the unified lane (editor == engine)
+            // (CC_PROMPT_LANE_RANGE_DISPLAY_UNIFY Stage A item 3) the poly tab reads the
+            // LATCHED authority — effectiveLaneLor (base live + CV committed at the voice
+            // frame) — not the raw base store (polyLenE/polyOffE/polyRotE): the same
+            // frozen-under-CV freeze the mono tab had. The playhead uses the same trio.
             for (int l=0; l<dotModular::SandsGrid::POLY_LANES; ++l) {
-                // (Stage A) the mono tab's law, the poly form: the LATCHED
-                // effectiveLaneLor — the raw poly*E base store froze post-C1b (polyLenE
-                // itself already reads the chokepoint; the OFF/ROT twins did not).
                 int cvLen, cvOff, cvRot; SequencerEngine::LaneDir cvDir;
                 eng.effectiveLaneLor(dotModular::VoiceResolver::slot(pv + 1), dotModular::LaneId{l},
-                                      cvLen, cvOff, cvRot, cvDir);
+                                     cvLen, cvOff, cvRot, cvDir);
                 cvLen = std::max(1, cvLen);
                 visualEditor->currentState.lanes[l].setDisplayLOR(cvLen, cvOff, cvRot);
-                // (Stage B follow-up — the window model DECIDED) the BASE/EDIT window,
-                // the poly form: the grab stays on THIS voice's authored base row.
-                if (!visualEditor->laneDragLive(l)) {
-                    auto& ed = visualEditor->currentState.lanes[l];
-                    ed.length   = eng.polyLOR(dotModular::VoiceResolver::slot(pv + 1), dotModular::LaneId{l}, SequencerEngine::LOR_LEN);
-                    ed.offset   = eng.polyLOR(dotModular::VoiceResolver::slot(pv + 1), dotModular::LaneId{l}, SequencerEngine::LOR_OFF);
-                    ed.rotation = eng.polyLOR(dotModular::VoiceResolver::slot(pv + 1), dotModular::LaneId{l}, SequencerEngine::LOR_ROT);
-                }
-                // (Stage B — Option 3) the mod-preview wireframe, the poly form —
-                // hidden during this lane's edit gesture (decision B, the same signal).
-                {
-                    int pvL, pvO, pvR; SequencerEngine::LaneDir pvD;
-                    eng.effectiveLanePreview(dotModular::VoiceResolver::slot(pv + 1), dotModular::LaneId{l},
-                                              pvL, pvO, pvR, pvD);
-                    const bool diverged = (pvL != cvLen || pvO != cvOff || pvR != cvRot);
-                    visualEditor->setLanePreview(l, monsoon->modVizEast && diverged
-                                                     && !visualEditor->laneDragLive(l),
-                                                 pvL, pvO, pvR);
-                }
+                // (The Stage-B-side blocks that sat here — the poly base→edit feed and
+                //  the setLanePreview push — are SUPERSEDED by the FINAL MODEL and are
+                //  NOT carried across the rebase; see the mono tab's note.)
                 // Use the PER-VOICE tick (laneTickV_), not mono's laneTick_ — otherwise
                 // the poly playhead always follows mono's direction, ignoring the DirCell.
                 int ph1253 = eng.started() ? eng.laneTickV_[pv][l] : -1;
