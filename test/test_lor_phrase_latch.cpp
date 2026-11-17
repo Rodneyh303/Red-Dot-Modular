@@ -661,6 +661,65 @@ static void p10_single_commit_per_frame_cycle() {
     }
 }
 
+// ── P11: the STICKY suspend — the released edit's CV waits for the frame edge ────
+// (CC_PROMPT_LANE_RANGE_DISPLAY_UNIFY REMAINING BUGS 5, Rodney Rack 2026-11-17.) The
+// LOR-CV suspend is tied to the drag; nothing holds it past release — the drop lifts
+// the suspend IMMEDIATELY and the reconnect-path refresh (the immediate accept,
+// refreshLaneLatchesForVoice's default gates) overwrites the just-made edit mid-cycle.
+// THE MODEL (B1, confirmed): the base edit is IMMEDIATE on release; ONLY the
+// suspended item's CV waits — it stays held until the scope's next voice-frame edge
+// (voiceFramePhase_[v]==0), where it reconnects. Human edit = live; machine
+// modulation = latched. THE RIG: P10's (global 16, V2 mapped L=8). THE LAW: after the
+// drop, the committed lane CV holds the pre-suspend value through the immediate
+// accept AND every mid-cycle advance; it takes the pending exactly at the edge.
+static void p11_sticky_suspend_to_edge() {
+    std::printf("P11 sticky suspend: the released edit's CV waits for the voice-frame edge\n");
+    char msg[220];
+    SequencerEngine eng; eng.reset();
+    eng.updateWindow(16.f, 0.f, false, 0.f, 0.f, false);   // the global 16
+    eng.numPolyVoices = 2;
+    eng.setVoiceLorLocalEast(v2(), true);
+    eng.voiceLorRef(v2(), SequencerEngine::LOR_LEN) = 8;  // V2's row MAPPED at L=8
+    eng.refreshVoiceLorLatches();
+    const int el = SequencerEngine::editorLane(SequencerEngine::PL_REST);
+    const int v = v2().v;
+    for (int t = 0; t < 3; ++t) eng.advancePlayhead(1, nullptr);   // to mid-cycle
+    const int heldBefore = eng.laneLorCv_[v][el][SequencerEngine::LOR_LEN];   // 0 (no CV yet)
+    // THE DRAG (simulated): suspend the lane's LENGTH item; a modulation pend pushed.
+    const std::array<bool, 3> none3 = {false, false, false};
+    const std::array<bool, 3> len3  = {true, false, false};
+    eng.setLorCvSuspend(none3.data(), v, none3.data(), el, len3.data());
+    const std::vector<int> pend3 = {7, 0, 0};
+    eng.pushLaneLorCvPoly(v2(), SequencerEngine::PL_REST, pend3.data());
+    eng.advancePlayhead(1, nullptr);   // mid-cycle under the live suspend: the committed holds
+    std::snprintf(msg, sizeof msg, "P11: the live suspend did not hold the committed (%d, want %d)",
+                  eng.laneLorCv_[v][el][SequencerEngine::LOR_LEN], heldBefore);
+    CHECK(eng.laneLorCv_[v][el][SequencerEngine::LOR_LEN] == heldBefore, msg);
+    // THE RELEASE: the widget drops the suspend; the reconnect-path refresh runs (the
+    // immediate accept — refreshLaneLatchesForVoice's default gates). The committed
+    // must STILL hold (the sticky): the edit is not overwritten mid-cycle.
+    eng.setLorCvSuspend(none3.data(), -1, none3.data(), -1, none3.data());
+    eng.refreshLaneLatchesForVoice(v);   // the release-path immediate accept
+    std::snprintf(msg, sizeof msg, "P11: the CV reconnected ON RELEASE (committed %d, want the held %d) — the edit is clobbered mid-cycle",
+                  eng.laneLorCv_[v][el][SequencerEngine::LOR_LEN], heldBefore);
+    CHECK(eng.laneLorCv_[v][el][SequencerEngine::LOR_LEN] == heldBefore, msg);
+    // Advance to the frame edge: the committed takes the pending EXACTLY there.
+    int edgeStep = -1;
+    for (int t = 0; t < 9; ++t) {
+        const int phaseBefore = eng.voiceFramePhase_[v];
+        eng.advancePlayhead(1, nullptr);
+        if (phaseBefore == 0) { edgeStep = t; break; }
+        std::snprintf(msg, sizeof msg, "P11: the CV reconnected BEFORE the edge (step %d, phase %d != 0, committed %d)",
+                      t, phaseBefore, eng.laneLorCv_[v][el][SequencerEngine::LOR_LEN]);
+        CHECK(eng.laneLorCv_[v][el][SequencerEngine::LOR_LEN] == heldBefore, msg);
+    }
+    std::snprintf(msg, sizeof msg, "P11: no frame edge observed in 9 steps");
+    CHECK(edgeStep >= 0, msg);
+    std::snprintf(msg, sizeof msg, "P11: the CV did not reconnect AT the edge (committed %d, want the pending 7)",
+                  eng.laneLorCv_[v][el][SequencerEngine::LOR_LEN]);
+    CHECK(eng.laneLorCv_[v][el][SequencerEngine::LOR_LEN] == 7, msg);
+}
+
 int main() {
     std::printf("== test_lor_phrase_latch (the cadence latch suite: C1 + C1b) ==\n");
     p1_voice_row();
@@ -673,6 +732,7 @@ int main() {
     p8_edit_suspend();
     p9_preview_accessors();
     p10_single_commit_per_frame_cycle();
+    p11_sticky_suspend_to_edge();
     if (g_fail == 0) std::printf("all green\n");
     else std::printf("%d FAILED\n", g_fail);
     return g_fail ? 1 : 0;

@@ -984,6 +984,36 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
     int lorCvSuspendLane_ = -1;
     std::array<bool, LOR_ITEMS> lorCvSuspendLaneItems_ = {};
     void setLorCvSuspend(const bool* macro3, int voiceIdx, const bool* voice3, int laneIdx, const bool* lane3);
+    // ── (CC_PROMPT_LANE_RANGE_DISPLAY_UNIFY REMAINING BUGS 5) THE STICKY SUSPEND ──
+    // The suspend above is tied to the drag: on mouse-up it lifts at once and the
+    // modulation lands straight back on the just-made edit — the display jumps by
+    // the held sample the frame the drag guard lifts. MODEL B1 (Rodney, confirmed
+    // 2026-11-17): the drop IS the new base. setLorCvSuspend ZEROES each released
+    // item's committed CV sample on the active→cleared transition (the edit takes
+    // effect at once — the effective reads the hand) and ONLY the CV waits,
+    // disconnected, until the scope's own boundary, where the pend commits and the
+    // window re-resolves from the new base (the modulation lands on the downbeat).
+    // Human edit = live; machine modulation = latched. THE LANE SCOPES latch this
+    // sticky overlay (the members below): every commit path — the release-path
+    // immediate accept included — is gated until the voice's next frame edge
+    // (voiceFramePhase_[v]==0), where the edge sites clear it on the same pass the
+    // commit runs. The macro/row scopes need no overlay: refreshVoiceLorLatches
+    // only ever runs at their boundaries (the phrase edge / the unlock flush), so
+    // the zero alone holds them to the reconnect. One sticky lane scope, mirroring
+    // the suspend's own single-scope vocabulary; reset clears it.
+    int lorCvStickyVoice_ = -1;
+    int lorCvStickyLane_ = -1;
+    std::array<bool, LOR_ITEMS> lorCvStickyLaneItems_ = {};
+    // The lane sticky's reconnect point — called ONLY at the engine's TRUE
+    // frame-edge commit sites (the advance head + the derive re-check), never
+    // inside refreshLaneLatchesForVoice itself: the defaulted-args call (the
+    // release-path immediate accept) must NOT clear it.
+    void clearLorCvStickyLaneFor_(int v) {
+        if (lorCvStickyLane_ >= 0 && lorCvStickyVoice_ == v) {
+            lorCvStickyLane_ = -1;
+            lorCvStickyLaneItems_.fill(false);
+        }
+    }
 
     // The EFFECTIVE voice LOR row (delegation + Macro tier) — the one resolution authority.
     // (C1b Stage B) the L/O/R = the BASE rows (LIVE — the pre-C1 delegation; a knob

@@ -163,6 +163,9 @@ void SequencerEngine::reset() {
     prevPhaseAbsStep_ = 0;    // (slice 2b) the phase-sweep history starts fresh
     hasPhaseAbsStep_  = false;
     laneEdgeSnapValid_ = false;   // (REMAINING BUGS 2) no stale edge snapshot across a reset
+    lorCvStickyVoice_ = -1;       // (REMAINING BUGS 5) no sticky suspend across a reset
+    lorCvStickyLane_  = -1;
+    lorCvStickyLaneItems_.fill(false);
     startStep = 0;
     // (CC_PROMPT_16_TRIAGE bucket 2, option C's DO-NOW group) the transport default IS
     // the full ring: endStep/cachedLength derive from the cap (was the literal 15/16 —
@@ -707,15 +710,61 @@ void SequencerEngine::refreshLaneLatchesForVoice(int v, bool atPhraseEdge, bool 
         // CV HOLDS (the pend; the pending churns underneath, the effective read of
         // the CV contribution is frozen).
         if (!lorLaneCommitGate_(el, atPhraseEdge, unlockNow)) continue;
+        // (REMAINING BUGS 5) the sticky ORs into the gate: a released item's CV
+        // waits for the frame edge on EVERY path — the release-path immediate
+        // accept (the defaulted-args call) included.
         for (int item = 0; item < LOR_ITEMS; ++item)
-            if (!(v == lorCvSuspendVoice_ && el == lorCvSuspendLane_ && lorCvSuspendLaneItems_[item]))
+            if (!(v == lorCvSuspendVoice_ && el == lorCvSuspendLane_ && lorCvSuspendLaneItems_[item])
+                && !(v == lorCvStickyVoice_ && el == lorCvStickyLane_ && lorCvStickyLaneItems_[item]))
                 laneLorCv_[v][el][item] = laneLorCvPend_[v][el][item];
     }
 }
 
 // (C1b Stage C) the suspend push — the manager's per-block snapshot. Absent scopes
 // (voiceIdx/laneIdx < 0) clear; present scopes set exactly the dragged items.
+// (REMAINING BUGS 5 — the STICKY suspend, model B1) THE DROP: an item leaving the
+// suspend (the gesture released it — this push went absent for it) ZEROES its
+// committed CV sample at once: the drop IS the new base, so the edit takes effect
+// immediately (the effective reads the hand) and ONLY the CV waits, disconnected,
+// until the scope's boundary reconnects it (the lane scopes: the sticky overlay +
+// the voice's next frame edge; the macro/row scopes: the next
+// refreshVoiceLorLatches — the phrase edge / the unlock flush, their only callers).
 void SequencerEngine::setLorCvSuspend(const bool* macro3, int voiceIdx, const bool* voice3, int laneIdx, const bool* lane3) {
+    // the macro row's released items: the zero is the whole row-scope law (above)
+    for (int item = 0; item < LOR_ITEMS; ++item)
+        if (lorCvSuspendMacro_[item] && !macro3[item])
+            voiceLorCvMacro_[item] = 0;
+    // the voice row's released items (the scope's voice changed OR the item went
+    // absent — either way that voice's item is no longer under the hand)
+    if (lorCvSuspendVoice_ >= 0) {
+        const bool sameVoice = (voiceIdx == lorCvSuspendVoice_);
+        for (int item = 0; item < LOR_ITEMS; ++item)
+            if (lorCvSuspendVoiceItems_[item] && !(sameVoice && voice3[item]))
+                voiceLorCv_[lorCvSuspendVoice_][item] = 0;
+    }
+    // the lane scope's released items: the sticky latch (the commit gate that
+    // holds the CV past every mid-cycle path) + the zero (the read-side drop)
+    if (lorCvSuspendVoice_ >= 0 && lorCvSuspendLane_ >= 0) {
+        const bool sameLane = (voiceIdx == lorCvSuspendVoice_ && laneIdx == lorCvSuspendLane_);
+        std::array<bool, LOR_ITEMS> released = {};
+        bool any = false;
+        for (int item = 0; item < LOR_ITEMS; ++item) {
+            released[item] = lorCvSuspendLaneItems_[item] && !(sameLane && lane3[item]);
+            any = any || released[item];
+        }
+        if (any) {
+            if (lorCvStickyVoice_ != lorCvSuspendVoice_ || lorCvStickyLane_ != lorCvSuspendLane_) {
+                lorCvStickyVoice_ = lorCvSuspendVoice_;   // a new sticky scope replaces an un-reconnected one
+                lorCvStickyLane_  = lorCvSuspendLane_;
+                lorCvStickyLaneItems_.fill(false);
+            }
+            for (int item = 0; item < LOR_ITEMS; ++item)
+                if (released[item]) {
+                    lorCvStickyLaneItems_[item] = true;
+                    laneLorCv_[lorCvSuspendVoice_][lorCvSuspendLane_][item] = 0;
+                }
+        }
+    }
     for (int item = 0; item < LOR_ITEMS; ++item) lorCvSuspendMacro_[item] = macro3[item];
     lorCvSuspendVoice_ = voiceIdx;
     for (int item = 0; item < LOR_ITEMS; ++item) lorCvSuspendVoiceItems_[item] = (voiceIdx >= 0) ? voice3[item] : false;
@@ -997,6 +1046,11 @@ void SequencerEngine::tickHolders(int transportMotion, int signMotion, const int
         // lane's axis); the unlock flush reaches every voice regardless of its
         // frame edge.
         const bool vLaneEdgeC1b = voiceLorIdentity(v) ? (pos_.phrasePos() == 0) : (voiceFramePhase_[v] == 0);
+        // (REMAINING BUGS 5) the TRUE frame edge is the lane sticky's reconnect
+        // point — clear it on the same pass the commit runs, so the held-off pend
+        // lands exactly here. The unlock flush alone does NOT clear it (and the
+        // defaulted-args release-path call must not either — that is the bug).
+        if (vLaneEdgeC1b) clearLorCvStickyLaneFor_(v);
         if (vLaneEdgeC1b || lorUnlockNowC1b)
             refreshLaneLatchesForVoice(v, vLaneEdgeC1b, lorUnlockNowC1b);
         if (!voiceLorIdentity(v)) {
@@ -1137,8 +1191,10 @@ void SequencerEngine::deriveHolders(int signMotion, const int8_t* voiceMotion) {
     for (int v = 0; v < kVoiceSlots; ++v) {
         const int framePhaseHere = edgeSnap ? voiceFramePhaseEdgeSnap_[v] : voiceFramePhase_[v];
         const bool vLaneEdgeC1b = voiceLorIdentity(v) ? atPhraseEdgeC1 : (framePhaseHere == 0);
-        if (vLaneEdgeC1b)
+        if (vLaneEdgeC1b) {
+            clearLorCvStickyLaneFor_(v);   // (REMAINING BUGS 5) the edge is the sticky's reconnect point — the same pass as the commit
             refreshLaneLatchesForVoice(v, vLaneEdgeC1b, false);
+        }
     }
     const int  lenG = std::max(1, cachedLength);
     const int  offG = cachedOffset;
