@@ -124,7 +124,12 @@ mod on the voice-frame edge, as C1 says, or on the lane's OWN cycle?). RESOLVED:
 edge, as C1 already specifies — and not as a compromise but as the feature.** The voice-frame
 edge makes the lane LENGTH a polymeter control: the short lane runs free against the voice
 meter and the voice edge is the downbeat that re-anchors it. 8-step voice / 3-step lane → the
-lane subdivides the frame as `3 3 2`; lane→4 → `4 4`; lane→2 → `2 2 2 2`. Re-latching on the
+lane subdivides the frame as `3 3 2`; lane→4 → `4 4`; lane→2 → `2 2 2 2`. And the subdivisions
+ARE genres: `3 3 2` is the tresillo grouping behind DnB/jungle breaks (garage, dembow, Afro
+rhythms too); `4 4` is straight four-on-the-floor house/techno — SAME line, same notes, only the
+lane length differs. So length mod on the lane is a live FEEL-MORPH macro: a slow LFO/envelope on
+the length glides the groove from syncopated breakbeat to driving four-on-floor without touching
+the pattern. The "drift" IS the instrument. Re-latching on the
 lane's own cycle would make the lane merely restate itself every N — the cross-rhythm is gone —
 so "lane's own cycle" is the musically dead option. NOTE for whoever reads the feel-test logs:
 the "range jumping at step 4/5, drifting across the lane" that read as a bug 2026-11-16 WAS this
