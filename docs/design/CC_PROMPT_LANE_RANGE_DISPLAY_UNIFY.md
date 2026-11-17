@@ -263,6 +263,31 @@ committed lane window changes once per voice-frame cycle, not twice — fails be
 after. Battery must stay byte-identical (no golden modulates lane LOR, so the single-commit
 fix changes nothing the goldens cover).
 
+**BUG 3 — the rotation indicator is the lone EDIT-window reader; it will detach under
+modulation [display, one-line-each fix; found in `da66989d` after the FINAL-MODEL rework].**
+`drawRotationIndicator` (`SandsVisualEditorV4.hpp` ~1185-1205) draws the faint rotation track
+and the rotation chevron off `L.offset` / `L.length` / `L.rotation` — the EDIT/authored
+values. EVERYTHING else in the window now reads the COMMITTED (`disp*`) window: the lit/dim
+bars (`barInWindow` → `startBar()`/`endBar()` → `dispOffset`/`dispLength`), the fill, the
+hit-test (`windowEdgeW`/`hitTestHandle` → `dispLength`), and the grab press-seed
+(`win = dispLength/dispOffset`). So under LOR offset/rotation modulation the rotation track +
+chevron DETACH from the lit bars and fill (committed moves, this layer stays on base) — the
+exact split the FINAL MODEL killed, surviving in one element. The function's own comment ("in
+step with the lit bars + the grab (the EDIT L/O)") is WRONG — the bars read committed, not
+edit; `da66989d`'s "zero edit-window reads remain — grep-verified" claim missed this function
+(it is three edit reads).
+
+FIX: repoint `drawRotationIndicator` to the committed window — `L.dispOffset` / `L.dispLength`
+/ `L.dispRotation` in the `startBar` / `lenC` / `rotBar` computations (~1187/1188/1203), so it
+matches `drawStep` / `windowEdgeW`. Correct the comment to say the authored-window layer now
+rides the committed window like the rest. The LIVE modulated rotation stays the wireframe's
+rotation tick (unchanged). VERIFY: grep the editor draw path — no bare `L.offset` / `L.length`
+/ `L.rotation` reads remain (only `disp*`), excepting the drag reducer's own
+`L.length/offset = lorDrag.window[...]` writes (~1626) and the equality/reset sites. Rack
+feel-test: patch CV to a lane's ROTATION (and OFFSET); the chevron and faint track stay glued
+to the lit bars and fill at every modulation value — no drift; during a drag the rotation
+layer follows the committed window the drag-guard draws, same as the bars.
+
 ## NON-SCOPE
 - No audio/engine behaviour change in Stage A; Stage B adds only a read-only accessor.
 - The **voice-range** display (`effectiveMacroRowLor` / `effectiveVoiceLor`) is already
