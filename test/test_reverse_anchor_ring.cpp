@@ -133,6 +133,63 @@ int main() {
         }
     }
 
+    // ── G5 (regression, bounces byte-identical): the Pendulum and PingPong FULL
+    // two-period LANE walks are bit-for-bit the doc's reference walks — the whole
+    // walk dumped, not just t=1 — exercising the anchorBias=0 path and proving
+    // the ten-site edit touched nothing the bounces consume. The rig: a MONO lane
+    // (L=8) under the PASS-THROUGH global (G=16, off 0) so the lane's raw
+    // congruence spans both periods (a cycle-mode frame read would re-anchor the
+    // walk's leg every phrase). The fixture was captured on the PRE-FIX engine
+    // and matches the doc's reference exactly; pre == post verified by dump.
+    {
+        const struct { SequencerEngine::LaneDir d; int walk[16]; const char* tag; } refs[] = {
+            { SequencerEngine::LaneDir::Pendulum, {0,1,2,3,4,5,6,7,6,5,4,3,2,1,0,1}, "Pendulum" },
+            { SequencerEngine::LaneDir::PingPong, {0,1,2,3,4,5,6,7,7,6,5,4,3,2,1,0}, "PingPong" },
+        };
+        const int S = dotModular::STRAND_RHYTHM;
+        for (const auto& ref : refs) {
+            SequencerEngine eng; eng.reset();
+            eng.updateWindow(16.f, 0.f, false, 0.f, 0.f, false);   // the pass-through global
+            eng.lorRef(S, SequencerEngine::LOR_LEN) = 8;
+            eng.laneDir_[S] = ref.d;
+            for (int t = 0; t < 16; ++t) {
+                eng.advancePlayhead(1, nullptr);
+                std::snprintf(msg, sizeof msg, "G5 (%s): step %d lane tick %d, want %d (the full two-period bounce walk, byte-identical pre/post)", ref.tag, t, eng.laneTick_[S], ref.walk[t]);
+                CHECK(eng.laneTick_[S] == ref.walk[t], msg);
+            }
+        }
+    }
+
+    // ── G6 (regression, the sign law — the load-bearing one): the reverse
+    // re-anchored read's CELL moves R-1 -> R while the per-step sign/edge cue
+    // is IDENTICAL to the pre-fix sequence at EVERY step, the wrap included
+    // (the fixture captured on the pre-fix engine: all -1 — the guard
+    // substitution signMotion*dirSign is bias-independent). If a biased site
+    // dropped its |dd|>1 guard, this row fails at the wrap step while the
+    // cell-position assertions still pass.
+    {
+        const struct { int R; int cells[16]; } fixtures[] = {
+            { 0, {0,7,6,5,4,3,2,1,0,7,6,5,4,3,2,1} },
+            { 3, {3,2,1,0,7,6,5,4,3,2,1,0,7,6,5,4} },
+        };
+        for (const auto& fx : fixtures) {
+            SequencerEngine eng; eng.reset();
+            eng.updateWindow(8.f, 0.f, false, 0.f, 0.f, false);
+            eng.numPolyVoices = 2;
+            eng.setVoiceLorLocalEast(V2S, true);
+            eng.voiceLorRef(V2S, SequencerEngine::LOR_LEN) = 8;
+            eng.voiceLorRef(V2S, SequencerEngine::LOR_ROT) = fx.R;
+            eng.voiceLorDir_[V2S.v] = SequencerEngine::LaneDir::Reverse;
+            for (int t = 0; t < 16; ++t) {
+                eng.advancePlayhead(1, nullptr);
+                std::snprintf(msg, sizeof msg, "G6 (R=%d): step %d frame value %d, want %d (the cell moved R-1 -> R)", fx.R, t, (int)(eng.voiceDriver_[V2S.v] - 1), fx.cells[t]);
+                CHECK(eng.voiceDriver_[V2S.v] - 1 == fx.cells[t], msg);
+                std::snprintf(msg, sizeof msg, "G6 (R=%d): step %d the sign cue is %d, want -1 (IDENTICAL to the pre-fix fixture — the wrap step included; a dropped |dd|>1 guard fails HERE)", fx.R, t, eng.voiceSign_[V2S.v]);
+                CHECK(eng.voiceSign_[V2S.v] == -1, msg);
+            }
+        }
+    }
+
     if (g_fail == 0) std::printf("all green\n");
     else std::printf("%d FAILED\n", g_fail);
     return g_fail ? 1 : 0;
