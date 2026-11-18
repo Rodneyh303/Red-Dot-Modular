@@ -6,7 +6,15 @@ as agreed. After setting the **global transport below the voice length** (e.g. 4
 for a time and restoring it to 16, the commits start landing at step **6**, another
 time step **7** — global-invariant, "as if 6 became magic."
 
-## Root cause (reproduced headlessly, deterministic)
+> **SUPERSEDED — read "## RESOLVED" at the foot first.** The `advanceOffset_` account
+> below is a real *lever* (injecting it reproduces the step 6/7), but the same-seed A/B
+> differential later showed `advanceOffset_` is a *symptom*, not the root: with static
+> modulation the dip changes nothing; only with live modulation does it diverge, and the
+> true cause is the cycle-mode nesting not clamping the voice/lanes/scan to the global
+> window. The fix directions in this upper section are retained for the audit trail but
+> are not the ones to build — the RESOLVED spec is.
+
+## Root cause — first pass (lever, not root; see RESOLVED)
 
 The probability-lane commit fires correctly at `voiceFramePhase_[v] == 0`. But the
 voice-frame phase is `wrapMod(t0Now + advanceOffset_[v], walkPeriod(dir, L))`, so a
@@ -68,3 +76,70 @@ the voice-frame phase's transport alignment drifts and never re-anchors.
 Engine-only, headless-testable once the accumulation path is driven. The display half
 (voice playhead vs commit step) is consistent with the engine here — the fix is the
 latched `advanceOffset_`, not the panel.
+
+---
+
+## RESOLVED — the root cause and the agreed spec (2026-11-18)
+
+### What the evidence actually showed
+A same-seed A/B differential (`test/diag_global_dip_advoffset.cpp`, branch
+`debug/global-dip-logging`), two engines fed an identical gate stream, one holding
+global=16 and one dipping 16→4→16:
+- With modulation **static**, A and B are byte-identical — the dip perturbs nothing,
+  `advanceOffset_` included. So `advanceOffset_` is not the cause.
+- With a **live** variation-lane LOR CV swinging through the window change, the
+  modulated+wandering voices diverge permanently from ~2 steps after the restore and
+  the gap grows; the centre (un-modulated) voice stays byte-identical A/B — **no
+  cross-voice leak**. So the perturbation is confined to voices that are both wandering
+  and actively modulated, and it is the window change reaching their reads that does it.
+
+### The root cause
+In `SequencerEngine::voiceFrameTickAt`, the CYCLE branch anchors the **read** to the
+global phrase — `phrasePos = wrapMod(effTick−1, lenG)`, "returns to R at every global
+step 1, restarts its cycle from R each phrase instead of drifting" — but hands back a
+**frame phase** on the RAW congruence (`wrapMod(effTick−1, walkPeriod)`, the comment:
+"the phase stays the RAW congruence"). `tickHolders` keys the probability-lane commit
+edge off that raw congruence (`wrapMod(t0EffNow, walkPeriod)==0`). And the variation
+scan wraps by the raw lane length (`SequencerEngine.cpp:629`, "the LOCAL window scan,
+never the global clock"). So the **read is anchored to the global; the commit edge and
+the scan free-run.** That is the step 6/7 drift and the scan-overrun — one root: cycle
+mode does not clamp the frame/commit/scan to the global window the read already honours.
+
+### The agreed semantics (UAS — Rodney)
+Cycle mode must align and re-align the voice to the global range; it never free-drifts.
+
+1. **Dynamic clamp.** The effective window the voice cycles is
+   `min(committed global, committed voice, committed lane)` — e.g. global 4 / voice 8 →
+   the voice visits its first 4 steps; grow global back to 16 → it resumes all 8. The
+   `min` is whatever is committed *now*, not latched at voice creation.
+2. **Latched at the voice-cycle start (CA1 lifecycle).** Evaluate the `min` at each
+   voice-cycle boundary from the already-committed trio and hold it for the cycle — the
+   clamp has no cadence of its own, it rides the existing latches (global range at the
+   global phrase edge; voice range at the voice-cycle start; lane range at the
+   voice-frame edge). No mid-cycle re-clamp (it would make the cycle length undefined);
+   a mid-cycle global change waits for the next voice-cycle start.
+3. **Frame anchored to the global first step.** Voice-step-zero (where the probability
+   lanes commit) coincides with the global first step via rotation R, re-aligning every
+   global phrase. The wander lives *inside* the clamped window; it cannot push the
+   downbeat off the global grid (Behavior 2 — not the free drift of today, Behavior 1).
+4. **The variation scan respects the clamp.** The escape search traverses exactly the
+   clamped window, not the raw variation-lane length. Forced by the `variation = 1`
+   limiting case: always-advance is clamped to the window, so the scan — which is "where
+   variation=1 would have gone" searched probabilistically — must traverse the same
+   range, or the two disagree about what "advance" means.
+
+Consequence: `advanceOffset_` can no longer accumulate past the window, so a global dip
+leaves no residue — each cycle boundary re-reads the `min` and re-anchors.
+
+### Where it lives (fix surface)
+- `voiceFrameTickAt` CYCLE branch — the frame-phase output must track the
+  global-anchored position, not the raw congruence.
+- `tickHolders` — the commit edge keys off the anchored frame, not `wrapMod(t0EffNow…)`.
+- `SequencerEngine.cpp:629` — the scan modulus clamps to the effective window.
+- All three are the same clamp; this is the concept face of **CA5** (the phase-holder
+  skeleton) and should land as one change, reproduce-first against the differential.
+
+### Reproduction / guard
+`test/diag_global_dip_advoffset.cpp` (on `debug/global-dip-logging`) is the failing
+differential; turn it into a pass/fail guard (A==B after the dip) once the clamp lands.
+`MONSOON_DIP_LOG` on the same branch is the Rack confirmation, now optional.
