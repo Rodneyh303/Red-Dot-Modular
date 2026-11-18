@@ -841,7 +841,14 @@ bool SequencerEngine::voiceFrameEdgeLive_(int v) const {
     const int64_t sPosV = (pos_.direction() > 0) ? (int64_t)pos_.phrasePos()
                                                   : -(int64_t)pos_.phrasePos();
     const int64_t vCoord = wrapMod(sPosV + advanceOffset_[v], lenG);
-    return wrapMod(vCoord, walkPeriod(d, L)) == 0;
+    // The commit fires at the voice-lane STEP EDGE (left in forward, right in
+    // reverse) — NOT at rotation R. The read anchors at R (anchorBias, 7aae5ee9);
+    // the commit must carry the SAME anchorBias so it tracks the range edge and
+    // does not decouple to rotation. Forward (bias 0): the left edge, read==R, as
+    // before. Reverse (bias +1): the right edge, read==R-1, one step past the
+    // anchor — restoring the 74cf5c14 commit alignment the reverse read-fix had
+    // dragged onto rotation (CC_FIX_CYCLE_COMMIT_EDGE_REVERSE — Rodney's feel-test).
+    return wrapMod(vCoord - anchorBias(d), walkPeriod(d, L)) == 0;
 }
 
 // effTick1based may be ANY value congruent to the true 1-based effective clock modulo
