@@ -119,9 +119,15 @@ fall out of it.
 - **Consequence 1 — window extent (the "clamp").** Because the voice re-anchors to the
   global start each global phrase, a global phrase *shorter* than the voice never hands it
   enough steps to finish its own window before it is re-anchored — so it *visits* only
-  `min(global, voice, lane)` steps (global 4 / voice 8 → steps 1–4; grow global to 16 → it
-  resumes all 8). The `min` is the **observable**, the anchor is the **cause**. There is
-  no stored clamp to latch.
+  `min(global, voice, lane)` consecutive cells **starting at the rotation anchor `R`**,
+  wrapping mod the voice length (global 4 / voice 8: `R=0` → cells 0,1,2,3; `R=6` → cells
+  6,7,0,1; grow global to 16 → it resumes all 8). **R is ALWAYS the first cell reached** —
+  it can never be "a step the clamp skips," because rotation *defines* the window's start,
+  not a fixed 0-based slice. The read law confirms it: at global step 1 (`phrasePos=0`) the
+  cycle read is `(laneTickFor(vd,1,L) + R) mod L = R` (forward; reverse anchors `R` at the
+  global *end* and walks back). The cells that go unreached are exactly those *outside*
+  `[R, R+G)` — which by construction excludes `R`. The `min` is the **observable**, the
+  anchor is the **cause**. There is no stored clamp to latch.
 - **Consequence 2 — scan bound.** The variation escape scan cannot reach past where the
   anchor re-enters, so it traverses exactly that reachable window, not the raw
   variation-lane length (today's `:629` bug). The `variation = 1` limiting case is just
@@ -168,7 +174,8 @@ re-seed to 0):
   follows the folded `phrasePos`, and the visited extent becomes `min(4,8)=4`.
 - The voice re-anchors (and the probability lanes commit) at **t=9**, the next live
   `phrasePos==0` — **not** the old step-8 boundary, and not the voice's own 8. Thereafter
-  it visits steps 1–4 each global-4 phrase. Grow global back to 8 and the window grows
+  it visits 4 cells from its rotation anchor `R` each global-4 phrase (here `R=0` → cells
+  0–3). Grow global back to 8 and the window grows
   back and re-anchors on the live boundary — no residue, nothing was latched.
 
 **Global OFFSET changes at step 6.** Offset is STEP-rate too, but it's a **pure
