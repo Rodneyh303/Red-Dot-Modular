@@ -837,18 +837,22 @@ bool SequencerEngine::voiceFrameEdgeLive_(int v) const {
         // 32-ring, which read past a short global's phrase).
         return wrapMod(pos_.phaseClock(transportTick_) + advanceOffset_[v],
                        walkPeriod(d, lenG)) == 0;
-    // CYCLE: the live rotation anchor — the same phrase coordinate the read folds.
-    const int64_t sPosV = (pos_.direction() > 0) ? (int64_t)pos_.phrasePos()
-                                                  : -(int64_t)pos_.phrasePos();
-    const int64_t vCoord = wrapMod(sPosV + advanceOffset_[v], lenG);
-    // The commit fires at the voice-lane STEP EDGE (left in forward, right in
-    // reverse) — NOT at rotation R. The read anchors at R (anchorBias, 7aae5ee9);
-    // the commit must carry the SAME anchorBias so it tracks the range edge and
-    // does not decouple to rotation. Forward (bias 0): the left edge, read==R, as
-    // before. Reverse (bias +1): the right edge, read==R-1, one step past the
-    // anchor — restoring the 74cf5c14 commit alignment the reverse read-fix had
-    // dragged onto rotation (CC_FIX_CYCLE_COMMIT_EDGE_REVERSE — Rodney's feel-test).
-    return wrapMod(vCoord - anchorBias(d), walkPeriod(d, L)) == 0;
+    // CYCLE: the commit fires at the VOICE-LANE STEP EDGE — the LEFT window edge in
+    // forward, the RIGHT in reverse — NOT at rotation R. The playhead's box-offset
+    // within the window (wnow, the same walk value the read folds) runs 0..L-1; the
+    // edge is box-offset 0 (left) or L-1 (right), a fixed POSITION independent of
+    // rotation. Rotation only moves the CONTENT under the playhead, so the commit
+    // STEP shifts with R while the edge it lands on does not. Every prior build keyed
+    // this on vCoord==0 — box-offset R, the rotation tick — so the lanes moved when
+    // the voice hit its rotation, not its range edge (CC_FIX_CYCLE_COMMIT_WINDOW_EDGE
+    // — Rodney's feel-test; the whole test suite ran R==0, where rotation IS the edge,
+    // so it never caught this). The read anchor (anchorBias, 7aae5ee9) is unchanged.
+    const int64_t vCoord = wrapMod(((pos_.direction() > 0) ? (int64_t)pos_.phrasePos()
+                                                           : -(int64_t)pos_.phrasePos())
+                                   + advanceOffset_[v], lenG);
+    const int64_t wnow  = wrapMod(laneTickFor(d, vCoord + 1, L) + anchorBias(d) + (int64_t)R, L);
+    const int64_t wEdge = (d == LaneDir::Reverse) ? (int64_t)(L - 1) : (int64_t)0;
+    return wnow == wEdge;
 }
 
 // effTick1based may be ANY value congruent to the true 1-based effective clock modulo
