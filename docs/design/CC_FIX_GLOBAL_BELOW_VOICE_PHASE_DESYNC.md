@@ -241,6 +241,32 @@ contiguous gate · painted = arbitrary gating**, and they **compose** — which 
 engine keeps all three rather than collapsing to one. (All gating is output-only: it zeroes
 GATE/CV out, never generation/correlation/marginals.)
 
+### Painted overlay — addressing (DECIDED, Rodney 2026-11-18)
+**The painted overlay is ABSOLUTE — a phrase-level gate, not a window-rider.** It is indexed
+and rotated on the **current global phrase ring `G`** (re-interpreted each phrase), not locked
+to the base window's loop.
+
+- **Why absolute (expressiveness subsumption).** A cycle base of length `L` with an absolute
+  mute mask of *period `L`* reproduces the window-rider case exactly (`(content, mute)` both
+  period `L`, identical every loop). An absolute mask of any *other* period gives loop-vs-gate
+  **phasing** — the same loop under different mutes each repetition — which window-rider
+  cannot produce. So absolute ⊋ window-rider: it is the superset and the generative one (the
+  varied-repetition the instrument is for), and it keeps the overlay an orthogonal
+  phrase-level gate rather than coupling it to `L`.
+- **Fork 2 (resolved by this):** "absolute" = absolute-within-the-current-`G`. The overlay's
+  `pat >> phraseStep` indexing AND `rotMaskRing` move to `% globalLen` (not `% kMaskRing`),
+  consistent with the abs1 ring ruling.
+- **Fork 3 (abs2 vs abs3, both kept):** abs2 (`followR` off) = **static**, pinned to absolute
+  phrase steps of the current `G` (never re-pins). abs3 (`followR` on) = **follow-R**, mutes
+  rotate by `(R − anchorR)` on the `G`-ring — the mute travels with the content's rotation and
+  composes with the cycle re-anchor. The anchor/re-pin law is unchanged (mask-step-1 pinned to
+  base R; a real base-R edit re-pins; `Δ` resets to avoid double rotation).
+- **Modulated `L`:** an absolute gate stays put while `L` morphs underneath — a stable gate
+  over a morphing loop, which reads as music, not the chaos a window-riding mute would make as
+  it stretched with `L`. The locked-muted-ostinato case (auto-track a modulated `L`) is the one
+  thing absolute does not do for free; if it ever proves a constant need it is a later
+  convenience toggle ("lock mask to window"), never the base semantics.
+
 ### Where it lives (fix surface)
 - `voiceFrameTickAt` CYCLE branch — the frame-phase output must track the
   global-anchored position, not the raw congruence.
