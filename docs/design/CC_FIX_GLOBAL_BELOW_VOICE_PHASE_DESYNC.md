@@ -112,12 +112,22 @@ Cycle mode must align and re-align the voice to the global range; it never free-
    `min(committed global, committed voice, committed lane)` — e.g. global 4 / voice 8 →
    the voice visits its first 4 steps; grow global back to 16 → it resumes all 8. The
    `min` is whatever is committed *now*, not latched at voice creation.
-2. **Latched at the voice-cycle start (CA1 lifecycle).** Evaluate the `min` at each
-   voice-cycle boundary from the already-committed trio and hold it for the cycle — the
-   clamp has no cadence of its own, it rides the existing latches (global range at the
-   global phrase edge; voice range at the voice-cycle start; lane range at the
-   voice-frame edge). No mid-cycle re-clamp (it would make the cycle length undefined);
-   a mid-cycle global change waits for the next voice-cycle start.
+2. **Live boundary — NOT a precomputed period** (C1 + the live-boundary refinement,
+   `DESIGN_POSITION_UNIFICATION.md:212–261`). Global length + offset are the STEP-rate
+   class — the MeloDicer-native "patterns react instantly" controls: they reposition/
+   resize immediately, next step. The voice/lane re-anchor boundary is evaluated **live
+   each step** — "is my parent at `phrasePos==0` THIS step?" against the parent's
+   *current* length — never a countdown or a stored cycle. So global 8→4 at step 8 →
+   the voice re-anchors at **12 AND 16**, not 16; C2 (keep-counting) places the next
+   boundary after a mid-phrase change. Concretely: the voice position/anchor is a live
+   function of the global phrase position — exactly what `voiceFrameTickAt`'s cycle
+   *read* already is (`phrasePos = wrapMod(effTick−1, lenG)`, recomputed every step) —
+   so immediate global reaction falls out for free and there is no latched clamp to go
+   stale. The re-anchor is the **global** phrase boundary (defined by the global via
+   C2), not a self-referential voice period, so nothing is ever undefined. Only the LOR
+   **values** latch at the boundary (C1b); the window geometry is live. (An
+   implementation that precomputes a clamp period gets the step-12 case wrong — the
+   doc's explicit warning.)
 3. **Frame anchored to the global first step.** Voice-step-zero (where the probability
    lanes commit) coincides with the global first step via rotation R, re-aligning every
    global phrase. The wander lives *inside* the clamped window; it cannot push the
@@ -129,7 +139,8 @@ Cycle mode must align and re-align the voice to the global range; it never free-
    range, or the two disagree about what "advance" means.
 
 Consequence: `advanceOffset_` can no longer accumulate past the window, so a global dip
-leaves no residue — each cycle boundary re-reads the `min` and re-anchors.
+leaves no residue — the voice re-anchors at the next *live* global-phrase boundary, which
+moves immediately with the (STEP-rate) global length.
 
 ### Where it lives (fix surface)
 - `voiceFrameTickAt` CYCLE branch — the frame-phase output must track the
