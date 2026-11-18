@@ -13,6 +13,26 @@ using dotModular::VoiceResolver;   // the mint authority (VoiceSlot cannot be co
 #include <rack.hpp>
 #endif
 
+// ── GLOBAL-DIP DIAGNOSTIC (debug/global-dip-logging branch) ──────────────────────
+// The global<voice phase-misalignment hunt (CC_FIX_GLOBAL_BELOW_VOICE_PHASE_DESYNC.md):
+// headless A/B differential RULED OUT advanceOffset_ as the cause, and the poly
+// voice-frame phase could not be driven headlessly. This logs the per-step coordinates
+// at the voice-frame latch so a Rack capture can say which one jumps across the dip
+// (global 16 -> 4 -> 16). OFF by default (zero-cost); build with -DMONSOON_DIP_LOG=1.
+// Watches one voice (slot index) — override with -DMONSOON_DIP_LOG_VOICE=<n>.
+// Reproduce in Rack: gate mode, global 16, a voice at len 8 with a WANDERING variation
+// and a modulated lane LOR; grep the log for "[DIP]" and watch vPhase vs phrasePos as
+// you drop global to 4 and restore it to 16.
+#ifndef MONSOON_DIP_LOG
+#define MONSOON_DIP_LOG 0
+#endif
+#if MONSOON_DIP_LOG
+#include <rack.hpp>
+#ifndef MONSOON_DIP_LOG_VOICE
+#define MONSOON_DIP_LOG_VOICE 1
+#endif
+#endif
+
 // Note-value data (fraction, allowedPPQN, label) lives in dsp/NoteValues.hpp as
 // the single source of truth. The sequencer uses NOTE_VALUES[i].allowedPPQN to
 // snap an unsupported selection (e.g. 1/4T at PPQN=4) to the nearest valid one.
@@ -1089,6 +1109,20 @@ void SequencerEngine::tickHolders(int transportMotion, int signMotion, const int
         // later derive cannot double-fire either.
         voiceFramePhaseEdgeSnap_[v] = voiceFramePhase_[v];
         laneEdgeSnapValid_ = true;
+#if MONSOON_DIP_LOG
+        if (v == MONSOON_DIP_LOG_VOICE) {
+            // The 5 coordinates the hunt needs, per step, for the watched voice:
+            //   phrasePos/glen = the global coordinate; vPhase = the commit edge
+            //   (==0 is the wrap where the lane LOR commits); advOff = the per-voice
+            //   advance accumulator (ruled out headlessly — confirm it stays put);
+            //   edge = did the commit fire this step. Across the dip, the coordinate
+            //   that takes a PERSISTENT jump after global returns to 16 is the bug.
+            INFO("[DIP] tick=%lld phrasePos=%d glen=%d v=%d vPhase=%d advOff=%lld edge=%d%s",
+                 (long long)transportTick_, pos_.phrasePos(), cachedLength, v,
+                 (int)voiceFramePhase_[v], (long long)advanceOffset_[v], (int)vLaneEdgeC1b,
+                 vLaneEdgeC1b ? "  <-- LANE LOR COMMIT" : "");
+        }
+#endif
         for (int s = 0; s < dotModular::NUM_STRANDS; ++s) {
             // (C0 FAMILY 2) the per-voice lane advance reads the poly chokepoint —
             // the same len/dir polyStrandLenOf/laneDirV_ returned.
