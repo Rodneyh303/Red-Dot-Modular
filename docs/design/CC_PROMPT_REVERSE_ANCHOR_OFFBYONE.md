@@ -36,10 +36,31 @@ walk starts at `0` (matching Forward's `0`) before `+ R`.
   `{Forward:0, Reverse:+1, Pendulum:0, PingPong:0}`, applied uniformly at every
   rotation-anchored read. This is CA5-adjacent (the same law lives in several read sites);
   a single helper keeps them from drifting.
+- **Apply it to BOTH twins at every tier — all ten sites.** The sign-law analysis settles
+  this: the bias goes on `wnow` AND its `wprev` twin at each tier (macro frame `:1297`/`:1303`,
+  voice frame `:1406`/`:1409`), on `laneRecomp`'s `cur`/`prv` (`:1426`/`:1431`), on the two
+  `voiceFrameTickAt` seeds (`:883`, `:899`), and on the `macroLaneDisplay` display twin. The
+  seeds must carry the same bias as the reads so the raw-advance phase stays consistently
+  anchored; the display twin so the Rack visual moves with the audio, not one cell behind it.
+- **The bias goes INSIDE the window fold, `(laneTickFor(d,t,L) + rho + anchorBias(d)) % L`,
+  feeding `frameReadCell(wnow, …)` — it is NOT the pre-existing `wnow + 1`.** That `+1` at
+  `:885`/`:901`/`:1407` is the 1-based driver representative, a different quantity. If the
+  anchor bias is added as a second *post-mod* `+1` on the driver, the edge/sign cue moves but
+  the READ cell stays at R−1 — the fix lands half-wrong (sign fixed, cell not). Every one of
+  the ten edits must be pre-mod.
+- **Keep the `(dd > 1 || dd < −1)` guard at every biased edge site** (`:1306`, `:1414`). The
+  bias cancels in the difference **only in the no-wrap regime** (`|dd| ≤ 1`, same constant on
+  both operands before `% L`). At the wrap step — the re-anchor edge — the cue stays exact
+  because the guard discards the literal `dd` and substitutes `signMotion · dirSign`
+  (bias-independent), and a +1 ring-translation relocates the wrap without shrinking its
+  ±(L−1) magnitude, so the guard still trips. `laneRecomp`'s sign cancels algebraically
+  (its `delta` is pre-mod). Do not "simplify" the guard away thinking the bias made it
+  redundant — that silently breaks the reverse re-anchor sign.
 - **Do NOT modify `laneTickFor`.** `laneTickFor(Reverse)=−t` is the time-symmetric primitive
   the bounce walks and the STEPS_32 goldens depend on; the comment says so. The correction
   belongs where rotation is applied, not in the walk primitive.
-- **Do NOT touch Pendulum/PingPong** — they already anchor at R (verified above).
+- **Do NOT touch Pendulum/PingPong** — they already anchor at R (verified above), and
+  `anchorBias` returns 0 for them, so their twins are byte-unchanged.
 
 ## Tests (reproduce-first)
 Add a headless test (register in `run_all.sh`) that FAILS before, PASSES after:
@@ -48,8 +69,19 @@ Add a headless test (register in `run_all.sh`) that FAILS before, PASSES after:
   (`R=0,G=4,L=8 → 0,7,6,5`).
 - Same for the **abs1** reverse read and a **probability-lane** reverse read (the correction
   reached every site).
-- **Regression:** Forward, Pendulum, PingPong still anchor at **R** at `phrasePos=0`
-  (unchanged) — guards that the fix is Reverse-only.
+- **Regression (collateral):** Forward, Pendulum, PingPong still anchor at **R** at
+  `phrasePos=0` (unchanged) — guards that the fix is Reverse-only.
+- **Regression (bounces byte-identical):** assert the Pendulum and PingPong **full
+  two-period walks** are bit-for-bit identical pre/post fix (dump the whole walk, not just
+  `t=1`). This exercises the `anchorBias=0` path and proves the ten-site edit touched nothing
+  the bounces consume. Reference walks (L=8, R=0): Pendulum
+  `0,1,2,3,4,5,6,7,6,5,4,3,2,1,0,1`; PingPong `0,1,2,3,4,5,6,7,7,6,5,4,3,2,1,0`.
+- **Regression (sign-law, the load-bearing one):** for a reverse re-anchored read, assert
+  **both** that the read cell moves `R−1 → R` **and** that the per-step sign/edge cue is
+  identical to pre-fix at **every** step, the wrap step included. Capture the pre-fix sign
+  sequence as the fixture. This is what actually tests the guard-substitution argument rather
+  than trusting it — if a biased site dropped its `|dd|>1` guard, this row fails at the wrap
+  step while the cell-position assertions still pass.
 
 ## Goldens
 Check whether any STEPS_32 fixture (`test_stage2b_pregates` / `test_stage5_combined` and
