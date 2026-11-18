@@ -229,6 +229,32 @@ phrase edge in abs (abs addresses against the global — C1 refinement).
   drift fix needed here — abs1 is already a pure function of the phrase position.
 
 ### Reproduction / guard
-`test/diag_global_dip_advoffset.cpp` (on `debug/global-dip-logging`) is the failing
-differential; turn it into a pass/fail guard (A==B after the dip) once the clamp lands.
+`test/diag_global_dip_advoffset.cpp` (on `debug/global-dip-logging`) is the reproduction.
+
+**The guard is NOT raw `A==B` after the dip.** `A==B` conflates two things: the bug (the
+voice sitting off its own global-anchored schedule, latched at an off-grid step-6/7) and
+*legitimate* divergence (the dipped engine genuinely played a shorter window, so the
+probabilistic wander random-walks apart — and the **mono transport itself wanders**, since
+`dMain` is a probabilistic FORWARD/BACKWARD/HOLD decision reading the global-bounded
+variation lane, so `pos_.phrasePos()` is a view of a walk that legitimately differs A vs B).
+You cannot un-play the dip; `A==B` on the offsets is the wrong criterion.
+
+What to assert instead — a **within-engine** residue-free property (single engine, dip
+16→4→16 under live modulation + a wandering voice):
+- **On-schedule:** at every step, including across and after the dip, the lane-LOR commit
+  fires **iff** the engine's own live global-anchored re-entry holds this step
+  (`pos_.phrasePos()==0` in the global≤voice case; the voice's live anchored voice-step-zero
+  in general). No commit at a step the live anchor does not sanction — **no latched
+  off-grid step-6/7**. Checked against the engine's *own* current phrase position, so the
+  mono's wander is baked in and never counted as a failure.
+- **Regression floor:** the static-no-modulation differential stays byte-identical (a dip
+  with nothing modulated changes nothing). Offsets are *allowed* to diverge under live
+  modulation — that is the music, not a defect.
+
+Rejected framings (they force `A==B` by making something ignore the global range, the
+opposite of UAS nesting): free-running the wander's reads on the raw congruence (contradicts
+Consequence 2 — the wander reads the *clamped* window); or shielding the mono from the dip
+(reverses the C0 FAMILY-2 bounded-seed law; the mono *is* the global). Weaken the assertion
+to the real property, never the engine to the assertion.
+
 `MONSOON_DIP_LOG` on the same branch is the Rack confirmation, now optional.
