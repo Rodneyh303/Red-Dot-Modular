@@ -182,6 +182,38 @@ One-liner: **length changes *when/where* the phrase wraps (the re-anchor boundar
 live, via keep-counting); offset changes *where the pattern sits* (a translation, no timing
 change).** Both next-step immediate — neither waits for the voice's own 8.
 
+### Absolute (abs1 / MASK_DYNAMIC) mode — rulings + worked examples
+
+Where cycle *loops* a window re-anchored to the global first step, abs1 reads the phrase
+straight and **gates** a sounding region. Two rulings (Rodney, 2026-11-18):
+
+- **Ring = the current global phrase, not the full 32-ring.** Absolute means
+  absolute-*within-phrase*. Implementation: in `maskWindowContains` and the abs1 read,
+  `% kMaskRing` → `% globalLen`, and `if (L >= kMaskRing)` → `if (L >= globalLen)`.
+- **Extent is a consequence of the ring/gate, not a stored clamp.** Keep `L` declared as
+  the user set it; the global-phrase ring bounds what sounds. Same principle as cycle.
+
+Law (forward, ring = global phrase `G`, voice window offset `O` / length `L` / rotation `R`):
+- **Sounds** at phrase steps in `[O, O+L)` — gate `maskWindowContains(O, L, step)`, offset
+  and length ONLY (rotation absent — verified `SequencerEngine.hpp`).
+- **Content** at a sounding step `s`: cell `(s + R − O) mod G`; at the region's first step
+  (`s = O`) the content cell is exactly `R` (the `rho = (R−O)` anchor: mask-step-1 pinned
+  to rotation).
+
+| # | setup | sounds | content | the point (test seed) |
+|---|---|---|---|---|
+| A1 | G8 O2 L4 R0 | 2,3,4,5 | 0,1,2,3 | muted outside `[O,O+L)`; region-start content == R |
+| A2 | G8 O2 L4 **R2** | **2,3,4,5** (same) | 2,3,4,5 | **rotation moves content, not the sounding set** — so a display/extent clamp can't miss intended steps |
+| A4 | G4 O0 **L8** R0 | 0,1,2,3 (all) | — | `L ≥ G` ⇒ whole phrase sounds; declared L stays 8, no cached `min()` |
+| A6 | G8 O0 L4 R0 | **cycle:** all 8 (loop `0,1,2,3,0,1,2,3`) vs **abs1:** 0–3 sound, 4–7 **silent** | — | identical `(O,L)`, opposite shape — the cleanest "which mode" test pair |
+| A7 | O0 L4, `G` 8→4 | before 0–3 (4–7 silent) → after all 4 | — | abs1 gate is a pure function of `(step mod G, O, L)` — **drift-free by construction**, immediate on a global change; the drift bug is cycle-ONLY |
+
+Throughline: cycle bounds by re-anchor, abs1 bounds by gate — **both bound by the global
+phrase ring, neither caches a clamp, and in both the sounding extent is R-independent
+(rotation is content).** The same `G`-sweep differential that *fails* for cycle today
+*passes* for abs1 — one harness covers both. The LOR *values* (O, L) latch at the **global**
+phrase edge in abs (abs addresses against the global — C1 refinement).
+
 ### Where it lives (fix surface)
 - `voiceFrameTickAt` CYCLE branch — the frame-phase output must track the
   global-anchored position, not the raw congruence.
@@ -192,6 +224,9 @@ change).** Both next-step immediate — neither waits for the voice's own 8.
   global-anchored position the read already uses; the window extent and scan bound follow,
   no separate `min()` clamp to store. This is the concept face of **CA5** (the phase-holder
   skeleton) and should land as one change, reproduce-first against the differential.
+- **abs1 (separate, smaller):** `maskWindowContains` + the abs1 read — `% kMaskRing` → `%
+  globalLen`, `L >= kMaskRing` → `L >= globalLen` (ring = the current global phrase). No
+  drift fix needed here — abs1 is already a pure function of the phrase position.
 
 ### Reproduction / guard
 `test/diag_global_dip_advoffset.cpp` (on `debug/global-dip-logging`) is the failing
