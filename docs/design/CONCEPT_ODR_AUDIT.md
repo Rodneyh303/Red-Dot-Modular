@@ -126,9 +126,10 @@ key's blind spot is the mechanism behind the reproduced desync.
 if they lived in `CODEBASE_REFACTOR_REVIEW.md` / `REFACTOR_PRIORITY.md` — they do not. Those
 docs' F1–F9 are the RT-safety categories (their F3 = thread-safety of UI↔audio shared state,
 F7 = param config completeness). The F-numbers below come from
-`SEQUENCER_ENGINE_DECOMPOSITION_NOTE.md:42-48`, which cites a line-level audit whose F-list
-is **not committed to the repo** (chat-delivered). The substantive claims are real and were
-re-verified against this branch's code:
+`SEQUENCER_ENGINE_DECOMPOSITION_NOTE.md:42-48`, which cited a line-level audit whose F-list
+was chat-delivered; it is **now committed as `LINE_LEVEL_ODR_AUDIT.md`** (re-verified
+@`964acc2a`, per-point held/dissolved/reduced status there). The substantive claims are real
+and were re-verified against this branch's code:
 - The **direction-authority widget re-resolve** (the decomposition note's "line-level F3") still exists: `StraitsEastSandsVisual.cpp:1408` calls `expanderManager.monoDirAuthority(lane)` (was `:1441` at the audit baseline — the file was reworked by the branch's BUG-4/BUG-5 display commits). It is the *widget-side* instance of CA1's direction lifecycle — same family; do them together under the direction track.
 - The **effective-LOR accessor family ×8** (the decomposition note's "prior audit F7 / concept audit CA4") is the line-level face of CA4; the `composeLor_` helper the decomposition note proposes (`:43`) is the shared primitive CA4 asks about.
 - CA5 is the concept face of the decomposition note's **item 4** (`:33`, the `PositionResolver` migration) — cite verified.
