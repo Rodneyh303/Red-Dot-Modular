@@ -214,6 +214,79 @@ phrase ring, neither caches a clamp, and in both the sounding extent is R-indepe
 *passes* for abs1 — one harness covers both. The LOR *values* (O, L) latch at the **global**
 phrase edge in abs (abs addresses against the global — C1 refinement).
 
+### Why all three modes exist — the expressiveness lattice
+Model a phrase of `G` steps as a **gate** (which steps sound, a bit-vector in `{0,1}^G`)
+and a **content** sequence (which cell plays at each sounding step). Then:
+
+- **CYCLE:** gate ≡ **all-on**; content has **period `L`** — the `L`-window looped across the
+  phrase (`L=4, G=8 → 0,1,2,3,0,1,2,3`). The ostinato / polymeter engine.
+- **ABS1:** gate = a **single contiguous run `[O, O+L)`** (silence outside); content a
+  **straight period-`G` read** within it (`s → (s+R−O) mod G`), played once, not looped. The
+  placed-burst / articulation engine.
+
+**Neither base mode subsumes the other:**
+- *Unique to abs1* — a gate that isn't all-on (a contiguous **rest region**). Cycle has no
+  base gate, so A1 (2–5 sound, rest silent) is unreachable in cycle.
+- *Unique to cycle* — a **sub-phrase loop that still sounds everywhere** (content period
+  `L < G`, gate all-on). Abs1 reads straight, so A6's `0,1,2,3,0,1,2,3` is unreachable in
+  abs1.
+- They coincide only at **`L ≥ G`**: both collapse to "play the whole phrase straight, all
+  sounding" (cycle re-anchors before it can repeat; abs1's gate goes all-on). All the
+  divergence lives in `L < G`.
+
+**The painted overlay (the third kind) is the join.** It is an arbitrary mute mask ANDed on
+top of *either* base: painted+cycle finally puts silence *into* a loop; painted+abs1 punches
+non-contiguous gaps into the region. So the lattice is **cycle = sub-looping · abs1 = a
+contiguous gate · painted = arbitrary gating**, and they **compose** — which is why the
+engine keeps all three rather than collapsing to one. (All gating is output-only: it zeroes
+GATE/CV out, never generation/correlation/marginals.)
+
+### Painted overlay — addressing (DECIDED, Rodney 2026-11-18)
+**The painted overlay is ABSOLUTE — a phrase-level gate, not a window-rider.** It is indexed
+and rotated on the **current global phrase ring `G`** (re-interpreted each phrase), not locked
+to the base window's loop.
+
+- **Why absolute (expressiveness subsumption).** A cycle base of length `L` with an absolute
+  mute mask of *period `L`* reproduces the window-rider case exactly (`(content, mute)` both
+  period `L`, identical every loop). An absolute mask of any *other* period gives loop-vs-gate
+  **phasing** — the same loop under different mutes each repetition — which window-rider
+  cannot produce. So absolute ⊋ window-rider: it is the superset and the generative one (the
+  varied-repetition the instrument is for), and it keeps the overlay an orthogonal
+  phrase-level gate rather than coupling it to `L`.
+- **Fork 2 (resolved by this):** "absolute" = absolute-within-the-current-`G`. The overlay's
+  `pat >> phraseStep` indexing AND `rotMaskRing` move to `% globalLen` (not `% kMaskRing`),
+  consistent with the abs1 ring ruling.
+- **Fork 3 (abs2 vs abs3, both kept):** abs2 (`followR` off) = **static**, pinned to absolute
+  phrase steps of the current `G` (never re-pins). abs3 (`followR` on) = **follow-R**, mutes
+  rotate by `(R − anchorR)` on the `G`-ring — the mute travels with the content's rotation and
+  composes with the cycle re-anchor. The anchor/re-pin law is unchanged (mask-step-1 pinned to
+  base R; a real base-R edit re-pins; `Δ` resets to avoid double rotation).
+- **Modulated `L`:** an absolute gate stays put while `L` morphs underneath — a stable gate
+  over a morphing loop, which reads as music, not the chaos a window-riding mute would make as
+  it stretched with `L`. The locked-muted-ostinato case (auto-track a modulated `L`) is the one
+  thing absolute does not do for free; if it ever proves a constant need it is a later
+  convenience toggle ("lock mask to window"), never the base semantics.
+
+### Painted overlay — worked examples (P-series)
+Mask bits: `1` = sound, `0` = mute; the mask is ANDed onto the base gate per phrase step,
+indexed on the `G`-ring. The only mode-param is the rotation source: **abs2** (`followR`
+off) static, **abs3** (`followR` on) rotated by `Δ = R − anchorR` so `overlay[p] =
+anchored[(p+Δ) mod G]` — a painted mute at step `k` lands at `(k − Δ) mod G`.
+
+| # | base + mask | result | the point (test seed) |
+|---|---|---|---|
+| P1 | cycle L4, G8 (content `0,1,2,3,0,1,2,3`), mask `1110 1110` (mute 3,7; period 4 = L) | iter1 cells `0,1,2`; iter2 cells `0,1,2` — identical | **mask period == L ⇒ every loop iteration identical** (absolute reproduces window-rider) |
+| P2 | cycle L4, G8, mask `1110 1101` (mute 3,6; period 8 ≠ L) | iter1 `0,1,2`; iter2 `0,1,3` — **differ** | **period ≠ L ⇒ same loop, different mutes per repetition** (phasing / varied repetition). The two iterations *should* differ — this is the feature, **not** an A==B failure |
+| P3 | mask `1101 1111` (mute step 2), `R: 0→1` | abs2: mute stays **step 2**; abs3: mute → **step 1** (`2 − (1−0)`) | abs2 muted-step is **R-invariant**; abs3 muted-step = `(k − (R−anchorR)) mod G` — travels with the content |
+| P4 | abs1 region `[2,6)`, mask `1111 0111` (mute step 4) | sounds `2,3,5`; `4` muted; `0,1,6,7` silent | overlay ANDs the abs1 gate ⇒ **non-contiguous sounding inside the region** — unreachable by either base alone (this is "arbitrary gating") |
+| P5 | mask authored on G8, then `G: 8→4` | overlay uses `phraseStep ∈ [0,4)` + mask bits 0–3; bits 4–7 **dormant**; `rotMaskRing` mod 4 | overlay sounding set = pure function of `(phraseStep mod G, mask, R)`; **zero residue**, dormant bits reappear when `G` grows back — drift-free like abs1 |
+
+Throughline: the overlay is **absolute (phrase-indexed on `G`), composed by AND with the
+base, with one knob — the rotation source**. P1/P2 are the locked-vs-phasing pair (the
+reason absolute is the superset); P3 pins abs2-vs-abs3; P4 is the arbitrary-gate capability;
+P5 pins drift-free re-interpretation under a global change. **The guard must allow P2's
+per-repetition divergence** — same trap the cycle guard nearly fell into.
+
 ### Where it lives (fix surface)
 - `voiceFrameTickAt` CYCLE branch — the frame-phase output must track the
   global-anchored position, not the raw congruence.
