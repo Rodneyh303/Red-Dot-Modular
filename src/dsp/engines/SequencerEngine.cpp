@@ -162,7 +162,6 @@ void SequencerEngine::reset() {
     pos_.reset();   // (STEP 4-final) THE park: the played column starts at -1 (the pre-start state) + the default window
     prevPhaseAbsStep_ = 0;    // (slice 2b) the phase-sweep history starts fresh
     hasPhaseAbsStep_  = false;
-    laneEdgeSnapValid_ = false;   // (REMAINING BUGS 2) no stale edge snapshot across a reset
     lorCvStickyVoice_ = -1;       // (REMAINING BUGS 5) no sticky suspend across a reset
     lorCvStickyLane_  = -1;
     lorCvStickyLaneItems_.fill(false);
@@ -817,12 +816,41 @@ int SequencerEngine::polyStrandLenOf(int v, int strand) const {
 //   fold never sees an out-of-window R). The window's PLACEMENT rides the parent
 //   frame (voiceRead_ = wnow + offG + O in the derive — the global offset is
 //   placement, UAS lines 64/186-187).
+// (CC_FIX_GLOBAL_BELOW_VOICE_PHASE_DESYNC) THE LIVE ROTATION ANCHOR — see the hpp
+// declaration. The CYCLE arm's coordinate is the derive's own fold input, verbatim:
+// the transport-signed phrase position (+ the voice's advance offset, mod the CURRENT
+// global length). Byte-identical to BUG 6's raw-congruence landing test whenever the
+// global length is a multiple of the walk period (vCoord ≡ t0Eff then); under a
+// shorter or non-dividing global the edge follows the READ's wrap instead of
+// free-running past it — the commit, the re-anchor and the read all land together.
+bool SequencerEngine::voiceFrameEdgeLive_(int v) const {
+    if (v < 0 || v >= kVoiceSlots) return false;
+    int L, O, R; LaneDir d;
+    effectiveVoiceLor(v, L, O, R, d);
+    if (L == kPatternLengthCap && O == 0 && R == 0 && d == LaneDir::Forward)
+        return pos_.phrasePos() == 0;   // the identity row: the global phrase edge (its pass-through cycle IS the phrase)
+    if (L < 1) L = 1;
+    const int lenG = std::max(1, cachedLength);
+    if (voiceFrameReadsFullPhrase(v))
+        // ABS1: the CURRENT GLOBAL PHRASE on the RAW congruence (transport-synced by
+        // design; the ring = the global phrase per the doc's abs1 ruling — was the
+        // 32-ring, which read past a short global's phrase).
+        return wrapMod(pos_.phaseClock(transportTick_) + advanceOffset_[v],
+                       walkPeriod(d, lenG)) == 0;
+    // CYCLE: the live rotation anchor — the same phrase coordinate the read folds.
+    const int64_t sPosV = (pos_.direction() > 0) ? (int64_t)pos_.phrasePos()
+                                                  : -(int64_t)pos_.phrasePos();
+    const int64_t vCoord = wrapMod(sPosV + advanceOffset_[v], lenG);
+    return wrapMod(vCoord, walkPeriod(d, L)) == 0;
+}
+
 // effTick1based may be ANY value congruent to the true 1-based effective clock modulo
 // the relevant periods (the walk formulas mod locally). framePhaseOut (when non-null)
 // receives the frame phase congruent to the frame walk's t0 (mod the row walk's
-// period) — for the cycling fold that is the RAW effective clock's congruence (the
-// holder advance and the derive's fold both key off it). Returns the 1-based frame
-// tick the voice's LANES hang under.
+// period) — the RAW effective clock's congruence, which the ABS1 fold's pass-through
+// arm consumes; the CYCLE paths key off the live rotation anchor
+// (voiceFrameEdgeLive_), not this phase. Returns the 1-based frame tick the voice's
+// LANES hang under.
 int64_t SequencerEngine::voiceFrameTickAt(int v, int64_t effTick1based,
                                           int64_t* framePhaseOut) const {
     const int  lenG = std::max(1, cachedLength);
@@ -845,9 +873,12 @@ int64_t SequencerEngine::voiceFrameTickAt(int v, int64_t effTick1based,
     int L, O, R; LaneDir vd;
     effectiveVoiceLor(v, L, O, R, vd);
     if (L < 1) L = 1;
-    // (A6) ABS1: the window walk runs the FULL PHRASE — L→16 for the READ only.
+    // (A6 + the DESYNC abs1 ruling) ABS1: the window walk runs the FULL PHRASE — the
+    // CURRENT GLOBAL PHRASE, for the READ only (was the 32-ring: absolute means
+    // absolute-WITHIN-PHRASE; the global-phrase ring bounds what sounds, and the
+    // declared L stays as authored — no cached min).
     if (voiceFrameReadsFullPhrase(v)) {
-        L = kMaskRing;   // the FULL PHRASE = the ring
+        L = lenG;   // the FULL PHRASE = the current global phrase
         const int64_t rho  = ((((int64_t)(R - O) % L) + L) % L);
         const int64_t wnow = ((((laneTickFor(vd, tNowV, L) + rho) % L) + L) % L);
         if (framePhaseOut) *framePhaseOut = wrapMod(tNowV - 1, walkPeriod(vd, L));
@@ -938,7 +969,7 @@ void SequencerEngine::anchorTransport(int64_t tick1based) {
             int L, O, R; LaneDir vd;
             effectiveVoiceLor(v, L, O, R, vd);
             if (L < 1) L = 1;
-            if (voiceFrameReadsFullPhrase(v)) L = kMaskRing;   // the FULL PHRASE = the ring
+            if (voiceFrameReadsFullPhrase(v)) L = std::max(1, cachedLength);   // (DESYNC abs1) the FULL PHRASE = the current global phrase
             frameKey_[v] = walkKeyOf(vd, L);
         }
         for (int s = 0; s < dotModular::NUM_STRANDS; ++s) {
@@ -1039,26 +1070,20 @@ void SequencerEngine::tickHolders(int transportMotion, int signMotion, const int
         // transition step. (C1b Stage A) the per-lane commit gate lives inside the
         // refresh (each lane's axis); the unlock flush reaches every voice
         // regardless of its frame edge.
-        // (REMAINING BUGS 6 — the voice-wrap +1) the edge is the phase this call
-        // LANDS ON, not the one it entered with: testing the entry phase fired the
-        // commit one step AFTER the wrap — the playhead returns to cell 0, advances
-        // one step, and only then does the window move (P12's table). The landed
-        // phase is wrapMod(t0EffNow, period) in BOTH arms of the advance below (the
-        // stable arm: phase + kV ≡ t0EffNow by the congruence; the re-seed arm:
-        // exactly it), taken against the row as it stands NOW — the walk the
-        // playhead has been drawing — so the commit lands ON the wrap step and the
-        // reads at that step already consume the new window.
+        // (REMAINING BUGS 6 + CC_FIX_GLOBAL_BELOW_VOICE_PHASE_DESYNC) THE LIVE
+        // ROTATION ANCHOR: the edge is the frame's re-entry at the global's first
+        // step, evaluated LIVE each step against the CURRENT global length (see
+        // voiceFrameEdgeLive_). BUG 6 made it the LANDED phase (the wrap step,
+        // not the departure); this re-bases it on the phrase coordinate the cycle
+        // READ folds, so the commit lands where the read wraps and STAYS there
+        // through any global change: identical to the landed-phase test whenever
+        // the global length is a multiple of the walk period (the standard rigs),
+        // re-anchoring at every live phrasePos==0 under a shorter or non-dividing
+        // global — a dip leaves no residue.
         int eL, eO, eR; LaneDir eD;
         effectiveVoiceLor(v, eL, eO, eR, eD);
         const bool vIdentityRow = (eL == kPatternLengthCap && eO == 0 && eR == 0 && eD == LaneDir::Forward);
-        bool vLaneEdgeC1b;
-        if (vIdentityRow) {
-            vLaneEdgeC1b = (pos_.phrasePos() == 0);
-        } else {
-            if (eL < 1) eL = 1;
-            if (voiceFrameReadsFullPhrase(v)) eL = kMaskRing;   // the SAME shaping the frame advance below applies
-            vLaneEdgeC1b = (wrapMod(t0EffNow, walkPeriod(eD, eL)) == 0);
-        }
+        const bool vLaneEdgeC1b = voiceFrameEdgeLive_(v);
         // (REMAINING BUGS 5) the TRUE frame edge is the lane sticky's reconnect
         // point — clear it on the same pass the commit runs, so the held-off pend
         // lands exactly here. The unlock flush alone does NOT clear it (and the
@@ -1074,21 +1099,13 @@ void SequencerEngine::tickHolders(int transportMotion, int signMotion, const int
             int L, O, R; LaneDir vd;
             effectiveVoiceLor(v, L, O, R, vd);
             if (L < 1) L = 1;
-            if (voiceFrameReadsFullPhrase(v)) L = kMaskRing;   // the FULL PHRASE = the ring
+            if (voiceFrameReadsFullPhrase(v)) L = std::max(1, cachedLength);   // (DESYNC abs1) the FULL PHRASE = the current global phrase
             const int key = walkKeyOf(vd, L);
             voiceFramePhase_[v] = (frameKey_[v] != key)
                 ? wrapMod(t0EffNow, walkPeriod(vd, L))
                 : wrapMod((int64_t)voiceFramePhase_[v] + kV, walkPeriod(vd, L));
             frameKey_[v] = key;
         }
-        // (REMAINING BUGS 2 + 6) the LANDED-phase snapshot — taken AFTER this
-        // voice's frame advance so the derive's re-check evaluates the SAME landed
-        // phase the head's edge test predicted (the wrap step; the identity rows'
-        // phase is untouched by the advance above, so their snapshot is their
-        // steady value). ONE-SHOT: consumed by the first derive of the event so a
-        // later derive cannot double-fire either.
-        voiceFramePhaseEdgeSnap_[v] = voiceFramePhase_[v];
-        laneEdgeSnapValid_ = true;
         for (int s = 0; s < dotModular::NUM_STRANDS; ++s) {
             // (C0 FAMILY 2) the per-voice lane advance reads the poly chokepoint —
             // the same len/dir polyStrandLenOf/laneDirV_ returned.
@@ -1201,22 +1218,19 @@ void SequencerEngine::deriveHolders(int signMotion, const int8_t* voiceMotion) {
     // (C1b Stage A) idempotent re-check under the same gate — the unlock edge was
     // already consumed at the advance head this step event, so no flush here.
     if (atPhraseEdgeC1 && lorLive_(false)) refreshVoiceLorLatches();
-    // (REMAINING BUGS 2 — the double commit) the lane-edge re-check must evaluate the
-    // SAME LANDED phases the tickHolders head's edge test predicted (REMAINING
-    // BUGS 6: the head fires on the phase the call LANDS on — the wrap step — and
-    // the snapshot is taken after the frame advance, so it holds exactly that
-    // value; re-testing anything else double-fires at TWO ADJACENT steps per
-    // cycle). The anchor-only / offsets-only flows (no advance this event) keep
-    // testing the current phases — the re-check's original purpose. ONE-SHOT:
-    // consumed here so a later derive in the same event cannot double-fire either.
-    const bool edgeSnap = laneEdgeSnapValid_;
-    laneEdgeSnapValid_ = false;
+    // (CC_FIX_GLOBAL_BELOW_VOICE_PHASE_DESYNC) the lane-edge re-check — the SAME
+    // LIVE rotation anchor the head tested (voiceFrameEdgeLive_: a pure function
+    // of the transport's phrase position + the voice's offset, so the head and
+    // the derive agree within an event with NO snapshot — the BUG-2 pre-advance
+    // snapshot is RETIRED with this; a latched phase reference is exactly what a
+    // live global change would strand). Idempotent within the event: the pend is
+    // unchanged between the two fires, so the re-check lands the same commit.
+    // The anchor-only / offsets-only flows (no advance this event) test the same
+    // live truth — the re-check's original purpose.
     for (int v = 0; v < kVoiceSlots; ++v) {
-        const int framePhaseHere = edgeSnap ? voiceFramePhaseEdgeSnap_[v] : voiceFramePhase_[v];
-        const bool vLaneEdgeC1b = voiceLorIdentity(v) ? atPhraseEdgeC1 : (framePhaseHere == 0);
-        if (vLaneEdgeC1b) {
+        if (voiceFrameEdgeLive_(v)) {
             clearLorCvStickyLaneFor_(v);   // (REMAINING BUGS 5) the edge is the sticky's reconnect point — the same pass as the commit
-            refreshLaneLatchesForVoice(v, vLaneEdgeC1b, false);
+            refreshLaneLatchesForVoice(v, true, false);
         }
     }
     const int  lenG = std::max(1, cachedLength);
@@ -1357,7 +1371,7 @@ void SequencerEngine::deriveHolders(int signMotion, const int8_t* voiceMotion) {
         const bool abs1Read = voiceFrameReadsFullPhrase(v);
         int64_t rho, ft0, frameBack;
         if (abs1Read) {
-            L = kMaskRing;   // the FULL PHRASE = the ring
+            L = lenG;   // (DESYNC abs1) the FULL PHRASE = the current global phrase (was the 32-ring)
             rho = ((((int64_t)(R - O) % L) + L) % L);
             // The frame walk's t0 representative: the RAW effective-clock congruence under
             // the pass-through window (the frame phase), the bounded window walk under the

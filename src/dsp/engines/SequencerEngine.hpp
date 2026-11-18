@@ -509,16 +509,12 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
     std::array<int, dotModular::NUM_STRANDS> lanePhase_ = {};
     std::array<std::array<int, dotModular::NUM_STRANDS>, kVoiceSlots> lanePhaseV_ = {};   // per-voice: ≡ the RAW effective clock's t0 (mod the walk's period)
     std::array<int, kVoiceSlots> voiceFramePhase_ = {};   // mapped voice rows: ≡ the RAW effective clock's t0 (mod the row walk's period)
-    // (REMAINING BUGS 2 — the double commit) the PRE-advance voiceFramePhase_
-    // snapshot: the phases the tickHolders HEAD's lane-edge test evaluated, kept for
-    // the derive's re-check. The derive used to re-test the POST-advance phase (the
-    // NEXT step's) and fire one step early — the lane committed at TWO ADJACENT steps
-    // per voice-frame cycle (the C1b "idempotent re-check" claim was false once the
-    // phase advanced). ONE-SHOT: set at the head, consumed + cleared by the first
-    // derive; the anchor-only / offsets-only derives (no advance this event) see it
-    // clear and test the current phases, as they always did.
-    std::array<int, kVoiceSlots> voiceFramePhaseEdgeSnap_ = {};
-    bool laneEdgeSnapValid_ = false;
+    // (CC_FIX_GLOBAL_BELOW_VOICE_PHASE_DESYNC) the BUG-2 edge snapshot is RETIRED:
+    // the lane-edge commit now keys off the LIVE rotation anchor
+    // (voiceFrameEdgeLive_ — a pure function of the transport's phrase position +
+    // the voice's advance offset), so the head and the derive agree within an
+    // event with nothing latched — a latched phase reference is exactly what a
+    // live global-length change would strand (the voice-wrap +1's cousin).
     // (CC_FIX_MACRO_LANE_SEED Part 2) the MACRO ROW's frame phase — the mapped macro
     // row's walk congruence, the container the Macro lanes hang under. Mirrors
     // voiceFramePhase_ for the one shared row (the follower voices' rows resolve to
@@ -626,7 +622,26 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
         else
             effectiveLaneLor(bank, LaneId{EDITOR_LANE_VARIATION}, vl, vo, vrr, vd);
         const int varLen = vl;
-        scanOfsV_[bank.v] = (scanOfsV_[bank.v] + 1) % (varLen > 0 ? varLen : 1);
+        // (CC_FIX_GLOBAL_BELOW_VOICE_PHASE_DESYNC) the scan bound follows the
+        // window's DECLARED geometry — the driver row's authored window (ABS1's
+        // ring = the current global phrase), never a cached min — and
+        // deliberately NOT the live global length: the scan is a LOCAL window
+        // search over authored geometry, so its bound is a pure function of the
+        // authored rows and the static-no-modulation dip differential stays
+        // byte-identical BY CONSTRUCTION (Rodney's regression floor). Where the
+        // rotation anchor re-enters is TIMING — the commit edge's live law —
+        // not the scan's modulus. (Was the raw varLen with no row bound at
+        // all: today's :629 bug.)
+        int bound = varLen;
+        {
+            int fL, fO, fR; LaneDir fD;
+            effectiveVoiceLor(bank.v, fL, fO, fR, fD);
+            if (fL < 1) fL = 1;
+            if (voiceFrameReadsFullPhrase(bank.v)) fL = std::max(1, cachedLength);   // (DESYNC abs1) ABS1's ring = the current global phrase
+            bound = std::min(bound, fL);
+        }
+        if (bound < 1) bound = 1;
+        scanOfsV_[bank.v] = (scanOfsV_[bank.v] + 1) % bound;
     }
     // PER-VOICE STEP-ADVANCE (PER_VOICE_STEP_ADVANCE_PLAN.md §59-99, ruled by
     // CC_PER_VOICE_ADVANCE_SIGNOFF.md): the SECOND per-voice offset on top of LOR —
@@ -794,18 +809,25 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
         delta = ((delta % kMaskRing) + kMaskRing) % kMaskRing;
         return delta ? (((m >> delta) | (m << (kMaskRing - delta))) & kMaskLenMask) : m;
     }
-    static bool maskWindowContains(int O, int L, int phraseStep) {
-        if (L >= kMaskRing) return true;
-        const int s = ((phraseStep - O) % kMaskRing + kMaskRing) % kMaskRing;
+    // (DESYNC abs1 ruling) the RING is a parameter: the output gate passes the CURRENT
+    // GLOBAL PHRASE length (absolute = absolute-WITHIN-PHRASE — the global-phrase ring
+    // bounds what sounds; a declared L ≥ the phrase sounds the whole phrase, the
+    // declared L stays as authored — no cached min); the ring-wide default keeps the
+    // static callers (the presets, the tests) unchanged.
+    static bool maskWindowContains(int O, int L, int phraseStep, int ring = kMaskRing) {
+        if (ring < 1) ring = 1;
+        if (L >= ring) return true;
+        const int s = ((phraseStep - O) % ring + ring) % ring;
         return s < L;
     }
-    // The window as a ring-wide play mask (bit c = phrase step c+1 in [O, O+L)) — the
+    // The window as a play mask over the ring (bit c = phrase step c in [O, O+L)) — the
     // "mask from range" preset and the tests.
-    static uint64_t windowMaskBits(int L, int O) {
-        L = std::max(1, std::min(L, kMaskRing));
-        O = ((O % kMaskRing) + kMaskRing) % kMaskRing;
+    static uint64_t windowMaskBits(int L, int O, int ring = kMaskRing) {
+        if (ring < 1) ring = 1;
+        L = std::max(1, std::min(L, ring));
+        O = ((O % ring) + ring) % ring;
         uint64_t m = 0;
-        for (int c = 0; c < kMaskRing; ++c) if (maskWindowContains(O, L, c)) m |= (uint64_t(1) << c);
+        for (int c = 0; c < ring; ++c) if (maskWindowContains(O, L, c, ring)) m |= (uint64_t(1) << c);
         return m;
     }
     // The per-block authoring push (Monsoon's float mask rows -> this store), the
@@ -875,7 +897,10 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
         // full phrase, cycle confined).
         if (kind == MASK_DYNAMIC) {   // abs1: the region IS the voice LOR
             int L, O, R; LaneDir d; effectiveVoiceLor(v, L, O, R, d);
-            if (!maskWindowContains(O, L, phraseStep)) return false;
+            // (DESYNC abs1) the gate's ring = the CURRENT GLOBAL PHRASE — the sounding
+            // set is a pure function of (step mod G, O, L): drift-free by construction,
+            // immediate on a global change.
+            if (!maskWindowContains(O, L, phraseStep, std::max(1, cachedLength))) return false;
         }
         const uint64_t pat = effectiveOverlayPattern(v);   // the overlay ANDs (follow-R evaluates the mod)
         if (pat != kMaskLenMask) return (pat >> phraseStep) & 1u;
@@ -900,7 +925,7 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
         uint64_t m = kMaskLenMask;
         if (kind == MASK_DYNAMIC) {   // abs1: the voice LOR window
             int L, O, R; LaneDir d; effectiveVoiceLor(v, L, O, R, d);
-            m = windowMaskBits(L, O);
+            m = windowMaskBits(L, O, std::max(1, cachedLength));   // (DESYNC abs1) the display tracks the gate's global-phrase ring
         }
         const uint64_t pat = effectiveOverlayPattern(v);   // the overlay ANDs (follow-R evaluates the mod)
         return (pat == kMaskLenMask) ? m : (m & pat);
@@ -1144,6 +1169,21 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
     // congruence when non-null.
     int64_t voiceFrameTickAt(int v, int64_t effTick1based,
                              int64_t* framePhaseOut = nullptr) const;
+    // (CC_FIX_GLOBAL_BELOW_VOICE_PHASE_DESYNC) THE LIVE ROTATION ANCHOR — the
+    // voice-frame edge, ONE law for the advance head + the derive's re-check
+    // (BUG 6's landed-phase test, re-based): the frame re-anchors to the global's
+    // first step, evaluated LIVE each step against the CURRENT global length —
+    // never a precomputed period or a latched snapshot. The identity row rides
+    // the global phrase edge (its pass-through cycle IS the phrase); ABS1 walks
+    // the full ring on the raw congruence (transport-synced by design); CYCLE
+    // keys off the SAME transport-signed phrase coordinate the read folds
+    // (wrapMod(sPosV + advanceOffset_[v], lenG) — the derive's law, verbatim),
+    // so the commit lands exactly where the read wraps. Consequences that fall
+    // out (nothing stored): a global shorter than the voice hands it only
+    // min(global, voice) steps of its own window before the re-anchor; a
+    // non-dividing global re-anchors at every live phrasePos==0; a global dip
+    // moves the boundary immediately (STEP-rate) and leaves no residue.
+    bool voiceFrameEdgeLive_(int v) const;
     // THIS voice's LOR length for a strand (the walk's wrap point) — the shared table
     // (was a lambda duplicated in the two old recompute blocks).
     int     polyStrandLenOf(int v, int strand) const;

@@ -6,8 +6,14 @@
 // and voice-own-length modulation. Reproduce-first found NO off-wrap scatter; this
 // pins that so a future edge change can't silently re-break it.
 //
-// The TRUE wrap is laneTickFor(dir, phase+1, L)==0 (the cell the reads consume —
-// NOT the bare phase field), the same reference P12 uses.
+// The TRUE wrap is the cell the READS consume — laneTickFor evaluated at the
+// read's own fold input (NOT the bare phase field), the same reference P12 uses.
+// (CC_FIX_GLOBAL_BELOW_VOICE_PHASE_DESYNC, 2026-11-18) the reference is RE-BASED
+// on the live rotation anchor: a CYCLE row's reads fold the transport-signed
+// phrase coordinate (wrapMod(sPosV + advanceOffset, lenG)), an ABS1 row's the
+// current-global-phrase ring on the raw congruence — the raw voiceFramePhase_
+// reference this guard used first diverges from the reads exactly under a
+// voice-length mod (scene D), which is what the RESOLVED spec retires.
 //
 // PASSES on the current engine (this is a guard, not a reproduce-first failure).
 #include <cstdio>
@@ -31,7 +37,18 @@ static int committedLaneO(SequencerEngine& eng) {
 static int trueCell(SequencerEngine& eng) {
     int rL, rO, rR; SequencerEngine::LaneDir rd;
     eng.effectiveVoiceLor(v2().v, rL, rO, rR, rd);
-    return (int)SequencerEngine::laneTickFor(rd, (int64_t)eng.voiceFramePhase_[v2().v] + 1, rL);
+    const int lenG = eng.cachedLength > 0 ? eng.cachedLength : 1;
+    if (eng.voiceFrameReadsFullPhrase(v2().v)) {
+        // ABS1: the current-global-phrase ring on the raw congruence (the read's law).
+        const int64_t t0Eff = eng.pos_.phaseClock(eng.transportTick_) + eng.advanceOffset_[v2().v];
+        const int64_t ringPos = ((t0Eff % lenG) + lenG) % lenG;
+        return (int)SequencerEngine::laneTickFor(rd, ringPos + 1, lenG);
+    }
+    // CYCLE: the rotation anchor's phrase coordinate — the read's own fold input.
+    const int64_t sPosV = (eng.pos_.direction() > 0) ? (int64_t)eng.pos_.phrasePos()
+                                                      : -(int64_t)eng.pos_.phrasePos();
+    const int64_t vCoord = ((sPosV + eng.advanceOffset_[v2().v]) % lenG + lenG) % lenG;
+    return (int)SequencerEngine::laneTickFor(rd, vCoord + 1, rL);
 }
 
 // Drive `ticks` steps; at t==1 push an offset CV (+2). Returns (commits, offWrap)
@@ -95,8 +112,8 @@ int main() {
             }
         };
         Tally c = run_scene(setup, flip, 40);
-        CHECK(c.commits == 1, "C: full-phrase — the offset CV commits exactly once (on the 32-ring)");
-        CHECK(c.offWrap == 0, "C: full-phrase — the commit is at the true ring wrap (global range never moves the full-phrase period)");
+        CHECK(c.commits == 1, "C: full-phrase — the offset CV commits exactly once (on the current-global-phrase ring)");
+        CHECK(c.offWrap == 0, "C: full-phrase — the commit is at the true ring wrap (the ring follows the live global phrase)");
     }
     // Scene D: the voice's OWN length CV'd 8<->5 — the period genuinely moves; the
     // commit must still land on a true wrap of the CURRENT period, never mid-travel.
