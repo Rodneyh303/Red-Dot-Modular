@@ -805,9 +805,19 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
     uint64_t maskMacroLastPushed_                  = kMaskLenMask;
     // The played steps move delta phrase steps EARLIER (the content direction — see
     // the anchor note): new bit j = old bit (j + delta). Rotation rides the ring.
-    static uint64_t rotMaskRing(uint64_t m, int delta) {
-        delta = ((delta % kMaskRing) + kMaskRing) % kMaskRing;
-        return delta ? (((m >> delta) | (m << (kMaskRing - delta))) & kMaskLenMask) : m;
+    // (UAS ABS1+MASK) the ring is a PARAMETER: the EVALUATION ring is the current
+    // global phrase G — the low G bits rotate cyclically among themselves and the
+    // bits beyond G stay DORMANT (preserved on the 32-wide storage; they reappear
+    // when G grows back). The 32-wide default keeps the authoring/re-pin callers.
+    static uint64_t rotMaskRing(uint64_t m, int delta, int ring = kMaskRing) {
+        if (ring < 1) ring = 1;
+        if (ring > kMaskRing) ring = kMaskRing;
+        delta = ((delta % ring) + ring) % ring;
+        if (!delta) return m;
+        const uint64_t loMask = kMaskLenMask >> (kMaskRing - ring);   // the low ring bits
+        const uint64_t lo = m & loMask;
+        const uint64_t rot = ((lo >> delta) | (lo << (ring - delta))) & loMask;
+        return (m & ~loMask) | rot;   // the dormant high bits ride through untouched
     }
     // (DESYNC abs1 ruling) the RING is a parameter: the output gate passes the CURRENT
     // GLOBAL PHRASE length (absolute = absolute-WITHIN-PHRASE — the global-phrase ring
@@ -875,13 +885,20 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
         // push exactly, so both sides of Δ read the same row.
         const int rowR    = local ? voiceLorStore_[v][LOR_ROT] : macroVoiceLor_[LOR_ROT];
         const int anchorR = local ? maskAnchorR_[v] : maskMacroAnchorR_;
-        return rotMaskRing(anchored, rowR - anchorR);
+        // (UAS ABS1+MASK) the follow-R rotation rides the CURRENT GLOBAL PHRASE ring:
+        // a painted mute at step k lands at (k − Δ) mod G — the mute travels with the
+        // content's rotation and composes with the re-anchor. The anchor/re-pin law
+        // is unchanged (the authoring plane stays on the 32-wide storage).
+        return rotMaskRing(anchored, rowR - anchorR, std::max(1, cachedLength));
     }
     // THE ONE GATE: does this voice's output pass at phrase step s (0..15)? The
     // OutputGenerator multiplies the voice's GATE + CV OUT by this every sample.
     // s < 0 (transport stopped) passes — the run gate already silences everything.
     bool outputMaskPasses(dotModular::VoiceSlot bank, int phraseStep) const {
-        if (phraseStep < 0 || phraseStep >= kMaskRing) return true;
+        // (UAS ABS1+MASK) the overlay indexes the CURRENT GLOBAL PHRASE ring: the
+        // phrase step is G-relative, and the (pat >> phraseStep) apply below reads
+        // exactly the mask's low-G bits — the bits beyond G are dormant.
+        if (phraseStep < 0 || phraseStep >= std::max(1, cachedLength)) return true;
         const int v = bank.v;
         const bool local = maskLocalEast_[v];
         const int  kind  = local ? maskKind_[v] : maskMacroKind_;
@@ -932,12 +949,15 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
     }
     // The MACRO tier's own pattern (the global strip's read — no voice delegation).
     uint64_t effectiveOutputMaskMacro() const {
+        // (UAS ABS1+MASK) the same G-ring as the per-voice tier: the window bits and
+        // the follow-R rotation both ride the current global phrase.
+        const int G = std::max(1, cachedLength);
         uint64_t m = kMaskLenMask;
         if (maskMacroKind_ == MASK_DYNAMIC)
-            m = windowMaskBits(macroVoiceLor_[LOR_LEN], macroVoiceLor_[LOR_OFF]);
+            m = windowMaskBits(macroVoiceLor_[LOR_LEN], macroVoiceLor_[LOR_OFF], G);
         uint64_t pat = maskMacroAnchored_;
         if (pat != kMaskLenMask && maskMacroFollowR_)     // the follow-R evaluation hook
-            pat = rotMaskRing(pat, macroVoiceLor_[LOR_ROT] - maskMacroAnchorR_);
+            pat = rotMaskRing(pat, macroVoiceLor_[LOR_ROT] - maskMacroAnchorR_, G);
         return (pat == kMaskLenMask) ? m : (m & pat);
     }
 
