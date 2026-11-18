@@ -214,6 +214,33 @@ phrase ring, neither caches a clamp, and in both the sounding extent is R-indepe
 *passes* for abs1 — one harness covers both. The LOR *values* (O, L) latch at the **global**
 phrase edge in abs (abs addresses against the global — C1 refinement).
 
+### Why all three modes exist — the expressiveness lattice
+Model a phrase of `G` steps as a **gate** (which steps sound, a bit-vector in `{0,1}^G`)
+and a **content** sequence (which cell plays at each sounding step). Then:
+
+- **CYCLE:** gate ≡ **all-on**; content has **period `L`** — the `L`-window looped across the
+  phrase (`L=4, G=8 → 0,1,2,3,0,1,2,3`). The ostinato / polymeter engine.
+- **ABS1:** gate = a **single contiguous run `[O, O+L)`** (silence outside); content a
+  **straight period-`G` read** within it (`s → (s+R−O) mod G`), played once, not looped. The
+  placed-burst / articulation engine.
+
+**Neither base mode subsumes the other:**
+- *Unique to abs1* — a gate that isn't all-on (a contiguous **rest region**). Cycle has no
+  base gate, so A1 (2–5 sound, rest silent) is unreachable in cycle.
+- *Unique to cycle* — a **sub-phrase loop that still sounds everywhere** (content period
+  `L < G`, gate all-on). Abs1 reads straight, so A6's `0,1,2,3,0,1,2,3` is unreachable in
+  abs1.
+- They coincide only at **`L ≥ G`**: both collapse to "play the whole phrase straight, all
+  sounding" (cycle re-anchors before it can repeat; abs1's gate goes all-on). All the
+  divergence lives in `L < G`.
+
+**The painted overlay (the third kind) is the join.** It is an arbitrary mute mask ANDed on
+top of *either* base: painted+cycle finally puts silence *into* a loop; painted+abs1 punches
+non-contiguous gaps into the region. So the lattice is **cycle = sub-looping · abs1 = a
+contiguous gate · painted = arbitrary gating**, and they **compose** — which is why the
+engine keeps all three rather than collapsing to one. (All gating is output-only: it zeroes
+GATE/CV out, never generation/correlation/marginals.)
+
 ### Where it lives (fix surface)
 - `voiceFrameTickAt` CYCLE branch — the frame-phase output must track the
   global-anchored position, not the raw congruence.
