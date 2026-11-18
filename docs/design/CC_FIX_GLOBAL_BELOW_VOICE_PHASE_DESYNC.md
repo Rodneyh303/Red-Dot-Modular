@@ -106,48 +106,91 @@ the scan free-run.** That is the step 6/7 drift and the scan-overrun — one roo
 mode does not clamp the frame/commit/scan to the global window the read already honours.
 
 ### The agreed semantics (UAS — Rodney)
-Cycle mode must align and re-align the voice to the global range; it never free-drifts.
+Cycle mode never free-drifts: it aligns and re-aligns the voice to the global range.
+There is **ONE primitive**; the two "clamps" are consequences of it, not separate steps.
 
-1. **Dynamic clamp.** The effective window the voice cycles is
-   `min(committed global, committed voice, committed lane)` — e.g. global 4 / voice 8 →
-   the voice visits its first 4 steps; grow global back to 16 → it resumes all 8. The
-   `min` is whatever is committed *now*, not latched at voice creation.
-2. **Live boundary — NOT a precomputed period** (C1 + the live-boundary refinement,
-   `DESIGN_POSITION_UNIFICATION.md:212–261`). Global length + offset are the STEP-rate
-   class — the MeloDicer-native "patterns react instantly" controls: they reposition/
-   resize immediately, next step. The voice/lane re-anchor boundary is evaluated **live
-   each step** — "is my parent at `phrasePos==0` THIS step?" against the parent's
-   *current* length — never a countdown or a stored cycle. So global 8→4 at step 8 →
-   the voice re-anchors at **12 AND 16**, not 16; C2 (keep-counting) places the next
-   boundary after a mid-phrase change. Concretely: the voice position/anchor is a live
-   function of the global phrase position — exactly what `voiceFrameTickAt`'s cycle
-   *read* already is (`phrasePos = wrapMod(effTick−1, lenG)`, recomputed every step) —
-   so immediate global reaction falls out for free and there is no latched clamp to go
-   stale. The re-anchor is the **global** phrase boundary (defined by the global via
-   C2), not a self-referential voice period, so nothing is ever undefined. Only the LOR
-   **values** latch at the boundary (C1b); the window geometry is live. (An
-   implementation that precomputes a clamp period gets the step-12 case wrong — the
-   doc's explicit warning.)
-3. **Frame anchored to the global first step.** Voice-step-zero (where the probability
-   lanes commit) coincides with the global first step via rotation R, re-aligning every
-   global phrase. The wander lives *inside* the clamped window; it cannot push the
-   downbeat off the global grid (Behavior 2 — not the free drift of today, Behavior 1).
-4. **The variation scan respects the clamp.** The escape search traverses exactly the
-   clamped window, not the raw variation-lane length. Forced by the `variation = 1`
-   limiting case: always-advance is clamped to the window, so the scan — which is "where
-   variation=1 would have gone" searched probabilistically — must traverse the same
-   range, or the two disagree about what "advance" means.
+**THE PRIMITIVE — the rotation anchor.** The voice lane is at its **rotation step R when
+the global is at its first step**, re-evaluated **live every global phrase** ("rotation
+does the aligning", `DESIGN_POSITION_UNIFICATION.md:263`). Each nested level anchors to
+its parent's first step the same way — lanes to the voice, the voice to the global. That
+is the whole rule. Build *this*, not a `min()` clamp; the extent and the scan bound below
+fall out of it.
 
-Consequence: `advanceOffset_` can no longer accumulate past the window, so a global dip
-leaves no residue — the voice re-anchors at the next *live* global-phrase boundary, which
-moves immediately with the (STEP-rate) global length.
+- **Consequence 1 — window extent (the "clamp").** Because the voice re-anchors to the
+  global start each global phrase, a global phrase *shorter* than the voice never hands it
+  enough steps to finish its own window before it is re-anchored — so it *visits* only
+  `min(global, voice, lane)` steps (global 4 / voice 8 → steps 1–4; grow global to 16 → it
+  resumes all 8). The `min` is the **observable**, the anchor is the **cause**. There is
+  no stored clamp to latch.
+- **Consequence 2 — scan bound.** The variation escape scan cannot reach past where the
+  anchor re-enters, so it traverses exactly that reachable window, not the raw
+  variation-lane length (today's `:629` bug). The `variation = 1` limiting case is just
+  this: always-advance is bounded by the re-anchor, so the probabilistic "where
+  variation=1 would have gone" must be bounded identically, or the two disagree about what
+  "advance" even means.
+
+**LIVE, not precomputed** (C1 + the live-boundary refinement,
+`DESIGN_POSITION_UNIFICATION.md:212–261`). Global length + offset are the STEP-rate class —
+the MeloDicer-native "patterns react instantly" controls: reposition/resize immediately,
+next step. The anchor boundary is evaluated **live each step** — "is my parent at
+`phrasePos==0` THIS step?" against the parent's *current* length — never a countdown or a
+stored cycle. So global 8→4 at step 8 → the voice re-anchors at **12 AND 16**, not 16; C2
+(keep-counting) places the next boundary after a mid-phrase change. The voice position is a
+live function of the global phrase position — exactly what `voiceFrameTickAt`'s cycle
+*read* already is (`phrasePos = wrapMod(effTick−1, lenG)`, recomputed every step) — so
+immediate reaction falls out and nothing is latched to go stale. The re-anchor is the
+**global** phrase boundary (defined by the global via C2), not a self-referential voice
+period, so nothing is ever undefined. Only the LOR **values** latch at the boundary (C1b);
+the window geometry is live. (An implementation that precomputes a clamp period gets the
+step-12 case wrong — the doc's explicit warning.)
+
+**THE WANDER STAYS INSIDE.** `advanceOffset_` (the escape wander) lives *within* the
+re-anchored window; it cannot push voice-step-zero off the global grid (Behavior 2, not
+today's free drift). So a global dip leaves no residue — the voice re-anchors at the next
+*live* global-phrase boundary, which moves immediately with the STEP-rate global length.
+
+### Worked example — voice 8, a change at step 6 (cycle mode)
+Start: global length 8, voice 8, rotation 0 (voice and global aligned, so voice step 6 =
+global step 6). `phrasePos = wrapMod(t−1, globalLen)`; `phrasePos==0` is global step 1.
+
+**Global LENGTH changes 8→4 at step 6.** Length is STEP-rate, so next step it takes
+effect and `phrasePos` keeps counting and folds mod the new length (C2 — it does *not*
+re-seed to 0):
+
+```
+ t=6  phrasePos=wrapMod(5,8)=5   global step 6   (change happens here)
+ t=7  phrasePos=wrapMod(6,4)=2   step 3 of a 4-phrase  ← folded, immediate reposition
+ t=8  phrasePos=wrapMod(7,4)=3   step 4 of 4
+ t=9  phrasePos=wrapMod(8,4)=0   step 1  ← RE-ANCHOR (next live phrasePos==0)
+ t=10 phrasePos=wrapMod(9,4)=1   step 2 …
+```
+- Next step (t=7) the window **resizes and repositions immediately** — the voice read
+  follows the folded `phrasePos`, and the visited extent becomes `min(4,8)=4`.
+- The voice re-anchors (and the probability lanes commit) at **t=9**, the next live
+  `phrasePos==0` — **not** the old step-8 boundary, and not the voice's own 8. Thereafter
+  it visits steps 1–4 each global-4 phrase. Grow global back to 8 and the window grows
+  back and re-anchors on the live boundary — no residue, nothing was latched.
+
+**Global OFFSET changes at step 6.** Offset is STEP-rate too, but it's a **pure
+translation** — it slides the whole window against the clock and preserves every
+relationship; it does *not* enter `phrasePos` (it is additive placement,
+`voiceRead = wnow + globalOffset + O`). So next step the entire pattern slides to its new
+ring position, every voice/lane relationship intact, and the cycle timing, the re-anchor
+boundary, and the commit timing are **unchanged** — step 6 is not special, no re-phasing.
+
+One-liner: **length changes *when/where* the phrase wraps (the re-anchor boundary moves,
+live, via keep-counting); offset changes *where the pattern sits* (a translation, no timing
+change).** Both next-step immediate — neither waits for the voice's own 8.
 
 ### Where it lives (fix surface)
 - `voiceFrameTickAt` CYCLE branch — the frame-phase output must track the
   global-anchored position, not the raw congruence.
 - `tickHolders` — the commit edge keys off the anchored frame, not `wrapMod(t0EffNow…)`.
-- `SequencerEngine.cpp:629` — the scan modulus clamps to the effective window.
-- All three are the same clamp; this is the concept face of **CA5** (the phase-holder
+- `SequencerEngine.cpp:629` — the scan modulus follows the re-anchored window (not the
+  raw lane length).
+- All three are the **same anchor** — make the commit edge and the scan track the live
+  global-anchored position the read already uses; the window extent and scan bound follow,
+  no separate `min()` clamp to store. This is the concept face of **CA5** (the phase-holder
   skeleton) and should land as one change, reproduce-first against the differential.
 
 ### Reproduction / guard
