@@ -1226,9 +1226,12 @@ int main() {
                 bool revOK = true;
                 for (int k = 0; k < dotModular::kMaskRing; ++k) {
                     q.advancePlayhead(+1);
-                    revOK = revOK && q.voiceReadPosition(M) == (((7 - (k + 1)) % dotModular::kMaskRing + dotModular::kMaskRing) % dotModular::kMaskRing);
+                    // (CC_PROMPT_REVERSE_ANCHOR_OFFBYONE) the reverse anchors AT R at
+                    // the first step: read = (R − t + 1) mod the ring — was (R − t),
+                    // which sat one cell left of rotation.
+                    revOK = revOK && q.voiceReadPosition(M) == (((7 - k) % dotModular::kMaskRing + dotModular::kMaskRing) % dotModular::kMaskRing);
                 }
-                check(revOK, "STAGE4: abs1 + voice Reverse — the full-phrase read walks BACKWARD (read = (R−t) mod the ring; direction composes in BOTH base modes)");
+                check(revOK, "STAGE4: abs1 + voice Reverse — the full-phrase read walks BACKWARD anchored AT R (read = (R−t+1) mod the ring; direction composes in BOTH base modes)");
             }
         }
         // THE OVERLAY COMPOSES: abs1 + a painted pattern = the AND (in-window AND bit).

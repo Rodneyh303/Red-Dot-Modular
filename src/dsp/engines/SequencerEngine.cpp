@@ -880,7 +880,7 @@ int64_t SequencerEngine::voiceFrameTickAt(int v, int64_t effTick1based,
     if (voiceFrameReadsFullPhrase(v)) {
         L = lenG;   // the FULL PHRASE = the current global phrase
         const int64_t rho  = ((((int64_t)(R - O) % L) + L) % L);
-        const int64_t wnow = ((((laneTickFor(vd, tNowV, L) + rho) % L) + L) % L);
+        const int64_t wnow = ((((laneTickFor(vd, tNowV, L) + anchorBias(vd) + rho) % L) + L) % L);
         if (framePhaseOut) *framePhaseOut = wrapMod(tNowV - 1, walkPeriod(vd, L));
         return wnow + 1;
     }
@@ -896,7 +896,7 @@ int64_t SequencerEngine::voiceFrameTickAt(int v, int64_t effTick1based,
     // The phase stays the RAW congruence (the abs1 read + the warm-phase law).
     const int64_t phrasePos = wrapMod(effTick1based - 1, lenG);
     const int64_t rho  = (int64_t)R;
-    const int64_t wnow = ((((laneTickFor(vd, phrasePos + 1, L) + rho) % L) + L) % L);
+    const int64_t wnow = ((((laneTickFor(vd, phrasePos + 1, L) + anchorBias(vd) + rho) % L) + L) % L);
     if (framePhaseOut) *framePhaseOut = wrapMod(effTick1based - 1, walkPeriod(vd, L));
     return wnow + 1;
 }
@@ -1294,13 +1294,13 @@ void SequencerEngine::deriveHolders(int signMotion, const int8_t* voiceMotion) {
             ft0       = sPos;                           // the transport-signed phrase coordinate (the resolver's)
             frameBack = sPos - (int64_t)wrapMod(sPos - signMotion, lenG);
         }
-        const int64_t wnow = ((((laneTickFor(md, ft0 + 1, L) + rho) % L) + L) % L);
+        const int64_t wnow = ((((laneTickFor(md, ft0 + 1, L) + anchorBias(md) + rho) % L) + L) % L);
         macroFrameT0    = wnow;   // the frame VALUE — every Macro lane's mapped seed
         macroFrameT0_   = wnow;   // (CC_PROMPT_RETIRE_MACRO_LANE_HOLDER) the same value cached for the display view (the frame authority's own value, not a lane tracker)
         macroFrameRead_ = frameReadCell(wnow, O, kMaskRing);   // ONE law: the frame value folded into the window (no offG — see frameReadCell)
         // The mapped frame's sign: the walk's musical step, the wrap-is-a-beat law (the
         // voice rows' twin — the raw motion only when the walk jumped).
-        const int64_t wprev  = ((((laneTickFor(md, wrapMod(ft0 - frameBack, walkPeriod(md, L)) + 1, L) + rho) % L) + L) % L);
+        const int64_t wprev  = ((((laneTickFor(md, wrapMod(ft0 - frameBack, walkPeriod(md, L)) + 1, L) + anchorBias(md) + rho) % L) + L) % L);
         const int64_t dd     = wnow - wprev;
         const int64_t mdSign = (md == LaneDir::Reverse) ? -1 : +1;
         const int64_t dstep  = (dd > 1 || dd < -1) ? (int64_t)signMotion * mdSign : dd;
@@ -1403,10 +1403,10 @@ void SequencerEngine::deriveHolders(int signMotion, const int8_t* voiceMotion) {
             ft0       = vCoord;                  // the transport-signed phrase coordinate (the resolver's, + the voice's offset)
             frameBack = vCoord - (int64_t)wrapMod(vCoord - motionV, lenG);
         }
-        const int64_t wnow = ((((laneTickFor(vd, ft0 + 1, L) + rho) % L) + L) % L);
+        const int64_t wnow = ((((laneTickFor(vd, ft0 + 1, L) + anchorBias(vd) + rho) % L) + L) % L);
         voiceDriver_[v] = wnow + 1;
         voiceRead_[v]   = frameReadCell(wnow, O, kMaskRing);   // ONE law: the frame value folded into the window (no offG — see frameReadCell)
-        const int64_t wprev = ((((laneTickFor(vd, wrapMod(ft0 - frameBack, walkPeriod(vd, L)) + 1, L) + rho) % L) + L) % L);
+        const int64_t wprev = ((((laneTickFor(vd, wrapMod(ft0 - frameBack, walkPeriod(vd, L)) + 1, L) + anchorBias(vd) + rho) % L) + L) % L);
         const int64_t dd    = voiceDriver_[v] - (wprev + 1);
         // A wrap (the voice's own window, or the global window beneath it) is a BEAT,
         // not a bounce: the musical predecessor is one step along the current motion.
@@ -1423,12 +1423,12 @@ void SequencerEngine::deriveHolders(int signMotion, const int8_t* voiceMotion) {
         // The position: the walk formula AT the driver's t0 representative, wrapped by
         // the lane's OWN length (the old recomp's local wrap; pendulum/pingpong are
         // already in [0, L−1]).
-        const int64_t cur = laneTickFor(d, t0rep + 1, len);
+        const int64_t cur = laneTickFor(d, t0rep + 1, len) + anchorBias(d);
         tickOut = (int)(((cur % len) + len) % len);
         // The sign: the walk value one NORMALIZED musical step back (the raw formula
         // values — the difference is congruence-shift-invariant, so this is the old
         // f(tN) − f(tP) exactly). delta 0 = the endpoint repeat: keep the previous sign.
-        const int64_t prv = laneTickFor(d, (int64_t)wrapMod(t0rep - motionNorm, P) + 1, len);
+        const int64_t prv = laneTickFor(d, (int64_t)wrapMod(t0rep - motionNorm, P) + 1, len) + anchorBias(d);
         const int64_t delta = cur - prv;
         if (delta > 0)      signOut = +1;
         else if (delta < 0) signOut = -1;
@@ -1500,9 +1500,9 @@ void SequencerEngine::macroLaneDisplay(int lane, int& tick, int& sign) const {
     // at a bounce-hold step the holder KEPT its previous sign; the view points the
     // direction actually being travelled (the slope at the phase cell).
     const int P = walkPeriod(dv, len);
-    const int64_t cur = laneTickFor(dv, t0 + 1, len);
+    const int64_t cur = laneTickFor(dv, t0 + 1, len) + anchorBias(dv);
     tick = (int)(((cur % len) + len) % len);
-    const int64_t prv = laneTickFor(dv, (int64_t)wrapMod(t0 - 1, P) + 1, len);
+    const int64_t prv = laneTickFor(dv, (int64_t)wrapMod(t0 - 1, P) + 1, len) + anchorBias(dv);
     const int64_t delta = cur - prv;
     if (delta > 0)      sign = +1;
     else if (delta < 0) sign = -1;

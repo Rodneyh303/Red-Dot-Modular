@@ -368,6 +368,19 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
     // equal the old f(global counter) walk bit-for-bit. Forward/Reverse return the raw
     // (t-1) / -t values; their consumers mod by the lane length locally.
     static int64_t laneTickFor(LaneDir d, int64_t t, int len);
+    // (CC_PROMPT_REVERSE_ANCHOR_OFFBYONE) THE ANCHOR BIAS — the rotation-anchored
+    // reads' REVERSE-ONLY correction: laneTickFor(Reverse, 1, L) = −1 ≡ L−1, so a
+    // reversed row anchored at the parent's first step sat ONE CELL LEFT of R
+    // (walking R−1, R−2, …). The bias starts the reverse walk at 0 — matching
+    // Forward, Pendulum and PingPong, which already anchor at R — so the anchor
+    // lands at R in EVERY direction. A CONSTANT per direction: every sign law
+    // differences two biased reads, so the cues are unchanged exactly.
+    // laneTickFor itself is UNTOUCHED (the time-symmetric primitive the bounce
+    // walks and the STEPS_32 goldens depend on); the correction lives where
+    // rotation is applied — uniformly, via this ONE helper (CA5-adjacent: the
+    // same law lives in several read sites; a single helper keeps them from
+    // drifting).
+    static inline int64_t anchorBias(LaneDir d) { return (d == LaneDir::Reverse) ? 1 : 0; }
 
     // ── UNIFIED ADDRESSING Stage 1 (CC_PROMPT_UNIFIED_ADDRESSING_SPEC.md) ──────────
     // The GLOBAL-level LOR map — the top of the nested global->voice->lane chain. Under the
