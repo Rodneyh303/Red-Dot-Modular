@@ -267,6 +267,26 @@ to the base window's loop.
   thing absolute does not do for free; if it ever proves a constant need it is a later
   convenience toggle ("lock mask to window"), never the base semantics.
 
+### Painted overlay — worked examples (P-series)
+Mask bits: `1` = sound, `0` = mute; the mask is ANDed onto the base gate per phrase step,
+indexed on the `G`-ring. The only mode-param is the rotation source: **abs2** (`followR`
+off) static, **abs3** (`followR` on) rotated by `Δ = R − anchorR` so `overlay[p] =
+anchored[(p+Δ) mod G]` — a painted mute at step `k` lands at `(k − Δ) mod G`.
+
+| # | base + mask | result | the point (test seed) |
+|---|---|---|---|
+| P1 | cycle L4, G8 (content `0,1,2,3,0,1,2,3`), mask `1110 1110` (mute 3,7; period 4 = L) | iter1 cells `0,1,2`; iter2 cells `0,1,2` — identical | **mask period == L ⇒ every loop iteration identical** (absolute reproduces window-rider) |
+| P2 | cycle L4, G8, mask `1110 1101` (mute 3,6; period 8 ≠ L) | iter1 `0,1,2`; iter2 `0,1,3` — **differ** | **period ≠ L ⇒ same loop, different mutes per repetition** (phasing / varied repetition). The two iterations *should* differ — this is the feature, **not** an A==B failure |
+| P3 | mask `1101 1111` (mute step 2), `R: 0→1` | abs2: mute stays **step 2**; abs3: mute → **step 1** (`2 − (1−0)`) | abs2 muted-step is **R-invariant**; abs3 muted-step = `(k − (R−anchorR)) mod G` — travels with the content |
+| P4 | abs1 region `[2,6)`, mask `1111 0111` (mute step 4) | sounds `2,3,5`; `4` muted; `0,1,6,7` silent | overlay ANDs the abs1 gate ⇒ **non-contiguous sounding inside the region** — unreachable by either base alone (this is "arbitrary gating") |
+| P5 | mask authored on G8, then `G: 8→4` | overlay uses `phraseStep ∈ [0,4)` + mask bits 0–3; bits 4–7 **dormant**; `rotMaskRing` mod 4 | overlay sounding set = pure function of `(phraseStep mod G, mask, R)`; **zero residue**, dormant bits reappear when `G` grows back — drift-free like abs1 |
+
+Throughline: the overlay is **absolute (phrase-indexed on `G`), composed by AND with the
+base, with one knob — the rotation source**. P1/P2 are the locked-vs-phasing pair (the
+reason absolute is the superset); P3 pins abs2-vs-abs3; P4 is the arbitrary-gate capability;
+P5 pins drift-free re-interpretation under a global change. **The guard must allow P2's
+per-repetition divergence** — same trap the cycle guard nearly fell into.
+
 ### Where it lives (fix surface)
 - `voiceFrameTickAt` CYCLE branch — the frame-phase output must track the
   global-anchored position, not the raw congruence.
