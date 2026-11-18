@@ -338,3 +338,43 @@ Consequence 2 — the wander reads the *clamped* window); or shielding the mono 
 to the real property, never the engine to the assertion.
 
 `MONSOON_DIP_LOG` on the same branch is the Rack confirmation, now optional.
+
+---
+
+## THE COMMIT EDGE — probability lanes move at the voice range edge (CC_FIX_CYCLE_COMMIT_WINDOW_EDGE, 638879aa)
+
+**The property (Rodney, the definition that makes it verifiable):** a probability
+lane is *allowed to move from modulation* exactly when **its own rotation aligns
+with the voice range edge** — the **LEFT** window edge in **forward**, the **RIGHT**
+window edge in **reverse**. Rotation and the step edge are distinct: rotation is a
+*content* position (the rotation tick); the step edge is a fixed *box-offset*
+position (0 left / L-1 right). The commit STEP shifts with rotation; the edge it
+lands on does not.
+
+**Landed (cycle mode, voice frame):** `voiceFrameEdgeLive_`'s CYCLE arm fired on
+`vCoord==0` = box-offset R = the rotation tick, so the lanes moved when the voice
+hit its ROTATION, not its range edge — in every build, 74cf5c14 included. The fix
+fires when the playhead box-offset `wnow` reaches the edge (0 forward / L-1
+reverse). Verified by R-sweep: the commit read-cell is the window-edge cell
+(O fwd / O+L-1 rev) for ALL rotations, where before it tracked R.
+
+**Why it hid for days:** the whole suite ran `R==0`, where rotation IS the left
+edge — degenerate. `test_cycle_commit_edge` now SWEEPS R and pins the edge cell for
+every rotation (reproduce-first: fails from R=1 on the rotation-phase engine).
+
+### STILL OPEN (two, same off-by-one family, one tier down / one mode over)
+
+1. **Reverse probability-lane rotation aligns to the WRONG voice edge.** With the
+   voice-frame commit now at the voice RIGHT edge in reverse, the probability lane
+   in reverse still hits its OWN rotation at the voice LEFT edge; it should hit it
+   at the RIGHT edge (so prob-rotation ↔ voice-right-edge, per the property). This
+   is the lane tier (laneRecomp / the lane read), not the voice frame fixed in
+   638879aa. Forward is correct. Reproduce-first with an R-sweep at the LANE read
+   (not the voice read); the fix is the analogous reverse edge at the lane tier.
+   Confirm against the property: prob-lane rotation must meet the voice range edge
+   (fwd left / rev right) for EVERY rotation.
+
+2. **abs1 / absolute mode** — `voiceFrameEdgeLive_`'s abs1 arm
+   (`voiceFrameReadsFullPhrase`) still keys on `vCoord==0` and almost certainly
+   carries the same rotation-vs-edge bug. Needs a feel-test on absolute mode, then
+   the analogous window-edge fix.
