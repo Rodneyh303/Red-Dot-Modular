@@ -1309,8 +1309,17 @@ void SequencerEngine::deriveHolders(int signMotion, const int8_t* voiceMotion) {
             frameBack = sPos - (int64_t)wrapMod(sPos - signMotion, lenG);
         }
         const int64_t wnow = ((((walkFold(md, ft0 + 1, L) + rho) % L) + L) % L);
-        macroFrameT0    = wnow;   // the frame VALUE — every Macro lane's mapped seed
-        macroFrameT0_   = wnow;   // (CC_PROMPT_RETIRE_MACRO_LANE_HOLDER) the same value cached for the display view (the frame authority's own value, not a lane tracker)
+        // (CC_PROMPT_REVERSE_PROBLANE_ROTATION_EDGE, UPDATE 2) the same PHASE-COUPLING
+        // ANCHOR as the voice rows' frameT0 below — the Macro row IS the Macro lanes'
+        // voice row: the lanes (and macroLaneDisplay's derived view, which re-runs the
+        // same walk law off macroFrameT0_) hang off wnow - walkEdge(md, L), so a lane's
+        // rotation-hit phase tracks the row's DIRECTIONAL first step (the LEFT extreme
+        // read forward / the RIGHT extreme read reverse — the UAS core, mirrored).
+        // Forward byte-identical (edge 0); abs1 (MASK_DYNAMIC) keeps the raw value.
+        // macroFrameRead_ (the strip read) stays wnow-based — untouched.
+        const int64_t macroLaneAnchor = abs1Read ? wnow : wnow - walkEdge(md, L);
+        macroFrameT0    = macroLaneAnchor;   // every Macro lane's mapped seed (the laneSeed twin)
+        macroFrameT0_   = macroLaneAnchor;   // (CC_PROMPT_RETIRE_MACRO_LANE_HOLDER) the display view's authority (macroLaneDisplay re-derives off this)
         macroFrameRead_ = frameReadCell(wnow, O, kMaskRing);   // ONE law: the frame value folded into the window (no offG — see frameReadCell)
         // The mapped frame's sign: the walk's musical step, the wrap-is-a-beat law (the
         // voice rows' twin — the raw motion only when the walk jumped).
@@ -1429,7 +1438,23 @@ void SequencerEngine::deriveHolders(int signMotion, const int8_t* voiceMotion) {
         if (dstep > 0)      voiceSign_[v] = +1;
         else if (dstep < 0) voiceSign_[v] = -1;
         frameStep[v] = (int)dstep;
-        frameT0[v]   = (int)wnow;   // the mapped row's lanes hang off the frame VALUE
+        // (CC_PROMPT_REVERSE_PROBLANE_ROTATION_EDGE, UPDATE 2) THE PHASE-COUPLING
+        // ANCHOR: the mapped row's lanes hang off the ENTRY-ANCHORED frame value —
+        // wnow minus the direction-entry edge (walkEdge: 0 forward / L-1 reverse) —
+        // so a lane's rotation-hit phase (its tick ≡ 0 mod its length: the drawn
+        // playhead AND the probability read sit on the rotation cell O+R exactly
+        // then) tracks the voice's DIRECTIONAL first step — the LEFT extreme read
+        // (O) forward, the RIGHT extreme read (O+L-1) reverse: the UAS core,
+        // mirrored. The pre-fix tie hung the lanes off wnow itself, whose read
+        // image is the LEFT extreme in BOTH directions — the measured bug
+        // (diag_problane_phase_coupling: reverse's rotation-hit sat on the voice's
+        // LEFT-extreme steps for every R_v and lane R; the anchored candidate sat
+        // on the RIGHT-extreme steps). Forward is byte-identical (edge 0); ABS1
+        // keeps the raw frame value (its geometry is the full phrase — a separate
+        // feel-test). frameT0 feeds ONLY the lane seeds (laneSeed's mapped arm):
+        // the strip read (voiceRead_), the sign cues, the commit edge and
+        // voiceFrameEdgeLive_ all read wnow/pos_, untouched.
+        frameT0[v]   = (int)(abs1Read ? wnow : wnow - walkEdge(vd, L));
     }
     // ── the lane walks (the positions every reader consumes + the UI sign cues) ──
     auto laneRecomp = [&](LaneDir d, int len, int64_t t0rep, int motionNorm, int& tickOut, int& signOut) {
