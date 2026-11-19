@@ -1,5 +1,13 @@
 # CC PROMPT — reverse voice: playhead reaches rotation at the RIGHT edge
 
+> **SUPERSEDED (2026-11-19) — DO NOT IMPLEMENT.** This prompt drove `e2a450ab`,
+> which changed the VOICE-RANGE STRIP playhead draw and REGRESSED the known-good
+> boundary-edge visual; it was backed out in `25fd83b2`. The target surface was
+> wrong (it's the PROBABILITY-LANE playhead, not the strip) and headless-green did
+> not mean visually correct. Use `CC_PROMPT_REVERSE_PROBLANE_ROTATION_EDGE.md`
+> instead, which corrects the surface, builds on the `walkFold` consolidation, and
+> makes a Rack feel-test the acceptance gate. Kept for the audit trail only.
+
 ## The one-line bug (Rodney, Rack feel-test, 2026-11-19)
 
 In **reverse** mode the voice lane's playhead reaches its **rotation** when the

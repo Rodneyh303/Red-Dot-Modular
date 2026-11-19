@@ -46,6 +46,11 @@ pre-consolidation tip.
   abs1 arm, PASS after. Mirror `test_cycle_commit_edge`'s structure.
 
 ### 1b — per-lane playhead rows
+> NOTE (2026-11-19): this surface is now owned by
+> `CC_PROMPT_REVERSE_PROBLANE_ROTATION_EDGE.md` (the probability-lane playhead
+> reverse rotation-edge fix, Rack-gated). Do 1b there; it supersedes the sketch
+> below.
+
 - **Site:** the per-lane rows set `lanePlayStep[l]` directly
   (`SandsVisualEditorV4`, `lanePlayStep`/`lanePlayDir`, ~`:452`). e2a450ab fixed
   only the voice/macro RANGE STRIPS (`StraitsEast`/`MacroVisual` via
