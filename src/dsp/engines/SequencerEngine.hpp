@@ -382,6 +382,58 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
     // drifting).
     static inline int64_t anchorBias(LaneDir d) { return (d == LaneDir::Reverse) ? 1 : 0; }
 
+    // ── POSITION RESOLVER CONSOLIDATION (POSITION_RESOLVER_CONSOLIDATION.md) ─────
+    // The four WALK POLICIES — the SandsModifierPolicy pattern's transfer onto the
+    // direction axis (the doc's ruling on WHERE the concept pattern pays). Each
+    // declares { tick (via laneTickFor, UNCHANGED — the time-symmetric primitive the
+    // bounce walks and the STEPS_32 goldens depend on), anchorBias (the read anchor's
+    // reverse-only constant, 7aae5ee9), entryEdge (the direction-entry box-offset) };
+    // PositionResolver::WalkResolver<Policy> folds rotation / offset / box-offset /
+    // content↔slot ONCE over the WalkPolicy concept. The policies live HERE (they
+    // name LaneDir + laneTickFor, which the resolver cannot — the engine includes the
+    // resolver). anchorBias(d) above stays the runtime constant (the sites' bias
+    // supply); the per-policy declarations are its pinned twins (the bridge test
+    // asserts the equality across all four).
+    struct WalkFwd {
+        static int64_t tick(int64_t t, int len) { return laneTickFor(LaneDir::Forward, t, len); }
+        static constexpr int64_t anchorBias() { return 0; }
+        static constexpr int64_t entryEdge(int) { return 0; }             // the LEFT slot
+    };
+    struct WalkRev {
+        static int64_t tick(int64_t t, int len) { return laneTickFor(LaneDir::Reverse, t, len); }
+        static constexpr int64_t anchorBias() { return 1; }               // 7aae5ee9's read anchor
+        static constexpr int64_t entryEdge(int len) { return len - 1; }   // the RIGHT slot
+    };
+    struct WalkPend {
+        static int64_t tick(int64_t t, int len) { return laneTickFor(LaneDir::Pendulum, t, len); }
+        static constexpr int64_t anchorBias() { return 0; }
+        static constexpr int64_t entryEdge(int) { return 0; }
+    };
+    struct WalkPP {
+        static int64_t tick(int64_t t, int len) { return laneTickFor(LaneDir::PingPong, t, len); }
+        static constexpr int64_t anchorBias() { return 0; }
+        static constexpr int64_t entryEdge(int) { return 0; }
+    };
+    // The RUNTIME dispatcher — the ONE fold the read sites call (byte-identical to
+    // the shipped inline laneTickFor(d,t,len) + anchorBias(d); the bridge test sweeps
+    // the full grid). The commit edge's wEdge rides the same table (walkEdge — the
+    // shipped law keys Reverse vs everything else, so Pend/PingPong land Forward's
+    // entry edge exactly as they did).
+    static int64_t walkFold(LaneDir d, int64_t t, int len) {
+        switch (d) {
+            case LaneDir::Reverse:  return PositionResolver::WalkResolver<WalkRev>::frameValue(t, len);
+            case LaneDir::Pendulum: return PositionResolver::WalkResolver<WalkPend>::frameValue(t, len);
+            case LaneDir::PingPong: return PositionResolver::WalkResolver<WalkPP>::frameValue(t, len);
+            default:                return PositionResolver::WalkResolver<WalkFwd>::frameValue(t, len);
+        }
+    }
+    static int64_t walkEdge(LaneDir d, int len) {
+        switch (d) {
+            case LaneDir::Reverse:  return PositionResolver::WalkResolver<WalkRev>::entryEdge(len);
+            default:                return PositionResolver::WalkResolver<WalkFwd>::entryEdge(len);
+        }
+    }
+
     // ── UNIFIED ADDRESSING Stage 1 (CC_PROMPT_UNIFIED_ADDRESSING_SPEC.md) ──────────
     // The GLOBAL-level LOR map — the top of the nested global->voice->lane chain. Under the
     // POSITION-HOLDER MODEL the lane walks no longer call this per step against the one

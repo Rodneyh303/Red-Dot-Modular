@@ -9,7 +9,7 @@
 // rotation content R must be the step at which the playhead sits at the
 // direction-entry edge — the LEFT slot (box-offset 0) in forward, the RIGHT slot
 // (box-offset L-1) in reverse — for EVERY R, both directions. The drawn slot is the
-// ONE law SandsRangeGestureCore::playheadSlotBar (the read anchor's position twin:
+// ONE law PositionResolver::playheadSlotBar (the read anchor's position twin:
 // the read cell minus the rotation fold minus the reverse anchor bias), fed the
 // LIVE engine's read cells — the same fold the strip feeds run.
 //
@@ -81,7 +81,7 @@ int main(){
                     ++readRSteps;
                     const int bias = SequencerEngine::anchorBias(dp);
                     // THE LAW (what the strip feeds run): the slot bar at the read-R step.
-                    const int slotBar = redDot::SandsRangeGestureCore::playheadSlotBar(readCell, Lp, Op, Rp, bias, RING);
+                    const int slotBar = PositionResolver::playheadSlotBar(readCell, Lp, Op, Rp, bias, RING);
                     std::snprintf(msg, sizeof msg, "%s O=%d R=%d step=%d: playhead slot bar %d, want the entry edge %d (reads rotation content R at the %s slot)",
                                   rev ? "REV" : "FWD", O, R, s, slotBar, edgeBar, rev ? "RIGHT" : "LEFT");
                     CHECK(slotBar == edgeBar, msg);
@@ -124,18 +124,18 @@ int main(){
                 eng.effectiveVoiceLor(V2().v, effL, effO, effR, effD);
                 const int readCell = eng.voiceReadPosition(V2());
                 const int bias = SequencerEngine::anchorBias(effD);
-                const int slot = redDot::SandsRangeGestureCore::playheadSlotBar(readCell, effL, effO, effR, bias, RING);
+                const int slot = PositionResolver::playheadSlotBar(readCell, effL, effO, effR, bias, RING);
                 if (effR != prevR) {   // THE COMMIT STEP — the rotation lands here
                     ++committed;
                     // The slot re-folds ATOMICALLY to the NEW rotation at this step.
-                    const int oldFold = redDot::SandsRangeGestureCore::playheadSlotBar(readCell, effL, effO, Rold, bias, RING);
+                    const int oldFold = PositionResolver::playheadSlotBar(readCell, effL, effO, Rold, bias, RING);
                     std::snprintf(msg, sizeof msg, "%s R %d->%d step=%d: the slot %d follows the NEW rotation (the old-rotation fold would draw %d)",
                                   rev ? "REV" : "FWD", Rold, Rnew, s, slot, oldFold);
-                    CHECK(slot == redDot::SandsRangeGestureCore::playheadSlotBar(readCell, effL, effO, effR, bias, RING), msg);
+                    CHECK(slot == PositionResolver::playheadSlotBar(readCell, effL, effO, effR, bias, RING), msg);
                     CHECK(slot != oldFold, msg);   // the jump happened (Rold != Rnew ⇒ the folds differ)
                     if (prevSlot >= 0) {
                         // NOT early: the PREVIOUS step still folded the OLD rotation.
-                        const int prevOldFold = redDot::SandsRangeGestureCore::playheadSlotBar(prevReadCell, effL, effO, Rold, bias, RING);
+                        const int prevOldFold = PositionResolver::playheadSlotBar(prevReadCell, effL, effO, Rold, bias, RING);
                         CHECK(prevSlot == prevOldFold, "the pre-commit step folded the OLD rotation (no early jump)");
                     }
                 }

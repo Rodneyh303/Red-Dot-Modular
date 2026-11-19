@@ -148,31 +148,16 @@ struct SandsRangeGestureCore {
         return wrapMod(o + wrapMod(tick + r, l), ring);
     }
 
-    // ── (CC_PROMPT_REVERSE_VOICE_ROTATION_EDGE) THE SHARED PLAYHEAD-SLOT LAW ────
-    // The POSITION twin of lanePlayheadBar. lanePlayheadBar answers "which CONTENT
-    // cell plays" (the read cell — the audio truth, == voiceReadPosition). THIS
-    // answers "which SLOT of the window sweep the playhead occupies" — the drawn
-    // playhead bar on the range strip. The sweep mirrors the walk: it ENTERS at the
-    // direction-entry edge — the LEFT slot (box-offset 0) in forward, the RIGHT slot
-    // (box-offset len−1) in reverse — reading the rotation content R, then sweeps the
-    // window in the walk direction (fwd left→right / rev right→left). The read cell
-    // folds the rotation (frame value = walk + anchorBias + rot) and in reverse the
-    // anchor bias +1 — the slot UNMIXES exactly that fold:
-    //     slot = (readCell − off − rot − reverseBias) mod len
-    // so at the entry (frame value ≡ rot + bias) the slot is 0 forward / len−1
-    // reverse: the playhead sits ON the entry edge at the step it reads rotation
-    // content R, for EVERY R (the R==0 degeneracy hid this — rotation == the left
-    // edge there). reverseBias is the SAME reverse-anchor constant as the read law
-    // (SequencerEngine::anchorBias, 7aae5ee9) — supplied by the caller so this core
-    // stays engine-free; the +1 lands the reverse entry on the RIGHT slot exactly as
-    // the read bias lands the reverse read ON R. Pure: always inside [off, off+len).
-    static int playheadSlotBar(int readCell, int len, int off, int rot,
-                               int reverseBias, int ring) {
-        const int l = std::clamp(len, 1, ring);
-        const int o = wrapMod(off, ring);
-        const int r = wrapMod(rot, ring);
-        return wrapMod(o + wrapMod(wrapMod(readCell, ring) - o - r - reverseBias, l), ring);
-    }
+    // (POSITION_RESOLVER_CONSOLIDATION) playheadSlotBar — the playhead-SLOT law that
+    // landed here in CC_PROMPT_REVERSE_VOICE_ROTATION_EDGE — MOVED to
+    // PositionResolver (the content↔slot mapping is a POSITION law: the doc's item
+    // 4, served from ONE place; the gesture core keeps the GESTURE math — edges,
+    // zones, containment). Call PositionResolver::playheadSlotBar (the primitives
+    // face) or PositionResolver::WalkResolver<SequencerEngine::WalkRev>::playheadSlotBar
+    // (the policy face — the reverse +1 IS its declared anchorBias; "reverse forgot
+    // its right-edge rule" is now a compile error). The read-cell twin
+    // lanePlayheadBar stays here for now — it is the UI's CONTENT-cell law; its
+    // migration is the consolidation's next slice.
 
     // ── (bug 12, LOR_EDITING_BUG_LIST) THE CHEVRON GEOMETRY ────────────────────
     // The rotation marker's chevron pair, sized to the GRID: the pair's total

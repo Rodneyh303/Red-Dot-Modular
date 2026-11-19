@@ -1153,11 +1153,11 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
             // (CC_PROMPT_REVERSE_VOICE_ROTATION_EDGE) the strip's playhead draws the
             // PLAYHEAD SLOT (the window sweep: enters at the direction-entry edge —
             // LEFT fwd / RIGHT rev — reading rotation content R, every R), not the raw
-            // read cell. The ONE law (playheadSlotBar — the read anchor's position
+            // read cell. The ONE law (PositionResolver::playheadSlotBar — the read anchor's position
             // twin, bias = anchorBias(md_), the SAME reverse-anchor constant the read
             // law folds); the read cell stays macroFrameRead's (the audio truth).
             if (rp >= 0)
-                rp = redDot::SandsRangeGestureCore::playheadSlotBar(
+                rp = PositionResolver::playheadSlotBar(
                     rp, mL, mO, mR, SequencerEngine::anchorBias(md_), dotModular::kMaskRing);
             visualEditor->setRangeState(mL, mO, mR, rp, sg, false, rangeLabel_);
             // (Stage B, the FINAL MODEL) the strip's WIREFRAME row — base + PENDING

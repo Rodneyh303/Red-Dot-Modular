@@ -1982,11 +1982,12 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             // the sweep ENTERS at the direction-entry edge (LEFT fwd / RIGHT rev)
             // reading rotation content R, for EVERY R. The read cell (the audio truth)
             // stays voiceReadPosition's; the content↔slot mapping lives in the ONE
-            // law (playheadSlotBar, lanePlayheadBar's position twin) so the strip and
-            // any future consumer cannot re-derive it differently.
+            // law — PositionResolver::playheadSlotBar (lanePlayheadBar's position
+            // twin, the WalkPolicy skeleton) — so the strip and any future
+            // consumer cannot re-derive it differently.
             const int rpRaw = eng.started() ? eng.voiceReadPosition(vslot) : -1;
             const int rp = (rpRaw < 0) ? -1
-                : redDot::SandsRangeGestureCore::playheadSlotBar(
+                : PositionResolver::playheadSlotBar(
                       rpRaw, std::max(1, L), O, R, SequencerEngine::anchorBias(vd),
                       dotModular::kMaskRing);
             const int sg = eng.voiceReadSign(vslot);
