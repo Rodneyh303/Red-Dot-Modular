@@ -73,6 +73,28 @@ which enters from the LEFT reading R and sweeps right.
 - If the fix is UI-only (slot draw), the headless test may not reach it — say so
   explicitly and mark it "needs Rack feel-test"; do not fake a passing test.
 
+## The obvious edge case to test — rotation MODULATED at the edge (Rodney, agreed)
+
+The voice range edge is simultaneously (a) where LOR modulation is applied and
+(b) where the playhead aligns to its rotation. When modulation CHANGES the
+rotation at that edge, the playhead must align to the **post-modulation (new)**
+rotation: it lands at the step it would have hit the OLD rotation, but at the
+NEW rotation's position — an atomic jump at the edge. This is the only reading
+consistent with the two events coinciding at the edge (the rotation in effect AT
+the edge is the just-committed one; aligning to the old rotation would point the
+playhead at a value overwritten the same instant) and with the immediate /
+live-boundary principle (no one-cycle lag).
+
+Test it, both directions, reproduce-first:
+- Static-rotation control: no modulation → the playhead aligns to the standing
+  rotation at the entry edge (fwd LEFT / rev RIGHT), swept over all R.
+- Modulated-rotation edge case: drive a rotation change THROUGH the commit edge
+  (old R -> new R); assert the playhead aligns to the NEW rotation at that step —
+  not the old, not one step late. Sweep several old→new pairs, both directions.
+  The jump is expected and must be atomic (no slew, no lag).
+- Keep the R==0 degeneracy warning in force for the modulated case too: test
+  old→new pairs where neither is 0 and new ≠ old, or the edge coincidence hides.
+
 ## Verify against the property
 
 For every rotation R, both directions: the playhead reads rotation content R at
