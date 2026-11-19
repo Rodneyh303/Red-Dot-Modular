@@ -817,7 +817,12 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
       nvgFillColor(vg, wire); nvgFill(vg);
     }
 
-    // The read cell: the voice's current buffer cell, glowing + leading-edge bar.
+    // The playhead SLOT (CC_PROMPT_REVERSE_VOICE_ROTATION_EDGE): the window-sweep
+    // position the feeds derive through playheadSlotBar — the read cell minus the
+    // rotation fold minus the reverse anchor bias — so the sweep ENTERS at the
+    // direction-entry edge (LEFT fwd / RIGHT rev) reading rotation content R, for
+    // every R. The CONTENT the voice plays stays the engine's read cell (the audio
+    // truth); this bar is the playhead's position within the range.
     if (rangeStrip.readPos >= 0 && rangeStrip.readPos < STEP_COUNT) {
       rack::Rect cell = rack::Rect(layout.getStepX(rangeStrip.readPos), r.pos.y,
                                    layout.stepWidthF(), r.size.y);

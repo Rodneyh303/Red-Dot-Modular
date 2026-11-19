@@ -1131,8 +1131,9 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
             // macroVoiceLor_ row (which smeared per-step under CV and ignored the
             // cadence). The direction stays live (C3's slice).
             int mL = 16, mO = 0, mR = 0;
+            SequencerEngine::LaneDir md_ = SequencerEngine::LaneDir::Forward;
             {
-                int ml_, mo_, mr_; SequencerEngine::LaneDir md_;
+                int ml_, mo_, mr_;
                 se->effectiveMacroRowLor(ml_, mo_, mr_, md_);
                 mL = std::max(1, ml_); mO = mo_; mR = mr_;
             }
@@ -1149,6 +1150,15 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
             // frame value the Macro lanes' seed hangs under — one law, one walk).
             int rp = eng.started() ? eng.macroFrameRead() : -1;
             int sg = eng.macroFrameSign();
+            // (CC_PROMPT_REVERSE_VOICE_ROTATION_EDGE) the strip's playhead draws the
+            // PLAYHEAD SLOT (the window sweep: enters at the direction-entry edge —
+            // LEFT fwd / RIGHT rev — reading rotation content R, every R), not the raw
+            // read cell. The ONE law (playheadSlotBar — the read anchor's position
+            // twin, bias = anchorBias(md_), the SAME reverse-anchor constant the read
+            // law folds); the read cell stays macroFrameRead's (the audio truth).
+            if (rp >= 0)
+                rp = redDot::SandsRangeGestureCore::playheadSlotBar(
+                    rp, mL, mO, mR, SequencerEngine::anchorBias(md_), dotModular::kMaskRing);
             visualEditor->setRangeState(mL, mO, mR, rp, sg, false, rangeLabel_);
             // (Stage B, the FINAL MODEL) the strip's WIREFRAME row — base + PENDING
             // (the live-modulated window), the twin of the committed feed above;

@@ -1974,10 +1974,21 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             // composed gate: the base AND the pattern).
             int L, O, R; SequencerEngine::LaneDir vd;
             eng.effectiveVoiceLor(v, L, O, R, vd);
-            (void)vd;   // the direction CUE comes from the engine's walk-sign cache, not the row's setting
             const bool independent = (monsoon->getVoiceLorLocalEast(v) != 0.f);
             const auto vslot = dotModular::VoiceResolver::slot(v + 1);   // slot() is VOICE-NUMBER based
-            const int rp = eng.started() ? eng.voiceReadPosition(vslot) : -1;
+            // (CC_PROMPT_REVERSE_VOICE_ROTATION_EDGE) the strip's playhead draws the
+            // PLAYHEAD SLOT — the window-sweep position (the read cell minus the
+            // rotation fold minus the reverse anchor bias) — NOT the raw read cell:
+            // the sweep ENTERS at the direction-entry edge (LEFT fwd / RIGHT rev)
+            // reading rotation content R, for EVERY R. The read cell (the audio truth)
+            // stays voiceReadPosition's; the content↔slot mapping lives in the ONE
+            // law (playheadSlotBar, lanePlayheadBar's position twin) so the strip and
+            // any future consumer cannot re-derive it differently.
+            const int rpRaw = eng.started() ? eng.voiceReadPosition(vslot) : -1;
+            const int rp = (rpRaw < 0) ? -1
+                : redDot::SandsRangeGestureCore::playheadSlotBar(
+                      rpRaw, std::max(1, L), O, R, SequencerEngine::anchorBias(vd),
+                      dotModular::kMaskRing);
             const int sg = eng.voiceReadSign(vslot);
             snprintf(rangeLabel_, sizeof(rangeLabel_), "V%d", v + 1);
             visualEditor->setRangeState(std::max(1, L), O, R, rp, sg, !independent, rangeLabel_);
