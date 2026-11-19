@@ -82,3 +82,37 @@ point where the two laws meet and both are currently re-derived.
 
 Elective, not urgent. But every further read site added without this makes the
 next reverse/rotation off-by-one more likely, not less.
+
+## C++ concepts — where the SandsModifierPolicy pattern transfers (and where it doesn't)
+
+`SandsModifierResolver` earned its C++20 concept by unifying FOUR drifted
+hand-rolled delegation shapes (spread/warp/LOR/direction): the `SandsModifierPolicy`
+concept abstracts the per-modifier value math over one fixed, once-tested
+delegation skeleton and BITES — an incomplete policy is a LOCATED compile error at
+its declaration, not a deep instantiation failure. The justifying shape is N
+structurally-similar strategies with a clean per-type boundary.
+
+PositionResolver's CORE does NOT have that shape: it is ONE traversal law over ONE
+state (the played column), parameterised by a small closed direction enum and the
+window. A concept over the core is ceremony — the right proof there is the
+bit-identical pure-mirror harness (test_position_resolver_identity, slice 1), not a
+type constraint. Do not add a concept just to mirror the modifier resolver.
+
+WHERE the pattern DOES transfer — the strategy axes the consolidation implies:
+
+- a `WalkPolicy` concept over DIRECTION (Forward/Reverse/Pendulum/PingPong), each
+  declaring `{ tick (via laneTickFor, UNCHANGED), anchorBias, entryEdge }`, with the
+  shared skeleton folding rotation / offset / box-offset / content↔slot ONCE. This
+  is the true analogue of SandsModifierPolicy, and it attacks the reverse
+  off-by-one family at the root: "reverse forgot its right-edge rule" becomes a
+  LOCATED COMPILE ERROR instead of a feel-test discovery, and `anchorBias` stops
+  being a ~10-site fan-out and becomes one declared member of the reverse policy.
+- an `AddressPolicy` concept over the sibling AddressResolver's modes
+  (cycle / abs1 / abs2 / abs3 painted), each declaring `{ ring, extent, gate,
+  content-map }`. Same payoff for the abs1 / mask drift.
+
+Carry over UNCONDITIONALLY (concept or not): the step-1 discipline — a
+BYTE-IDENTICAL bridge test proving the extraction changes nothing vs what ships,
+before any behaviour change (how SandsModifierResolver landed spread/warp/LOR/dir,
+and how PositionResolver slice 1 is already proven). That discipline, not the
+`concept` keyword, was the modifier resolver's real win.
