@@ -89,3 +89,17 @@ browser" to "a named loadout/section of the host." That is fine precisely becaus
 it is single-parent. Useful tell: if you ever want one to stay searchable and
 placeable on its own, that is the signal it is NOT single-parent and should remain
 a separate module.
+
+## The loadout is slots: some EXCLUSIVE (one-of-N), some ADDITIVE
+
+The pop-out loadout is not an arbitrary set of panels — it's a small set of
+SLOTS:
+- EXCLUSIVE slot (pick exactly one of N): e.g. one of {Sikit, Colonnades,
+  Colonnades Duo} — same role at different sizes, so never more than one. The
+  region is reserved and swaps content (and width) when the choice changes.
+- ADDITIVE slot (add up to M): e.g. Raffles (0/1), Interchange (0/1/2),
+  possibly Shophouse.
+So the shape is always "host (Monsoon) + one choice-slot + any additives"; the
+pop-out grows/shrinks to the chosen loadout but the structure is fixed. That
+constraint SIMPLIFIES the resize/draw: finite named loadouts, an exclusive region
+that swaps rather than arbitrary panel combinatorics.
