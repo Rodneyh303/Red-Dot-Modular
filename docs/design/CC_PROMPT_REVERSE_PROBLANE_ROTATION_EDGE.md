@@ -77,3 +77,56 @@ do not re-derive a rotation/anchor fold by hand.
   visual UNCHANGED from trunk. Nothing merges until Rodney confirms the look.
 
 ## Full suite green + the STEPS_32 goldens byte-identical at every step, or stop and explain.
+
+---
+
+## UPDATE 2 (2026-11-19, pm) — CC's attempt (`lanePlayheadBar` dirBias) was the WRONG LEVER
+
+CC's branch `fix/problane-rotation-edge` added a `dirBias` to `lanePlayheadBar`
+(`tick - dirBias`). Rodney tested it (and the `tick` / `tick + dirBias`
+alternatives) in Rack: **no difference to the issue.** Two findings explain why,
+and redirect the work:
+
+### It is a REFLECTION (mirror), not a ±1 shift
+Rodney's screenshots (reverse vs forward, V1) show the prob-lane playheads already
+correctly reversed and already sitting ON their rotation cells. The defect is only
+*which voice-edge that coincides with*:
+- FORWARD (correct): prob lane on rotation ⟺ voice playhead at the LEFT extreme
+  (its first step).
+- REVERSE (now, WRONG): prob lane on rotation ⟺ voice still at the LEFT extreme.
+- REVERSE (want): prob lane on rotation ⟺ voice at the RIGHT extreme — the mirror,
+  because in reverse the voice's FIRST STEP is the right end.
+A ±1 bias on the draw cannot turn a left-extreme coincidence into a right-extreme
+one (a full window reflection). **Revert the `lanePlayheadBar` dirBias edit — it is
+a confirmed no-op for this bug.**
+
+### The real lever: the lane PHASE coupling (`laneTick_` / `laneRecomp`), not the draw
+The playhead is fed by `ph = eng.laneTick_[el]`. `laneTick_` is computed in
+`laneRecomp` (`SequencerEngine.cpp:1435`) as `walkFold(dir, t0+1, len)`, anchored
+to the voice frame's `t0`. The principle "prob lane hits rotation ⟺ voice at its
+FIRST step" (the UAS core, day 1) lives in that phase tie. It holds forward and
+fails to MIRROR in reverse. The reflection must happen in that coupling —
+how the lane's rotation-hit phase tracks the voice's DIRECTIONAL first step — NOT
+in the downstream draw. Do NOT touch `walkFold`/`laneTickFor` definitions (goldens
++ bridge pin them); the fix is in how the lane phase/anchor relates to the voice's
+first step under reverse.
+
+### Reproduce-first — MEASURE THE COUPLING (this is the acceptance test)
+1. **Reproduce the config faithfully.** Reversing the VOICE must reverse the lanes
+   (as in Rodney's Rack — the lane's effective dir follows the voice). An earlier
+   headless probe set the voice reverse but the lane came through `dir=FWD` — that
+   is NOT Rodney's config. FIND how the voice's reverse propagates to the lane dir
+   (`effectiveMonoLaneLor`'s dir) and set it up so the lanes actually reverse,
+   else the test proves nothing.
+2. **Measure the coupling, both directions, R-swept (R==0 DEGENERATE — use mid-range
+   rotation):** the transport step at which the prob-lane playhead sits on its
+   rotation cell, and the step at which the VOICE is at its first step (its
+   directional entry extreme — LEFT fwd / RIGHT rev). Assert they COINCIDE in both
+   directions (reverse mirrors forward). It FAILS now (reverse coincides at the
+   voice's LEFT extreme); it PASSES when reverse coincides at the RIGHT.
+3. Use a WINDOWED voice range (e.g. offset 3, length 6 → cells 3..8, Rodney's
+   `8 7 6 5 4 3` example) so left and right extremes are distinct, not adjacent.
+
+### Rack is still the acceptance gate
+Stage unmerged; Rodney confirms the mirror in Rack (reverse: prob lanes on rotation
+when the voice is at the RIGHT extreme, forward unchanged) before anything merges.
