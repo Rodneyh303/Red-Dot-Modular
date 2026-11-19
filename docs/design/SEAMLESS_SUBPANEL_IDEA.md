@@ -72,3 +72,20 @@ for the runtime 16/32/64 step idea (SIXTYFOUR_STEP_IDEA.md): the pop-out-WIDER
 Sands that gates 64 steps is a special case of this same seamless-subpanel
 capability. So the panel arc delivers pop-out-wider-Sands and the configurable
 loadouts; the runtime ring rides on top.
+
+## Names / identity survive the fold
+
+Keep the subpanel names (Raffles, Interchange, Colonnades, Sikit, Shophouse, …).
+The seamless draw removes the module SEAM, not the identity. Each folded subpanel
+keeps its name and visual style as: a titled band / section header within the one
+window; the loadout CHOICE label when picking what to pop out ("show Raffles");
+a context-menu entry; and the manual. The Singapore-geography naming is deliberate
+brand identity — seamless does not mean anonymous.
+
+The ONE change for a folded single-parent subpanel: it stops being an
+independently BROWSABLE VCV module — reached by popping it out of the host, not by
+searching the library and dragging it in. The name moves from "a module in the
+browser" to "a named loadout/section of the host." That is fine precisely because
+it is single-parent. Useful tell: if you ever want one to stay searchable and
+placeable on its own, that is the signal it is NOT single-parent and should remain
+a separate module.
