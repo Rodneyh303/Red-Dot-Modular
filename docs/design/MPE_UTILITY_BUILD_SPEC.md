@@ -130,6 +130,14 @@ anchors, all bound). Registered in plugin.cpp + plugin.json + Monsoon.hpp. REMAI
 module face can't be compiled headless -- needs a Rack build + a visual feel-test (and optional output
 smoothing on the 7-bit Y/Z to avoid stair-stepping).
 
+CPU: both faces run their whole MIDI path at the project Control rate (~1500 Hz, SR-independent — the
+controlDivider convention in src/ui/RateManager.hpp, division = round(SR/1500)) via a dsp::ClockDivider,
+not per sample. Keppel's per-voice two-layer expression math was the cost (it ran 48k/s); gating it to
+~1.5k/s is ~30× fewer evaluations while staying far finer than MIDI's ~1 ms resolution (messages still
+carry setFrame for sub-block placement). Woodlands drains its input queue + refreshes outputs on the same
+tick (the queue buffers between ticks; MIDI can't overflow 0.67 ms). Edge/output timing coarsens to the
+tick (~0.67 ms, inaudible for MIDI) — a feel-test item. Make the rate a menu option if tuning by ear.
+
 ## Inputs (already available on dot.modular outputs -- Rodney confirmed)
 - **Poly pitch CV** (1V/oct, up to 16 channels) -- from a Monsoon/Colonnades/Duo poly pitch output.
 - **Poly gate** (up to 16 channels, matching the pitch cable's voices) -- ALREADY output by dot.modular

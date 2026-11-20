@@ -41,6 +41,15 @@ struct Woodlands : Module {
     dotModular::mpe::MpeReceiver rx;
     bool followSenderRange = true;   // auto-match the sender's bend range from its MPE handshake
 
+    // CPU: like Keppel, run at the project's Control rate (~1500 Hz, SR-independent — the controlDivider
+    // convention in src/ui/RateManager.hpp: division = round(SR/1500)), not per sample. The input queue
+    // buffers incoming MIDI between ticks (MIDI is far too slow to overflow in ~0.67 ms); each tick drains
+    // everything up to args.frame and refreshes the poly outputs. Output CV then updates at ~1500 Hz —
+    // ample for pitch/gate/expression and far finer than the 7-bit source resolution.
+    rack::dsp::ClockDivider controlDiv_;
+    void setControlRate(float sr) { int d = (int)std::round(sr / 1500.f); controlDiv_.setDivision(d < 1 ? 1 : d); }
+    void onSampleRateChange(const SampleRateChangeEvent& e) override { setControlRate(e.sampleRate); }
+
     Woodlands() {
         using namespace WoodlandsIds;
         config(NUM_PARAMS, NUM_INPUTS, NUM_OUTPUTS, NUM_LIGHTS);
@@ -52,12 +61,15 @@ struct Woodlands : Module {
         configOutput(Y_OUTPUT,     "Y / timbre (CC74)");
         configOutput(Z_OUTPUT,     "Z / pressure");
         configOutput(X_OUTPUT,     "X / bend (semitones)");
+        setControlRate(APP->engine->getSampleRate());   // MIDI→CV runs at Control rate, not audio rate
     }
 
     void onReset() override { rx.reset(); }
 
     void process(const ProcessArgs& args) override {
         using namespace WoodlandsIds;
+        // Control rate (~1500 Hz): drain the MIDI queue + refresh outputs here, not per sample.
+        if (!controlDiv_.process()) return;
         rx.bendRangeSemis = params[BEND_RANGE_PARAM].getValue();
 
         // Drain the MIDI input queue into the receiver. getStatus() returns the high nibble and

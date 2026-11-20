@@ -80,6 +80,15 @@ struct Keppel : Module {
     bool gatePrev[16]     = {};
     bool stepGatePrev[16] = {};
 
+    // CPU: MIDI output needs nowhere near audio rate, so the whole CV→MPE path runs at the project's
+    // Control rate (~1500 Hz, SR-independent — the RateManager/controlDivider convention in
+    // src/ui/RateManager.hpp: division = round(SR/1500)). That cuts the per-voice expression math from
+    // 48k/s to ~1.5k/s (~30×) while staying far finer than MIDI's ~1 ms resolution; messages still carry
+    // setFrame(args.frame) for sub-block placement. Edge timing coarsens to ~0.67 ms (inaudible for MIDI).
+    rack::dsp::ClockDivider controlDiv_;
+    void setControlRate(float sr) { int d = (int)std::round(sr / 1500.f); controlDiv_.setDivision(d < 1 ? 1 : d); }
+    void onSampleRateChange(const SampleRateChangeEvent& e) override { setControlRate(e.sampleRate); }
+
     Keppel() {
         using namespace KeppelIds;
         config(NUM_PARAMS, NUM_INPUTS, NUM_OUTPUTS, NUM_LIGHTS);
@@ -105,6 +114,7 @@ struct Keppel : Module {
         // (voice v → member v+1). Keeps a voice on one MIDI channel over time — a Keppel→MPE-in loop then
         // lands on the same voice. Menu switches to Dynamic (LRU) for a real MPE synth / stealing.
         tx.alloc = dotModular::mpe::MpeTransmitter::Alloc::Fixed;
+        setControlRate(APP->engine->getSampleRate());   // MIDI runs at Control rate, not audio rate
     }
 
     // ── drain the transmitter's outbox into the MIDI port (RawMsg → midi::Message). The core builds the
@@ -136,8 +146,12 @@ struct Keppel : Module {
 
     void process(const ProcessArgs& args) override {
         using namespace KeppelIds;
+        // Run the whole CV→MPE path at the Control rate (~1500 Hz), not per sample — MIDI needs no more.
+        // Between ticks there is nothing to send, so this is where the CPU saving lives.
+        if (!controlDiv_.process()) return;
+
         // MPE requires per-message channels: keep the Port from force-overwriting them. The on-panel
-        // MidiDisplay channel row can set this live, so re-assert every block (it self-corrects to
+        // MidiDisplay channel row can set this live, so re-assert every control tick (it self-corrects to
         // "All channels"). Driver/device selection on the display is unaffected.
         midiOut.channel = -1;
         const int bendRange = (int)std::round(params[BEND_RANGE_PARAM].getValue());
