@@ -66,19 +66,22 @@ Split it:
 while the note is live -- exactly as STEP_GATE subdivides only within a held legato. The accent gate is
 a sub-window *inside* the note gate, the same shape as a subgate.
 
-**DECIDED -- Model A (the ACCENT input is the B gate).** Two gates in play: the main (A) gate = note
-lifetime, and the accent (B) gate. Per dimension: **layer A applies for the whole A gate; layer B applies
-only during (A gate AND B gate)** -- a nested AND window -- for PATCHED and unpatched B alike. So B
-literally IS "the accented sublayer," matching the name and the subgate parallel (the accent gate is a
-sub-window inside the note gate, the same shape as STEP_GATE). Implemented across X/Y/Z/velocity: a
-patched X_B/Y_B/Z_B/VEL_B does nothing unless the accent (B) gate is also high.
-- Consequence (revises earlier back-compat): a patched VEL_B is now accent-gated too -- it adds only on
-  notes whose accent gate is high at the onset, where before "VEL patched overrode accent entirely." A
-  patched B with the accent gate left unpatched now contributes nothing; patch the accent/B gate to use B.
-- MIDI-output behaviour -> Rack feel-test (not headless-testable). Verify: with the accent gate low, only
-  A sounds; pulsing the accent gate mid-note brings the B layer in for that sub-window and drops it after.
-  (The alternative -- Model B, patched B free across the whole note, accent only picking defaults -- was
-  rejected: it lets "accent" overclaim what a patched B does.)
+**DECIDED -- Model A, keyed on whether the B gate is patched.** The ACCENT input is the B gate. Two gates:
+the main (A) gate = note lifetime, and the B gate. The B layer's window depends on whether a cable is in
+the B-gate jack (`inputs[ACCENT_INPUT].isConnected()`):
+- **B gate UNPATCHED:** layer B is a free additive layer on A for the WHOLE A gate -- a second always-on
+  expression source, no accent needed. (So patching just X_B gives you a plain second expression layer.)
+- **B gate PATCHED:** layer B applies only during (A gate AND B gate) -- the nested AND window; B is "the
+  accented sublayer," the same shape as STEP_GATE inside the note gate.
+Either way B is bounded by A (it is only ever read in the gateHigh branches). Implemented uniformly across
+X/Y/Z/velocity via `bActive = gateHigh && (bGatePatched ? bGateHigh : true)`. The unpatched-B "accent"
+defaults (the Y brighten, the velAccent boost) additionally require an actual accent gate high
+(`bGateHigh`) -- they only make sense when an accent gate is patched.
+- MIDI-output behaviour -> Rack feel-test (not headless-testable). Verify: (a) B gate unpatched, patch
+  X_B -> it rides the whole note added to X_A; (b) B gate patched -> X_B only sounds while the accent gate
+  is high (pulse it mid-note; B comes in for that sub-window and drops after).
+- (Rejected: Model B, patched B always free across the whole note with no A∧B option -- it gives no way to
+  express "only during the accent" and lets "accent" overclaim. The patched/unpatched key gives both.)
 
 Why it matters for the cleanup: a clean split means the general MPE-out substrate (1) stays a solid,
 testable transmitter; microtonal (2) is a mode that could be turned off for a straight expressive-MPE
