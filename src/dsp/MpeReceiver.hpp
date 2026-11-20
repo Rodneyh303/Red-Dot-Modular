@@ -50,26 +50,28 @@ struct MpeReceiver {
         return (ch >= 1 && ch <= memberCount) ? ch - 1 : -1;
     }
 
-    // Consume one MIDI message. status is the high nibble (0x8/0x9/0xB/0xD/0xE); channel is 0..15.
+    // Consume one MIDI message. `status` is the high NIBBLE (0x8/0x9/0xB/0xD/0xE) — the same convention
+    // MpeTransmitter emits and that Rack's midi::Message::getStatus() returns (bytes[0] >> 4). `channel`
+    // is 0..15; d1/d2 are the two data bytes.
     void handleMessage(uint8_t status, uint8_t channel, uint8_t d1, uint8_t d2) {
         int v = voiceForChannel(channel);
         if (v < 0) return;                         // master / out-of-zone: v1 ignores (see header)
         Voice& vs = voices[v];
-        switch (status & 0xF0) {
-            case 0x90:                             // note-on (velocity 0 == note-off)
+        switch (status) {
+            case 0x9:                              // note-on (velocity 0 == note-off)
                 if (d2 > 0) { vs.active = true; vs.note = d1; vs.velocity = d2; }
                 else        { vs.active = false; vs.releaseVel = 64; }
                 break;
-            case 0x80:                             // note-off (+ release velocity)
+            case 0x8:                              // note-off (+ release velocity)
                 vs.active = false; vs.releaseVel = d2;
                 break;
-            case 0xE0:                             // pitch bend (LSB d1, MSB d2) → member bend
+            case 0xE:                              // pitch bend (LSB d1, MSB d2) → member bend
                 vs.bend14 = (int)d1 | ((int)d2 << 7);
                 break;
-            case 0xB0:                             // CC — MPE Y is CC74
+            case 0xB:                              // CC — MPE Y is CC74
                 if (d1 == 74) vs.cc74 = d2;
                 break;
-            case 0xD0:                             // channel pressure → Z
+            case 0xD:                              // channel pressure → Z
                 vs.pressure = d1;
                 break;
             default: break;                        // poly aftertouch (0xA) etc.: v1 ignores
