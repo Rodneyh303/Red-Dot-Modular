@@ -260,9 +260,12 @@ struct Keppel : Module {
             const bool rising  =  gateHigh && !vs.gatePrev;
             const bool falling = !gateHigh &&  vs.gatePrev;
 
-            // ── Two-layer expression read (per dimension: A main-gated base + B accent-gated additive).
-            // The accent window opens ONLY while the accent gate is high AND the note is live (main gate
-            // held). Computed every block for use in the rising + hold branches.
+            // ── Two-layer expression read. The ACCENT input is used as the B GATE. Model A
+            // (MPE_UTILITY_BUILD_SPEC separation-of-concerns): per dimension, layer A applies for the
+            // whole A (main) gate; layer B applies ONLY during (A gate AND B gate) — a nested AND window —
+            // whether B is PATCHED or the unpatched default. So accentLive is THE B gate for EVERY
+            // dimension, not just the unpatched brighten default: a patched X_B/Y_B/Z_B/VEL_B does nothing
+            // unless the accent (B) gate is also high. Computed every block for the rising + hold branches.
             const bool accentLive = gateHigh
                 && inputs[ACCENT_INPUT].getChannels() > v
                 && inputs[ACCENT_INPUT].getVoltage(v) >= 5.f;
@@ -271,20 +274,26 @@ struct Keppel : Module {
             // (bypasses the quantiser — continuous expression pitch, not a scale-degree move). The sum is
             // unbounded here; bend14 clamps to ±bendRange at the wire, and over-range feeds re-articulation.
             const float xA = dotModular::mpe::xSemisFromVolts(readPoly(X_A_INPUT, v));
-            const float xB = dotModular::mpe::xSemisFromVolts(readPoly(X_B_INPUT, v)); // 0 (silent) when unpatched
+            // B gated by accentLive (A∧B): the 2nd X applies only inside the accent window; rest 0 otherwise.
+            const float xB = accentLive ? dotModular::mpe::xSemisFromVolts(readPoly(X_B_INPUT, v)) : 0.f;
             const float xTotal = dotModular::mpe::sumAroundRest(xA, xB, 0.f, -1000.f, 1000.f);
 
-            // Y — CC74 timbre (0-127, rest 64). B default: accent brighten when Y_B unpatched.
+            // Y — CC74 timbre (0-127, rest 64). B gated by accentLive (A∧B): patched Y_B read, or the
+            // accent-brighten default when Y_B unpatched — both apply only inside the accent window;
+            // rest 64 otherwise.
             const int yA = dotModular::mpe::yCc74FromVolts(readPoly(Y_A_INPUT, v));
-            const int yB = inputs[Y_B_INPUT].isConnected()
-                ? dotModular::mpe::yCc74FromVolts(readPoly(Y_B_INPUT, v))
-                : (accentLive ? 64 + yAccentBrighten : 64);
+            const int yB = accentLive
+                ? (inputs[Y_B_INPUT].isConnected()
+                    ? dotModular::mpe::yCc74FromVolts(readPoly(Y_B_INPUT, v))
+                    : 64 + yAccentBrighten)
+                : 64;
             const int yVal = (int)std::lround(dotModular::mpe::sumAroundRest(
                 (float)yA, (float)yB, 64.f, 0.f, 127.f));
 
-            // Z — channel pressure (0-127, rest 0). B silent unless patched.
+            // Z — channel pressure (0-127, rest 0). B gated by accentLive (A∧B): the 2nd Z applies only
+            // inside the accent window; rest 0 otherwise (also silent when Z_B unpatched).
             const int zA = dotModular::mpe::zPressureFromVolts(readPoly(Z_A_INPUT, v));
-            const int zB = dotModular::mpe::zPressureFromVolts(readPoly(Z_B_INPUT, v)); // 0 (silent) when unpatched
+            const int zB = accentLive ? dotModular::mpe::zPressureFromVolts(readPoly(Z_B_INPUT, v)) : 0;
             const int zVal = (int)std::lround(dotModular::mpe::sumAroundRest(
                 (float)zA, (float)zB, 0.f, 0.f, 127.f));
 
@@ -303,22 +312,25 @@ struct Keppel : Module {
                 const int    pw14 = dotModular::mpe::bend14(resid + xTotal, (float)bendRange);
                 const int    ch   = allocMember(v, args.frame);
                 if (ch >= 0) {
-                    // Velocity at note-on (one-shot, latched). Two-layer: A = VEL CV (patched) or the
-                    // two-level fallback (velNormal / velAccent); B = VEL_B CV (patched, additive) or the
-                    // default accent boost. Back-compat: VEL patched overrides accent entirely (velB=0
-                    // default), matching the original "overrides accent when patched". With NEITHER VEL nor
-                    // VEL_B patched, accent → velAccent, else velNormal (exactly the original behaviour).
+                    // Velocity at note-on (one-shot, latched). Two-layer, Model A: A = VEL CV (patched) or
+                    // the velNormal base; B = the accent layer, applied ONLY when accentLive (A∧B gate at
+                    // the note onset) — patched VEL_B if present, else the velAccent boost. Consistent with
+                    // X/Y/Z: the B layer is accent-gated in EVERY dimension, so a patched VEL_B does nothing
+                    // unless the accent (B) gate is also high at note-on. (This revises the earlier
+                    // "VEL patched overrides accent entirely" back-compat note — accent is now the B gate.)
                     int velA, velB;
                     if (inputs[VEL_INPUT].isConnected()) {
                         velA = clamp127((int)std::round(inputs[VEL_INPUT].getPolyVoltage(v) / 10.f * 127.f), 1);
-                        velB = inputs[VEL_B_INPUT].isConnected()
+                        velB = (accentLive && inputs[VEL_B_INPUT].isConnected())
                             ? clamp127((int)std::round(inputs[VEL_B_INPUT].getPolyVoltage(v) / 10.f * 127.f), 0)
-                            : 0;   // no accent default when VEL is patched (user took explicit control)
+                            : 0;
                     } else {
                         velA = velNormal;
-                        velB = inputs[VEL_B_INPUT].isConnected()
-                            ? clamp127((int)std::round(inputs[VEL_B_INPUT].getPolyVoltage(v) / 10.f * 127.f), 0)
-                            : (accentLive ? (velAccent - velNormal) : 0);
+                        velB = accentLive
+                            ? (inputs[VEL_B_INPUT].isConnected()
+                                ? clamp127((int)std::round(inputs[VEL_B_INPUT].getPolyVoltage(v) / 10.f * 127.f), 0)
+                                : (velAccent - velNormal))
+                            : 0;
                     }
                     const int vel = clamp127(velA + velB, 1);
                     // BEND FIRST, THEN note-on (note starts at pitch, not sliding in), THEN initial Y/Z so
