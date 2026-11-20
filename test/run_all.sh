@@ -109,6 +109,7 @@ TESTS=(
   "test_monotone_curve|"   # header-only: the .dmcurve Phase 1 math module (jansson via test/jansson.h shim)
   "test_MpeMath|"
   "test_MpeTransmitter|"   # the generic CV→MPE-out substrate (Layer 1): channel alloc (LRU + steal), MPE config handshake (once + on range change), note lifecycle (bend→noteon→cc74→pressure), dedupe, note-off RELEASE VELOCITY, re-articulation (neutral release, reused vel), allNotesOff
+  "test_MpeReceiver|"      # the generic MPE-in→poly substrate (mirror): channel→voice map, note lifecycle + release velocity, bend→pitch via reconstructVolts, CC74→Y / pressure→Z, and the MpeMath inverse mappers (exact round-trip against the forward mappers)
   "test_multistep|"
   "test_note_length|$PE"   # DOTTED BUILD: the varyNoteIndex rank-window pins need PatternEngine.cpp
   "test_ownership_flip|$PE $SE $GS"   # layer-2 (ZAI_PROMPT_delegation_decision.md §4): the 16×7 owner-flip grid + warp-derivation pin — Rodney's 3-case rule fails a suite, not in ears

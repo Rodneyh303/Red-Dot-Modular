@@ -98,6 +98,28 @@ patch; and a future MIDI-2.0 path replaces the TRANSPORT in (1) without touching
 keeps the door open for other MPE uses (expressive performance, CA-driven timbre/pressure morphs) that
 don't involve tuning at all.
 
+## MPE-in mirror (the reverse direction) -- core built
+The symmetric counterpart to Keppel: an MPE-IN module (MPE MIDI -> poly CV). Worth building because stock
+VCV MIDI-CV in MPE mode is limited where it matters here: no native CC74/Y output (its mod-wheel out is
+CC1 -- you reconfigure the controller or bolt on a separate MIDI-CC in MPE mode), V/OCT and pitch-bend
+come out on SEPARATE ports (you sum them yourself for true microtonal pitch), and there is no release-
+velocity output. The mirror is one integrated module: per-voice true-pitch V/OCT (bend folded in at the
+set range), GATE, VEL, RELEASE VEL, Y (CC74), Z (pressure), optional raw X.
+
+In is the EASIER half -- the hard MPE problems (channel allocation, voice stealing, the config handshake)
+all live on OUT. Rack's `midi::InputQueue` does the byte parsing; the receiver is bookkeeping: track each
+member channel's note/bend/CC74/pressure/vel and map member channel -> poly voice.
+
+STATUS: core built + tested. `src/dsp/MpeReceiver.hpp` (`dotModular::mpe::MpeReceiver`, Rack-agnostic,
+mirror of MpeTransmitter): `handleMessage(status,ch,d1,d2)` maintains per-voice state; accessors return CV
+in Keppel's exact conventions, so an out->in loop is identity. Shares MpeMath -- `reconstructVolts` (pitch)
+was already there + tested; added the exact inverse mappers (`yVoltsFromCc74`, `zVoltsFromPressure`,
+`velVoltsFrom127`, `xVoltsFromSemis`, `bendSemisFrom14`). test/test_MpeReceiver.cpp (10 cases) pins it,
+incl. exact value->CV->value round-trips. Bend range must match the sender (default ±48); auto-setting it
+by parsing incoming MCM/RPN is a refinement. Zone-wide master-channel handling (global bend on all voices)
+is a documented v1 omission. REMAINING: the thin Rack face (InputQueue -> receiver -> poly outputs, +
+optional output smoothing) -- needs a Rack build + feel-test.
+
 ## Inputs (already available on dot.modular outputs -- Rodney confirmed)
 - **Poly pitch CV** (1V/oct, up to 16 channels) -- from a Monsoon/Colonnades/Duo poly pitch output.
 - **Poly gate** (up to 16 channels, matching the pitch cable's voices) -- ALREADY output by dot.modular
