@@ -110,15 +110,25 @@ In is the EASIER half -- the hard MPE problems (channel allocation, voice steali
 all live on OUT. Rack's `midi::InputQueue` does the byte parsing; the receiver is bookkeeping: track each
 member channel's note/bend/CC74/pressure/vel and map member channel -> poly voice.
 
-STATUS: core built + tested. `src/dsp/MpeReceiver.hpp` (`dotModular::mpe::MpeReceiver`, Rack-agnostic,
-mirror of MpeTransmitter): `handleMessage(status,ch,d1,d2)` maintains per-voice state; accessors return CV
-in Keppel's exact conventions, so an out->in loop is identity. Shares MpeMath -- `reconstructVolts` (pitch)
-was already there + tested; added the exact inverse mappers (`yVoltsFromCc74`, `zVoltsFromPressure`,
-`velVoltsFrom127`, `xVoltsFromSemis`, `bendSemisFrom14`). test/test_MpeReceiver.cpp (10 cases) pins it,
-incl. exact value->CV->value round-trips. Bend range must match the sender (default ±48); auto-setting it
-by parsing incoming MCM/RPN is a refinement. Zone-wide master-channel handling (global bend on all voices)
-is a documented v1 omission. REMAINING: the thin Rack face (InputQueue -> receiver -> poly outputs, +
-optional output smoothing) -- needs a Rack build + feel-test.
+STATUS: core + face built. Core: `src/dsp/MpeReceiver.hpp` (`dotModular::mpe::MpeReceiver`, Rack-agnostic,
+mirror of MpeTransmitter): `handleMessage(status,ch,d1,d2)` -- status is the high NIBBLE (0x8/0x9/..., as
+Rack's midi::Message::getStatus() returns) -- maintains per-voice state; accessors return CV in Keppel's
+exact conventions, so an out->in loop is identity. Shares MpeMath -- `reconstructVolts` (pitch) was
+already there + tested; added the exact inverse mappers (`yVoltsFromCc74`, `zVoltsFromPressure`,
+`velVoltsFrom127`, `xVoltsFromSemis`, `bendSemisFrom14`). Tests: test/test_MpeReceiver.cpp (10 cases) +
+test/test_MpeRoundTrip.cpp (6 cases) -- the latter drives MpeTransmitter, pipes its messages into
+MpeReceiver, and proves tx→rx identity (MIDI-domain exact + CV-domain within quantisation). Bend range
+must match the sender (default ±48); auto-setting it by parsing incoming MCM/RPN is a refinement.
+Zone-wide master-channel handling (global bend on all voices) is a documented v1 omission.
+
+Face: `src/Woodlands.cpp` [WORKING NAME -- Singapore's inbound checkpoint, mirroring Keppel the outbound
+harbour; rename before release, the slug is set in Woodlands.cpp + plugin.json + gen_woodlands.py].
+InputQueue -> receiver -> poly outputs (PITCH with bend folded in / GATE / VEL / R-VEL / Y / Z / X),
+bend-range knob, member-channel menu, MIDI input display. Panel: panel_src/gen_woodlands.py (single
+geometry source) -> res/panels/Woodlands_panel_{dark,light}.svg; the anchor↔bind audit passes (13
+anchors, all bound). Registered in plugin.cpp + plugin.json + Monsoon.hpp. REMAINING: like Keppel, the
+module face can't be compiled headless -- needs a Rack build + a visual feel-test (and optional output
+smoothing on the 7-bit Y/Z to avoid stair-stepping).
 
 ## Inputs (already available on dot.modular outputs -- Rodney confirmed)
 - **Poly pitch CV** (1V/oct, up to 16 channels) -- from a Monsoon/Colonnades/Duo poly pitch output.

@@ -117,6 +117,12 @@ MODULES = {
         # families), so no `counts` — the 1:1 anchor↔bind check alone covers the 12 inputs + monitor
         # + param + midi_display + light + 3 label anchors.
     },
+    "woodlands": {
+        "widget": ["src/Woodlands.cpp"],
+        "panel": "res/panels/Woodlands_panel_dark.svg",
+        # Mirror of Keppel (MPE in → poly CV). All anchors explicit (no prefix families): 7 output
+        # jacks + param_bendrange + midi_display + light_active + wordmark + 2 label anchors.
+    },
     "causeway": {
         "widget": ["src/MonsoonCausewayPolyExpander.cpp"],
         "panel": "res/panels/Causeway_panel_dark.svg",

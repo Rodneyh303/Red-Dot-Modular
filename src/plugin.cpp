@@ -109,6 +109,7 @@ void init(rack::Plugin* p) {
         p->addModel(modelColonnadesDuo);                 // tuning+scale authoring, 24-tone (microtonal Phase 3)
         p->addModel(modelMonsoonShophouseMicro);         // tuning+scale scene modulator for Colonnades/Duo (.dmtune fronts)
         p->addModel(modelKeppel);                        // poly microtonal CV → MPE MIDI out (standalone utility)
+        p->addModel(modelWoodlands);                     // MPE MIDI in → poly CV (mirror of Keppel) [working name]
         p->addModel(modelLantern);                       // Lantern note-output visualiser
         // West retired (Straits redesign): p->addModel(modelMonsoonStraitWestExpander);
         //p->addModel(modelMonsoonStraitsSands);          // Macro: global DNA

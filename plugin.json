@@ -324,6 +324,17 @@
       ]
     },
     {
+      "slug": "Woodlands",
+      "name": "Woodlands",
+      "description": "MPE MIDI-in to poly CV utility (the mirror of Keppel). Receives MPE Lower-Zone input and emits per-voice true (microtonal) pitch V/OCT with the member bend folded in at the set range, plus gate, velocity, release velocity, Y (CC74 timbre), Z (channel pressure) and a standalone X (raw bend). Working name.",
+      "tags": [
+        "MIDI",
+        "Polyphonic",
+        "External",
+        "Utility"
+      ]
+    },
+    {
       "slug": "DmcurveDevHost",
       "name": "DmcurveDevHost",
       "description": "DEV ONLY - standalone host for the .dmcurve distribution curve editor widget. Renders any distribution (CDF + PDF) and, for the drawn case, supports monotone-clamped point editing. No engine wiring; not intended for patches.",
