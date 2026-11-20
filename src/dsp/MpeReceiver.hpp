@@ -21,7 +21,7 @@
 #include <array>
 #include <cstdint>
 
-#include "dsp/MpeMath.hpp"
+#include "MpeMath.hpp"   // sibling in src/dsp/ — quote-include resolves relative to this header
 
 namespace dotModular {
 namespace mpe {
