@@ -28,10 +28,12 @@ As Keppel is cleaned up, keep THREE layers of concern distinct -- they are easy 
 microtonal case drove the build, but they are not the same thing:
 
 1. **General MPE-out (the substrate).** Per-voice member-channel allocation (LRU), the MPE Lower-Zone
-   config/RPN handshake, bend-range management, note/gate/velocity plumbing, the two-layer A+B expression
-   summing, and the X/Y/Z -> bend/CC74/channel-pressure wire encoding. This is a complete, reusable
-   CV->MPE transmitter. It knows nothing about tuning or about dot.modular. ANY poly CV source could
-   drive it.
+   config/RPN handshake, bend-range management, note/gate/velocity plumbing, the two-layer expression
+   mechanism (per dimension: a base layer A + an additive layer B, where B is gated by a trigger that is
+   itself bounded by A's note lifetime -- a NESTED gate), and the X/Y/Z -> bend/CC74/channel-pressure
+   wire encoding. This is a complete, reusable CV->MPE transmitter. It knows nothing about tuning or about
+   dot.modular. ANY poly CV source could drive it -- describe the B layer without the word "accent" and
+   nothing breaks.
 
 2. **Microtonal-specific (one application of the substrate).** The nearest-12-TET note + per-note cents
    split, cents->bend14 mapping, the narrow-bend-range default (+/-2) chosen to carry +/-50c, the
@@ -46,6 +48,33 @@ microtonal case drove the build, but they are not the same thing:
    ([[CA_EXPRESSION_CV_CORRELATION]]); the within-legato STEP_GATE grid tied to the sequencer's legato
    model; Singapore-geography naming; panel kit. This is where Keppel is a dot.modular citizen rather
    than a generic utility.
+
+### Worked example: "accent" is a core mechanism + a dot.modular skin
+Accent is the case that *felt* ambiguous between (1) and (3), and resolving it validates the model.
+Split it:
+- **Core mechanism (1):** the two-layer nested gate above. Strip Keppel to a transmitter and describe
+  it without the word accent -- "each dimension (velocity, X, Y, Z) has a base input A and an additive
+  input B gated by a trigger bounded by A." Velocity itself is core too (every note has one). Hand that
+  to someone with no dot.modular and they patch their own trigger to B; they never need to hear "accent".
+- **dot.modular skin (3):** that the B trigger IS the sequencer's ACCENT lane; the two-level velocity
+  fallback (velNormal/velAccent) and the opinionated unpatched-B defaults (velAccent, yAccentBrighten)
+  that make "patch just our ACCENT lane" sound musical for free; and the within-legato accent model.
+  The *word* accent, the defaults, and the lane wiring are the skin; the gated additive layer is the
+  mechanism.
+
+**Containment principle (the subgate parallel):** B is always bounded by A -- expression only transmits
+while the note is live -- exactly as STEP_GATE subdivides only within a held legato. The accent gate is
+a sub-window *inside* the note gate, the same shape as a subgate.
+
+**OPEN DECISION (patched-B accent window):** the current code is a hybrid -- an UNPATCHED B default fires
+only during (A gate AND accent gate) via `accentLive`, but a PATCHED B is summed across the WHOLE A gate,
+not just the accent sub-window. So "B accent-gated additive" is only true for the unpatched default.
+Two coherent models:
+- **Model A (nested gate, matches the name + subgate parallel):** B contributes only during (A AND
+  accent trigger), patched or unpatched -> B literally IS "the accented sublayer."
+- **Model B (current hybrid):** patched B is a free second layer over the whole note; accent only picks
+  defaults -> more flexible, but "accent" overclaims what a patched B does.
+  Lean: Model A for coherence; it's a behaviour change for patched B (Rack feel-test). Revisit after UAS.
 
 Why it matters for the cleanup: a clean split means the general MPE-out substrate (1) stays a solid,
 testable transmitter; microtonal (2) is a mode that could be turned off for a straight expressive-MPE
