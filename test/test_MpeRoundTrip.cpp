@@ -109,6 +109,27 @@ int main() {
         }
     });
 
+    SUITE("fixed allocation → voice-stable round-trip");
+    TEST("Keppel Fixed maps voice v → rx voice v, regardless of which voices are active", {
+        MpeTransmitter tx; tx.alloc = MpeTransmitter::Alloc::Fixed; MpeReceiver rx; rx.bendRangeSemis = R;
+        tx.beginBlock((int)R, 0);
+        tx.noteOn(2, 64, 8192, 64, 0, 100, 0);   // only voice 2 active → member ch 3 → rx voice 2
+        pipe(tx, rx);
+        EXPECT(rx.active(2) && rx.note(2) == 64);
+        EXPECT(!rx.active(0) && !rx.active(1));   // not smeared onto voice 0 (the LRU-walk failure)
+    });
+
+    SUITE("handshake carries the bend range (auto-match)");
+    TEST("rx.detectedBendRange picks up the range Keppel put in its MPE config", {
+        MpeTransmitter tx; MpeReceiver rx;
+        tx.beginBlock(12, 0);                     // handshake at ±12
+        pipe(tx, rx);
+        EXPECT(rx.detectedBendRange == 12);
+        tx.beginBlock(48, 0);                     // range change → re-handshake at ±48
+        pipe(tx, rx);
+        EXPECT(rx.detectedBendRange == 48);
+    });
+
     std::cout << "\n" << (g_fail ? "\033[31m" : "\033[32m")
               << g_pass << " passed, " << g_fail << " failed\033[0m\n";
     return g_fail ? 1 : 0;

@@ -148,6 +148,27 @@ int main() {
         EXPECT(indexOf(tx.outbox, 0x9) > 0 && tx.outbox[indexOf(tx.outbox, 0x9)].d1 == 64);
     });
 
+    SUITE("fixed allocation (voice = channel)");
+    TEST("voice v → member channel v+1, stable and independent of order", {
+        MpeTransmitter tx; tx.alloc = MpeTransmitter::Alloc::Fixed;
+        tx.beginBlock(2, 0); tx.beginBlock(2, 0);
+        tx.noteOn(2, 64, 8192, 64, 0, 100, 0);    // voice 2 first → still member channel 3
+        EXPECT(tx.voices[2].memberCh == 3);
+        tx.noteOn(0, 60, 8192, 64, 0, 100, 0);    // voice 0 → member channel 1
+        EXPECT(tx.voices[0].memberCh == 1);
+        // A voice that stops and restarts returns to the SAME channel (no walking).
+        tx.beginBlock(2, 0); tx.noteOff(2, 64, 0);
+        tx.beginBlock(2, 0); tx.noteOn(2, 67, 8192, 64, 0, 100, 0);
+        EXPECT(tx.voices[2].memberCh == 3);
+    });
+    TEST("voices past the member zone are dropped (no channel, no messages)", {
+        MpeTransmitter tx; tx.alloc = MpeTransmitter::Alloc::Fixed; tx.memberCount = 4;
+        tx.beginBlock(2, 0); tx.beginBlock(2, 0);
+        tx.noteOn(4, 60, 8192, 64, 0, 100, 0);    // voice 4 needs channel 5 > memberCount 4 → dropped
+        EXPECT(!tx.active(4) && tx.voices[4].memberCh == -1);
+        EXPECT(tx.outbox.empty());
+    });
+
     SUITE("teardown");
     TEST("allNotesOff silences every active voice and clears the pool", {
         MpeTransmitter tx; tx.memberCount = 4; tx.beginBlock(2, 0); tx.beginBlock(2, 0);

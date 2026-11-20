@@ -105,6 +105,33 @@ int main() {
         EXPECT(std::fabs(rx.zVolts(0) - zVoltsFromPressure(80)) < 1e-6);
     });
 
+    SUITE("bend-range detection (RPN 0 from the MPE handshake)");
+    TEST("RPN 0 Data Entry MSB sets detectedBendRange (on master and member channels)", {
+        MpeReceiver rx;
+        EXPECT(rx.detectedBendRange == 0);                  // nothing seen yet
+        rx.handleMessage(0xB, 0, 101, 0);                   // RPN MSB 0 (master)
+        rx.handleMessage(0xB, 0, 100, 0);                   // RPN LSB 0 → pitch-bend sensitivity
+        rx.handleMessage(0xB, 0, 6, 24);                    // Data Entry MSB = 24 semitones
+        EXPECT(rx.detectedBendRange == 24);
+        rx.handleMessage(0xB, 1, 101, 0);                   // same on a member channel, range 48
+        rx.handleMessage(0xB, 1, 100, 0);
+        rx.handleMessage(0xB, 1, 6, 48);
+        EXPECT(rx.detectedBendRange == 48);
+    });
+    TEST("a bare CC6 without an RPN-0 select does NOT move the range", {
+        MpeReceiver rx;
+        rx.handleMessage(0xB, 1, 6, 12);                    // no 101/100 first → ignored (RPN null)
+        EXPECT(rx.detectedBendRange == 0);
+    });
+    TEST("RPN config CCs don't leak into CC74 / voice state", {
+        MpeReceiver rx;
+        rx.handleMessage(0x9, 1, 60, 100);
+        rx.handleMessage(0xB, 1, 101, 0);
+        rx.handleMessage(0xB, 1, 100, 0);
+        rx.handleMessage(0xB, 1, 6, 48);
+        EXPECT(rx.voices[0].cc74 == 64);                    // untouched (CC6/101/100 are not CC74)
+    });
+
     SUITE("out→in loop identity (Keppel conventions)");
     TEST("CC74/pressure survive a value→CV→value round-trip through both headers", {
         MpeReceiver rx;

@@ -101,6 +101,10 @@ struct Keppel : Module {
         configInput(STEP_GATE_INPUT, "Poly within-legato (step) gate — inner note divisions / forced re-artic grid");
         configOutput(MONITOR_OUTPUT, "Reverse-calc monitor: reconstructed pitch CV (scope vs PITCH in)");
         midiOut.channel = -1;     // we set each message's channel ourselves (per-voice MPE)
+        // CV→MPE: the input poly-voice index is meaningful, so default to a STABLE voice→channel mapping
+        // (voice v → member v+1). Keeps a voice on one MIDI channel over time — a Keppel→MPE-in loop then
+        // lands on the same voice. Menu switches to Dynamic (LRU) for a real MPE synth / stealing.
+        tx.alloc = dotModular::mpe::MpeTransmitter::Alloc::Fixed;
     }
 
     // ── drain the transmitter's outbox into the MIDI port (RawMsg → midi::Message). The core builds the
@@ -308,6 +312,7 @@ struct Keppel : Module {
         json_object_set_new(root, "velNormal", json_integer(velNormal));
         json_object_set_new(root, "velAccent", json_integer(velAccent));
         json_object_set_new(root, "reArticulateOnExceed", json_boolean(reArticulateOnExceed));
+        json_object_set_new(root, "fixedAlloc", json_boolean(tx.alloc == dotModular::mpe::MpeTransmitter::Alloc::Fixed));
         return root;
     }
     void dataFromJson(json_t* root) override {
@@ -326,6 +331,9 @@ struct Keppel : Module {
         readVel("velAccent", velAccent);
         if (json_t* j = json_object_get(root, "reArticulateOnExceed"))
             reArticulateOnExceed = json_boolean_value(j);
+        if (json_t* j = json_object_get(root, "fixedAlloc"))
+            tx.alloc = json_boolean_value(j) ? dotModular::mpe::MpeTransmitter::Alloc::Fixed
+                                             : dotModular::mpe::MpeTransmitter::Alloc::Dynamic;
         midiOut.channel = -1;
         tx.needHandshake = true;   // re-handshake after a patch load
     }
@@ -409,6 +417,19 @@ struct KeppelWidget : ModuleWidget,
                 }
             }));
         menu->addChild(new MenuSeparator);
+        // Channel assignment: Fixed = stable voice→channel (best for CV→MPE and round-tripping back);
+        // Dynamic = LRU first-free + steal (standard MPE, for a real synth / voices > member channels).
+        using Alloc = dotModular::mpe::MpeTransmitter::Alloc;
+        menu->addChild(createSubmenuItem("Channel assignment",
+            mod->tx.alloc == Alloc::Fixed ? "Fixed (voice=channel)" : "Dynamic (LRU)",
+            [mod](Menu* sub) {
+                sub->addChild(createCheckMenuItem("Fixed (voice = channel)", "",
+                    [mod]() { return mod->tx.alloc == Alloc::Fixed; },
+                    [mod]() { mod->panic(); mod->tx.alloc = Alloc::Fixed; }));
+                sub->addChild(createCheckMenuItem("Dynamic (LRU + steal)", "",
+                    [mod]() { return mod->tx.alloc == Alloc::Dynamic; },
+                    [mod]() { mod->panic(); mod->tx.alloc = Alloc::Dynamic; }));
+            }));
         menu->addChild(createBoolPtrMenuItem("Re-articulate on big slides", "", &mod->reArticulateOnExceed));
         menu->addChild(createMenuItem("Panic (all notes off)", "", [mod]() { mod->panic(); }));
         menu->addChild(createMenuItem("Re-send MPE config", "", [mod]() { mod->tx.needHandshake = true; }));

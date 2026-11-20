@@ -39,6 +39,15 @@ struct MpeTransmitter {
                                                  // neutral release velocity — no player release occurred.
     int memberCount = MAX_MEMBERS;
 
+    // Member-channel assignment policy.
+    //   Dynamic: LRU first-free, steal the oldest when full — standard MPE (a note takes whatever channel
+    //            is free, so a given voice can move channel over time). Right for a real MPE synth.
+    //   Fixed:   voice v -> member channel v+1, STABLE over time — the input poly-voice index is preserved,
+    //            which is what a CV->MPE converter wants (and what makes a loop back through MpeReceiver
+    //            land on the same voice). Voices beyond the member zone are dropped (raise memberCount).
+    enum class Alloc { Dynamic, Fixed };
+    Alloc alloc = Alloc::Dynamic;   // core default Dynamic (preserves the LRU contract); faces opt into Fixed
+
     // Per-voice (poly channel) assignment + last-sent state, for edge-driven lifecycle + dedupe.
     struct Voice {
         bool active     = false;
@@ -105,6 +114,11 @@ struct MpeTransmitter {
 
     // ── member-channel allocation (LRU) ─────────────────────────────────────────────────────────────
     int allocMember(int v, int64_t f) {
+        if (alloc == Alloc::Fixed) {
+            // Stable voice->channel: voice v owns member channel v+1 for the whole session. No LRU, no
+            // stealing. Voices past the member zone get no channel (dropped) — raise memberCount to fit.
+            return (v >= 0 && v < memberCount) ? v + 1 : -1;
+        }
         for (int ch = 1; ch <= memberCount; ++ch) {
             if (memberOwner[ch] < 0) { memberOwner[ch] = v; lruOrder.push_back(ch); return ch; }
         }

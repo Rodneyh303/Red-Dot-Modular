@@ -13,6 +13,7 @@
 // The receiver logic it delegates to IS unit-tested; the face needs a Rack build + a visual feel-test.
 
 #include <rack.hpp>
+#include <cmath>
 #include "Monsoon.hpp"                    // pluginInstance
 #include "ui/SvgPanelKit.hpp"             // Compose / ShapeQuery / Bind / Reload mixins
 #include "dsp/MpeReceiver.hpp"
@@ -38,6 +39,7 @@ namespace WoodlandsIds {
 struct Woodlands : Module {
     midi::InputQueue midiInput;
     dotModular::mpe::MpeReceiver rx;
+    bool followSenderRange = true;   // auto-match the sender's bend range from its MPE handshake
 
     Woodlands() {
         using namespace WoodlandsIds;
@@ -65,6 +67,15 @@ struct Woodlands : Module {
             rx.handleMessage(msg.getStatus(), msg.getChannel(), msg.getNote(), msg.getValue());
         }
 
+        // Follow the sender: if a bend range arrived in the MPE handshake (RPN 0), decode at that range
+        // AND write it back to the knob so the panel never silently disagrees with what's being decoded.
+        // Toggle off to use the knob as a manual override.
+        if (followSenderRange && rx.detectedBendRange >= 1) {
+            rx.bendRangeSemis = (float)rx.detectedBendRange;
+            if ((int)std::round(params[BEND_RANGE_PARAM].getValue()) != rx.detectedBendRange)
+                params[BEND_RANGE_PARAM].setValue((float)rx.detectedBendRange);
+        }
+
         const int n = rx.maxVoices();
         for (int id : {PITCH_OUTPUT, GATE_OUTPUT, VEL_OUTPUT, RVEL_OUTPUT, Y_OUTPUT, Z_OUTPUT, X_OUTPUT})
             outputs[id].setChannels(n);
@@ -87,6 +98,7 @@ struct Woodlands : Module {
         json_t* root = json_object();
         json_object_set_new(root, "midi", midiInput.toJson());
         json_object_set_new(root, "memberCount", json_integer(rx.memberCount));
+        json_object_set_new(root, "followSenderRange", json_boolean(followSenderRange));
         return root;
     }
     void dataFromJson(json_t* root) override {
@@ -96,6 +108,8 @@ struct Woodlands : Module {
             rx.memberCount = v < 1 ? 1 : (v > dotModular::mpe::MpeReceiver::MAX_MEMBERS
                                               ? dotModular::mpe::MpeReceiver::MAX_MEMBERS : v);
         }
+        if (json_t* j = json_object_get(root, "followSenderRange"))
+            followSenderRange = json_boolean_value(j);
     }
 };
 
@@ -146,7 +160,11 @@ struct WoodlandsWidget : ModuleWidget,
                 }
             }));
         menu->addChild(new MenuSeparator);
-        menu->addChild(createMenuLabel("Set bend range to match your sender (MPE default 48)"));
+        // When on, the incoming MPE handshake sets the bend range and the knob follows it (no silent
+        // mismatch). Turn off to use the knob as a manual override.
+        menu->addChild(createBoolPtrMenuItem("Follow sender's bend range (MPE config)", "",
+            &mod->followSenderRange));
+        menu->addChild(createMenuLabel("(off: set the knob to match your sender; MPE default 48)"));
     }
 
     void step() override {

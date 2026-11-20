@@ -42,7 +42,19 @@ struct MpeReceiver {
     };
     std::array<Voice, 16> voices{};
 
-    void reset() { for (auto& v : voices) v = Voice{}; }
+    // RPN parse state (per channel) for picking up the sender's pitch-bend sensitivity from its MPE
+    // handshake, so the face can auto-match bend range. 0x7f == RPN null (nothing selected).
+    std::array<int, 16> rpnMsb_{};
+    std::array<int, 16> rpnLsb_{};
+    int detectedBendRange = 0;   // 0 = none seen yet; else semitones from RPN 0 Data Entry MSB
+
+    MpeReceiver() { rpnMsb_.fill(0x7f); rpnLsb_.fill(0x7f); }
+
+    void reset() {
+        for (auto& v : voices) v = Voice{};
+        rpnMsb_.fill(0x7f); rpnLsb_.fill(0x7f);
+        detectedBendRange = 0;
+    }
 
     // Member channel index (1..memberCount) → output poly voice (0..memberCount-1); -1 if out of zone
     // (master channel 0, or beyond the lower zone).
@@ -54,8 +66,24 @@ struct MpeReceiver {
     // MpeTransmitter emits and that Rack's midi::Message::getStatus() returns (bytes[0] >> 4). `channel`
     // is 0..15; d1/d2 are the two data bytes.
     void handleMessage(uint8_t status, uint8_t channel, uint8_t d1, uint8_t d2) {
+        // Control change first — some CCs are zone config (RPN) and arrive on the master channel too, so
+        // they are handled before the member-channel voice gate.
+        if (status == 0xB) {
+            if (d1 == 101) { rpnMsb_[channel] = d2; return; }        // RPN MSB select
+            if (d1 == 100) { rpnLsb_[channel] = d2; return; }        // RPN LSB select
+            if (d1 == 6 && rpnMsb_[channel] == 0 && rpnLsb_[channel] == 0) {
+                detectedBendRange = d2;                              // RPN 0 Data Entry MSB = bend sensitivity (semitones)
+                return;
+            }
+            if (d1 == 74) {                                          // Y / timbre on a member channel
+                int v = voiceForChannel(channel);
+                if (v >= 0) voices[v].cc74 = d2;
+            }
+            return;                                                  // other CCs: v1 ignores
+        }
+
         int v = voiceForChannel(channel);
-        if (v < 0) return;                         // master / out-of-zone: v1 ignores (see header)
+        if (v < 0) return;                         // master / out-of-zone note data: v1 ignores
         Voice& vs = voices[v];
         switch (status) {
             case 0x9:                              // note-on (velocity 0 == note-off)
@@ -67,9 +95,6 @@ struct MpeReceiver {
                 break;
             case 0xE:                              // pitch bend (LSB d1, MSB d2) → member bend
                 vs.bend14 = (int)d1 | ((int)d2 << 7);
-                break;
-            case 0xB:                              // CC — MPE Y is CC74
-                if (d1 == 74) vs.cc74 = d2;
                 break;
             case 0xD:                              // channel pressure → Z
                 vs.pressure = d1;
