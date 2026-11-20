@@ -289,6 +289,14 @@ struct Keppel : Module {
                 (float)zA, (float)zB, 0.f, 0.f, 127.f));
 
             if (rising) {
+                // Why Keppel exists — vs stock CV→MIDI. Core CV_MIDI.cpp does the SAME nearest-note round
+                // (note = round(pitchV*12 + 60), clamp 0..127) but then DISCARDS the fractional cents: its
+                // pitch wheel is a separate global PW input read on channel 0 only, not derived from the
+                // pitch CV, so microtonal detail is rounded away and 12-TET is all that reaches the DAW.
+                // (The round lives in the MODULE, not dsp::MidiGenerator — that class is transport-only and
+                // takes an already-integer note via setNoteGate.) Keppel rounds the same way with noteFor,
+                // then KEEPS the remainder (centsOffsetSemis) and encodes it as a PER-VOICE 14-bit bend on
+                // this voice's member channel — recovering exactly the information stock CV_MIDI throws out.
                 const int note  = dotModular::mpe::noteFor(pitchV);
                 // Bend at note-on = centred residual + X expression (X bypasses the quantiser).
                 const float resid = dotModular::mpe::centsOffsetSemis(pitchV);
