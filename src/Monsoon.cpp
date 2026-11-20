@@ -767,10 +767,17 @@ void Monsoon::onPhraseBoundary_() {
 void Monsoon::onExpanderChange(const ExpanderChangeEvent& e) {
     // THE LOOKUP AUTHORITY (CC_PROMPT_MODULE_LOOKUP_AUTHORITY_START): the event is
     // the sole trigger — it bumps the global topology epoch (every consumer's memo
-    // re-resolves on its next read) AND refreshes Monsoon's own claimed-expander
-    // publication.
+    // re-resolves on its next read).
     redDot::bumpTopologyEpoch();
-    updateExpanderPointers();
+    // DO NOT scan here. Rack fires onExpanderChange UNDER the engine mutex during module removal, and
+    // updateExpanderPointers() calls getModuleIds(), which re-locks that non-recursive mutex → deadlock
+    // (Rack hangs when a Monsoon neighbour is deleted — and when Monsoon itself is deleted next to a
+    // neighbour, since the detach fires this handler too). The eager call was only a latency
+    // optimisation: process() re-resolves on the next Control tick via lookupEpochStale() (see the
+    // Control block, ~line 1749), the deferred pattern EVERY other family handler already uses
+    // (MonsoonStraitsExpander / StraitsLaneExpander etc. only bump the epoch here). getModuleIds() is
+    // documented elsewhere as the re-lock hazard (Intertropical.cpp "process() is the safe place").
+    (void)e;
 }
 
 // ---------------- Helper: reset hook -----------------------------------------
