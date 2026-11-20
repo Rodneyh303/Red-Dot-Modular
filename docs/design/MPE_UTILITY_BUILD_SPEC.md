@@ -34,6 +34,15 @@ microtonal case drove the build, but they are not the same thing:
    wire encoding. This is a complete, reusable CV->MPE transmitter. It knows nothing about tuning or about
    dot.modular. ANY poly CV source could drive it -- describe the B layer without the word "accent" and
    nothing breaks.
+   > **STATUS: EXTRACTED.** Layer 1 now lives in `src/dsp/MpeTransmitter.hpp` as a Rack-agnostic,
+   > unit-tested class (`dotModular::mpe::MpeTransmitter`, test/test_MpeTransmitter.cpp, 9 cases): channel
+   > allocation (LRU + steal), the MPE config handshake, the note lifecycle, and dedupe. It emits RawMsg
+   > to an outbox the host drains into midi::Output. Keppel.cpp is now the FACE (CV read, microtonal
+   > split, A/B window, accent defaults, MONITOR) and delegates the transmitter to this class — so a
+   > second face (a standalone "CV→MPE" module) can be built on the same core without a fork.
+   > RELEASE VELOCITY is supported here: `noteOff(v, relVel, f)` emits 0x8 with a velocity byte; internal
+   > note-offs (steal / re-articulate) carry a neutral 64. Keppel samples release velocity from the VEL
+   > input at the falling edge (neutral 64 unpatched); a dedicated REL_VEL jack is a possible follow-up.
 
 2. **Microtonal-specific (one application of the substrate).** The nearest-12-TET note + per-note cents
    split, cents->bend14 mapping, the narrow-bend-range default (+/-2) chosen to carry +/-50c, the
