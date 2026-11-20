@@ -56,11 +56,19 @@ struct Keppel : Module {
     // X and Z silent). +32 CC74 ≈ half-range toward open/bright.
     int   yAccentBrighten = 32;
 
-    // Legato past ±bendRange: a single held note+bend can only CLAMP (wrong pitch) there. Default B
-    // (MPE_UTILITY_BUILD_SPEC): re-articulate — re-note on the same member channel so the pitch is
-    // always correct, at the cost of a retrigger. Menu-toggleable to the old CLAMP behaviour (smooth
-    // but capped) for players who patch the step gates and never exceed the range.
-    bool  reArticulateOnExceed = true;
+    // Expressive X bend past ±bendRange during a HELD gate: CLAMP (default) vs re-articulate.
+    //   - CLAMP (default): the bend rails at ±bendRange; the note stays alive, the slur/envelope is
+    //     preserved, and there is no boundary chatter. The cost is reach — the pitch ceilings at the
+    //     rail and the top of a big slide is lost (visible on MONITOR). A held gate means "sustain this
+    //     note", so a silent re-attack mid-gesture is the wrong default; widen the range for more reach.
+    //     The microtonal residual is ≤0.5 st, so with range ≥2 clamp NEVER mistunes the tuning content —
+    //     it only ever caps the expressive X.
+    //   - re-articulate (menu opt-in): re-note on the same member channel so the pitch tracks past the
+    //     range, at the cost of a retrigger (breaks the slur). For players who specifically want
+    //     unlimited glide reach.
+    // NOTE: this flag gates ONLY the over-range path. The within-legato STEP_GATE re-articulation is a
+    // separate, deliberate trigger (inner-note boundaries) and always fires regardless of this flag.
+    bool  reArticulateOnExceed = false;
 
     // Per-voice (poly channel) → member-channel assignment + last state, for edge detect + note-off.
     struct VoiceState {
