@@ -380,7 +380,12 @@ void SequencerEngine::pushMaskEditor(
     {
         const uint64_t painted = macroPatternBits[0] & kMaskLenMask;
         const int kind         = kindInt(macroKind);
-        const bool followR     = (macroFollowR != 0.f);
+        // (FOLLOW-R RETIRED 2026-11-21 — UAS "[RESOLVED] CYCLE-CONSISTENT ABSOLUTE MODE") the painted
+        // mask is STATIC: fixed to global-step positions, independent of R and voice direction. The
+        // stored/loaded follow-R flag is still READ (the argument) but ignored, so a patch saved with
+        // it on simply plays static. The re-pin below is dead and goes with the anchor code later.
+        (void)macroFollowR;
+        const bool followR     = false;
         const int  baseR       = macroVoiceLor_[LOR_ROT];
         // (CC_PROMPT_CADENCE_C4) THE ANCHOR CADENCE DECISION: this detector STAYS on
         // the BASE rotation — deliberately NOT repointed to the effective accessor,
@@ -411,7 +416,8 @@ void SequencerEngine::pushMaskEditor(
     for (int v = 0; v < kVoiceSlots; ++v) {
         const uint64_t painted = eastPatternBits[v] & kMaskLenMask;
         const int      kind    = kindInt(eastKind[v]);
-        const bool     followR = (eastFollowR[v] != 0.f);
+        (void)eastFollowR;   // (FOLLOW-R RETIRED — see the macro tier above) read, ignored: static
+        const bool     followR = false;
         maskLocalEast_[v]      = (localEast[v] != 0.f);
         const int  baseR       = voiceLorStore_[v][LOR_ROT];   // the row's base rotation
         if (painted != maskLastPushed_[v]) {                    // repaint / load: re-anchor

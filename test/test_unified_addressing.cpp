@@ -1308,17 +1308,20 @@ int main() {
         check(stillStatic, "STAGE4: abs2 is STATIC — an R turn does not move the mask");
         macroFollowR = 1.f;   // switch the row to abs3: the SAME base state re-pins once
         eng.pushMaskEditor(macroBits, macroKind, macroFollowR, eastBits, eastKind, eastFollowR, localEast);
-        check(eng.outputMaskPasses(M, 1) && !eng.outputMaskPasses(M, 2),
-              "STAGE4: abs3 follows-R — the re-pin moves the play cell one step EARLIER (the content direction)");
+        // (FOLLOW-R RETIRED 2026-11-21 — UAS RESOLVED block) pushing the flag is ignored: the painted
+        // mask is STATIC in global-step space whatever R does. (It used to re-pin one step EARLIER —
+        // right for a Forward voice, wrong for Reverse, and undefined for Pendulum/PingPong.)
+        check(eng.outputMaskPasses(M, 2) && !eng.outputMaskPasses(M, 1),
+              "STAGE4: follow-R RETIRED — the flag is ignored and an R turn does not move the painted mask (static)");
         eng.macroVoiceLorRef(SequencerEngine::LOR_ROT) = 7;
         eng.pushMaskEditor(macroBits, macroKind, macroFollowR, eastBits, eastKind, eastFollowR, localEast);
         check(eng.outputMaskPasses(M, 2) && !eng.outputMaskPasses(M, 1),
-              "STAGE4: abs3 re-pin is reversible — R back restores the painted position");
+              "STAGE4: R back — the painted position is unchanged (it never moved)");
         macroBits[0] = 1ULL << 9;   // a REPAINT: re-anchors at the current base R
         eng.macroVoiceLorRef(SequencerEngine::LOR_ROT) = 12;
         eng.pushMaskEditor(macroBits, macroKind, macroFollowR, eastBits, eastKind, eastFollowR, localEast);
         check(eng.outputMaskPasses(M, 9) && !eng.outputMaskPasses(M, 10),
-              "STAGE4: a repaint re-anchors at the painted R (the anchor law's fresh link)");
+              "STAGE4: a repaint lands where it is painted (static)");
         // (A4) THE FOLLOW-R EVALUATION HOOK (the doc's "the rotation MODULATION offsets
         // relative to the anchor" — implemented): a MODULATED R (the CV fold writes the
         // store past the anchor — NO push, NO re-pin) offsets the pattern LIVE by the
@@ -1328,9 +1331,9 @@ int main() {
         eng.macroVoiceLorRef(SequencerEngine::LOR_ROT) = 14;   // +2 past the anchor (12) — the fold
         bool hookOK = true;
         for (int s = 0; s < 16; ++s)
-            hookOK = hookOK && eng.outputMaskPasses(M, s) == (s == 7);   // bit 9 moves 2 EARLIER
-        hookOK = hookOK && eng.effectiveOutputMask(M) == (uint64_t)(1ULL << 7);
-        check(hookOK, "STAGE4: follow-R evaluates the modulated R — +2 past the anchor plays the pattern 2 steps earlier (live, no re-pin)");
+            hookOK = hookOK && eng.outputMaskPasses(M, s) == (s == 9);   // (FOLLOW-R RETIRED) static: bit 9 stays put under a modulated R
+        hookOK = hookOK && eng.effectiveOutputMask(M) == (uint64_t)(1ULL << 9);
+        check(hookOK, "STAGE4: follow-R RETIRED — a modulated R (+2 past the anchor) does NOT move the painted mask (static; a dedicated MASK shift control is the way to move it)");
         eng.macroVoiceLorRef(SequencerEngine::LOR_ROT) = 12;   // Δ=0: the anchored copy stands
         check(eng.outputMaskPasses(M, 9) && !eng.outputMaskPasses(M, 7),
               "STAGE4: the evaluation offset is RELATIVE — back at the anchor, the anchored position plays (no double rotation)");
@@ -1372,7 +1375,7 @@ int main() {
         // cell (0x1869F, was 0x869F); only the bits ≥ the ring (≥ 32) drop.
         const bool clampsOK = eng.maskMacroKind_ == 2            // lround(7.4) clamped -> 2
                            && eng.maskMacroAnchored_ == dotModular::kMaskLenMask   // ~0ULL & lenMask -> the ring's all-on (32 bits)
-                           && eng.maskMacroFollowR_ == true
+                           && eng.maskMacroFollowR_ == false     // (FOLLOW-R RETIRED 2026-11-21) the flag is read and IGNORED: the painted mask is static
                            && eng.maskKind_[v2.v] == 0           // -1 -> 0 (cycle)
                            && eng.maskAnchored_[v2.v] == 0x1869FULL // 99999 & lenMask -> 0x1869F (the ring mask law at 32 — the ANCHORED copy; the write-only maskPainted_ echo is retired)
                            && eng.maskLocalEast_[v2.v] == true;  // 0.5 -> local
@@ -1429,8 +1432,8 @@ int main() {
         macroFollowR = 1.f;
         eng.macroVoiceLorRef(SequencerEngine::LOR_ROT) = 8;
         eng.pushMaskEditor(macroBits, macroKind, macroFollowR, eastBits, eastKind, eastFollowR, localEast);
-        check(eng.effectiveOutputMaskMacro() == (1ULL << 1),
-              "STAGE4-DISP: abs3 re-pin ROTATES the returned bits (the strip visibly follows R)");
+        check(eng.effectiveOutputMaskMacro() == (1ULL << 2),
+              "STAGE4-DISP: follow-R RETIRED — the returned bits stay at the painted cell when R turns (static)");
         // DELEGATION: a local-mask voice's accessor reads its own row; a follower's
         // (and the macro accessor) read the Macro tier.
         for (int v = 0; v < 16; ++v) { eastBits[v]=65535ULL; eastKind[v]=2.f; }
@@ -1559,18 +1562,17 @@ int main() {
             float lor[3] = {8.f, 0.f, (float)R};
             eng.pushVoiceLorEditor(lor, 0.f, eastLor, eastDir, localEastFlag);
             eng.pushMaskEditor(macroBits, macroKind, macroFollowR, eastBits, eastKind, eastFollowR, localEast);
-            const int bit = ((2 - R) % 32 + 32) % 32;   // the figure moves R-earlier (the content direction)
-            sweepOK = sweepOK && eng.outputMaskPasses(M, bit);
-            if (R > 0) sweepOK = sweepOK && !eng.outputMaskPasses(M, 2);   // the figure MOVED off the painted cell
+            // (FOLLOW-R RETIRED 2026-11-21) static: the figure stays on the painted cell for every R
+            sweepOK = sweepOK && eng.outputMaskPasses(M, 2) && !eng.outputMaskPasses(M, ((2 - R) % 32 + 32) % 32 == 2 ? 3 : ((2 - R) % 32 + 32) % 32);
         }
         // R=15 authored -> clamped to 7 == the current anchor: NO further movement —
         // the figure can never reach where R 8..15 would have put it (bit 19 unreachable).
         float lor15[3] = {8.f, 0.f, 15.f};
         eng.pushVoiceLorEditor(lor15, 0.f, eastLor, eastDir, localEastFlag);
         eng.pushMaskEditor(macroBits, macroKind, macroFollowR, eastBits, eastKind, eastFollowR, localEast);
-        sweepOK = sweepOK && eng.outputMaskPasses(M, 27) && !eng.outputMaskPasses(M, 19) && !eng.outputMaskPasses(M, 2);
+        sweepOK = sweepOK && eng.outputMaskPasses(M, 2) && !eng.outputMaskPasses(M, 27) && !eng.outputMaskPasses(M, 19);
         check(sweepOK,
-              "CCFIX PAINTED SWEEP: L=8 sweeps the figure by R-anchor over 0..7; authored R=15 clamps to 7 (the figure never reaches the R>=8 positions)");
+              "CCFIX PAINTED SWEEP: follow-R RETIRED — the painted figure stays on its cell for every R in 0..7 and for the clamped authored R=15 (static)");
     }
     {
         // PAINTED FOLLOWS ROTATION, gate 2 (the shrink re-pin): shrinking L below the
@@ -1595,10 +1597,10 @@ int main() {
         float lor8[3] = {8.f, 0.f, 12.f};            // the SAME authored R — L shrinks under it
         eng.pushVoiceLorEditor(lor8, 0.f, eastLor, eastDir, localEastFlag);
         eng.pushMaskEditor(macroBits, macroKind, macroFollowR, eastBits, eastKind, eastFollowR, localEast);
-        shrinkOK = shrinkOK && eng.macroVoiceLorRef(SequencerEngine::LOR_ROT) == 7   // the clamp
-                && eng.outputMaskPasses(M, 7) && !eng.outputMaskPasses(M, 2);        // the clamp-delta re-pin
+        shrinkOK = shrinkOK && eng.macroVoiceLorRef(SequencerEngine::LOR_ROT) == 7   // the authoring clamp still applies to R
+                && eng.outputMaskPasses(M, 2) && !eng.outputMaskPasses(M, 7);        // (FOLLOW-R RETIRED) static: no clamp-delta re-pin
         check(shrinkOK,
-              "CCFIX PAINTED SHRINK: L 16->8 below R=12 clamps R to 7 and the figure re-pins by the clamp delta (2 -> 7); the anchor then tracks the clamped R");
+              "CCFIX PAINTED SHRINK: L 16->8 below R=12 still clamps R to 7, and the painted figure does NOT move (follow-R retired — static)");
     }
 
 

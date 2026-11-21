@@ -352,10 +352,6 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             auto* m = getMonsoon(); if (!m) return;
             const int v = selectedVoice;
             if (m->getMaskLocalEastMask(v) == 0.f) return;   // follow-Macro: paint on Macro's strip
-            // PAINT ONLY IN ABS2 (the UAS doc's resolution): cannot paint while
-            // follows-rotation is on (a moving target — flip back to abs2 to re-edit).
-            if ((int)std::lround(m->getMaskEastKind(v)) == 2
-                && m->getMaskEastFollowR(v) != 0.f) return;
             if (!maskStroke_.active) {                        // capture the stroke's BEFORE state
                 maskStroke_.active = true;
                 maskStroke_.kind   = (int)std::lround(m->getMaskEastKind(v));
@@ -919,15 +915,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                             }));
                     }
                 }));
-            menu->addChild(createCheckMenuItem("Painted pattern follows rotation (R)", "",
-                [m, v]() { return m->getMaskEastFollowR(v) != 0.f; },
-                [m, v]() {
-                    const float oldF = m->getMaskEastFollowR(v);
-                    const float newF = (oldF != 0.f) ? 0.f : 1.f;
-                    m->setMaskEastFollowR(v, newF);
-                    redDot::applyAndPushStoreEdit<Monsoon>(m, "Mask follow-R",
-                        [v](Monsoon& m2, float f) { m2.setMaskEastFollowR(v, f); }, oldF, newF);
-                }));
+            // (follow-R retired 2026-11-21: the painted pattern is static in global-step space)
             menu->addChild(new MenuSeparator);
             auto* allOn = new MaskBitsItem;
             allOn->text = "Set mask all on";
