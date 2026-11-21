@@ -116,3 +116,7 @@ goldens. 3. Part 1b (per-lane) — reproduce-first → suite + goldens. 4. Part 
 reproduce-first. Each part its own commit. Hand the Rack feel-tests back to
 Rodney: absolute-mode reverse with mid-range rotation (1a), a Forward lane under
 a Reverse voice (1b).
+
+
+## CA5 note: entryDir_ is path-dependent (2026-11-21)
+`readCoord()` anchors to `entryDir_` (direction of first nonzero motion; reset by `reset()` and by `setWindow` on a real length/offset change). The same column can therefore read differently depending on how the run started. This is a time-zero convention. Cleaner form: `read = f(t - t0, config)` with `t0` the run start, a pure function of time. Fold into the PositionResolver migration if it can be done byte-identically; otherwise leave. Untested: host transport stop/rewind/phase-snap effects on `entryDir_`/`t0`.
