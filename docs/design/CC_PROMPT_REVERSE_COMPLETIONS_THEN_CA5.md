@@ -30,6 +30,7 @@ pre-consolidation tip.
   into an extraction commit.
 
 ## PART 1 — the reverse completions (cash in the walkFold / slot law)
+_Note (2026-11-21): the abs1 sounding-extent fix landed in 70223183 (the sounding read stays inside the window; rotation wraps inside it). 1a's commit-edge work builds on that — re-read the abs1 arm of `voiceFrameEdgeLive_` against it._
 
 ### 1a — abs1 / absolute-mode commit edge
 - **Site:** `voiceFrameEdgeLive_`'s abs1 arm (`voiceFrameReadsFullPhrase`,
@@ -79,6 +80,26 @@ Only after Part 1 is green and merged.
   `test_position_consolidation_bridge` / `test_position_resolver_identity`) proves
   bit-identical across the full sweep BEFORE any consumer switches to read it.
   This commit changes NOTHING observable.
+- **Lane-addressing idioms (C++20 — Rodney, 2026-11-21; toolchain already settled:
+  the Makefile sets `-std=c++20`, CI-green lin/mac/win): `std::span` + a `RingView`.**
+  Done as the FIRST sub-step of the migration, byte-identical, one lane family at a
+  time (goldens are the gate), because the holder accessors are being rewritten anyway.
+  - **Spans for storage:** lane/holder accessors take and return `std::span<float>` /
+    `std::span<const float>` over the existing `std::array` storage instead of
+    pointer+length pairs (pairs with the array-guard lint). A NON-wrapping window is
+    `lane.subspan(O, L)`. Prefer range-for and `std::ranges::{fill,copy,rotate}` over
+    hand-indexed loops. No allocating adaptors on the audio thread.
+  - **`RingView` for wrapping windows:** a window that wraps the ring (O=30, L=4 on the
+    32-ring) cannot be one span and C++20 has no cyclic view (`views::concat` is C++26).
+    Add a small `RingView{span, O, L}` with `operator[](i) = data[(O+i) & (ring-1)]` —
+    the same arithmetic `frameReadCell` and the scattered `& (kMaskRing-1)` masks do
+    today — and route those sites through it. Bounds: keep `-D_GLIBCXX_ASSERTIONS` in
+    the test builds (`span::operator[]` is unchecked in C++20).
+  - **NOT in scope:** `walkFold`, `laneTickFor`, `walkKeyOf` and the `rho`/`wnow` fold
+    stay integer position math — spans are for storage access, not phase arithmetic
+    (the abs1 extent bug lived in the position math, which spans would not have caught).
+  - **Gate:** nothing observable moves; full suite + every golden byte-identical, and a
+    small `RingView` unit test (wrap, non-wrap, O+L==ring, L==1) lands with it.
 - **The key COMPLETION (the actual blind-spot fix) is a SEPARATE, later-gated
   step** with its OWN reproduce-first test: construct a parent-length-change
   scenario that drifts the child under the incomplete key, failing before and
@@ -90,7 +111,7 @@ Only after Part 1 is green and merged.
 ## ORDER & GATES
 1. Rebase on the consolidation. 2. Part 1a (abs1) — reproduce-first → suite +
 goldens. 3. Part 1b (per-lane) — reproduce-first → suite + goldens. 4. Part 2
-extraction — byte-identical bridge → suite + goldens (nothing observable moves).
+(span/`RingView` lane addressing first, then the) extraction — byte-identical bridge → suite + goldens (nothing observable moves).
 5. (only if a failing repro exists) the shared-key completion — its own
 reproduce-first. Each part its own commit. Hand the Rack feel-tests back to
 Rodney: absolute-mode reverse with mid-range rotation (1a), a Forward lane under
