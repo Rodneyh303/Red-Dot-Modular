@@ -287,8 +287,6 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             auto* m = getMonsoon(); if (!m) return;
             const int slot = currentSlot();
             const int bank = lorBank(lane);
-            WARN("[LOR-DIAG] onLorCommit slot=%d lane=%d %d/%d/%d -> %d/%d/%d selectedVoice=%d",
-                 slot, lane, before[0], before[1], before[2], after[0], after[1], after[2], selectedVoice);
             const int bef0=before[0],bef1=before[1],bef2=before[2];
             const int aft0=after[0], aft1=after[1], aft2=after[2];
             auto* ed = visualEditor;
@@ -994,13 +992,6 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         for (int el=0; el<dotModular::SandsGrid::EAST_LANES; ++el) {
             const auto& lane = visualEditor->currentState.lanes[el];
             const int bank = lorBank(el);
-            // DIAG(LOR-V1-overwrite): log any CHANGE to V1's slot (0) with the widget state that wrote it.
-            if (slot == 0 && (mm->getLorBase(0, bank, 0) != (float)lane.length ||
-                              mm->getLorBase(0, bank, 1) != (float)lane.offset ||
-                              mm->getLorBase(0, bank, 2) != (float)lane.rotation))
-                WARN("[LOR-DIAG] saveSlot(0) lane=%d %g/%g/%g -> %d/%d/%d selectedVoice=%d v1Loaded=%d v1Editable=%d",
-                     el, mm->getLorBase(0, bank, 0), mm->getLorBase(0, bank, 1), mm->getLorBase(0, bank, 2),
-                     lane.length, lane.offset, lane.rotation, selectedVoice, (int)v1Loaded_, (int)v1Editable());
             mm->setLorBase(slot, bank, 0, (float)lane.length);
             mm->setLorBase(slot, bank, 1, (float)lane.offset);
             mm->setLorBase(slot, bank, 2, (float)lane.rotation);
@@ -1032,10 +1023,6 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
 
     void onVoiceTabChanged(int nv) {
         if (!paramMgr || !visualEditor) return;
-        { Monsoon* dm = getMonsoon();
-          WARN("[LOR-DIAG] tab %d -> %d  monsoon=%p cachedEast=%p this=%p v1Loaded=%d",
-               selectedVoice, nv, (void*)dm, dm ? (void*)dm->expanderManager.cachedEastSandsVisual : nullptr,
-               (void*)module, (int)v1Loaded_); }
         // Save the OUTGOING voice's edits.
         // Poly tabs always save. Mono tab saves when it is editable (no Mono attached).
         if (selectedVoice >= 1) {
