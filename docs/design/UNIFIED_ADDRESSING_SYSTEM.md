@@ -430,6 +430,7 @@ is ONE path (one mask gate + one flag), not four. Big simplification: four modes
 mechanism with two degrees of freedom (mask pattern, follow-R).
 
 ## MASK <-> ROTATION ANCHORING (Rodney) — base re-anchors, modulation moves relative to it
+> **SUPERSEDED 2026-11-21** — follow-R / abs3 is retired; see the RESOLVED cycle-consistent block below. Kept for the history of the idea.
 How the fixed rotatable mask (abs2/abs3) connects to rotation. PER STEP:
 1. **Check whether the UNMODULATED (base knob) rotation has changed** — i.e. has the anchor link
    between MASK-STEP-1 and the base rotation value changed?
@@ -471,6 +472,26 @@ enabling abs3 is what binds it to rotation.
 PLAYBACK: abs2 plays the pattern at absolute steps (rotation-independent); abs3 = base + rotation (anchor +
 CV mod). The gate lives in ABSOLUTE phrase space, INDEPENDENT of the voiceLOR read window — "follows R"
 borrows the voice's R as a MODULATION SOURCE (the figure slides with the voice's phase), NOT a confinement.
+
+## [RESOLVED — Rodney 2026-11-21] CYCLE-CONSISTENT ABSOLUTE MODE + PAINTED MASKS (supersedes the abs1 read law, the follow-R / abs3 anchor law and the abs1 lane-jump point above)
+
+**One model: content is ALWAYS the cycle read; a mask only mutes.**
+- **Base × overlay, two independent axes.** BASE = cycle (all-on) or range (the window [O,O+L) on the global ring). OVERLAY = none or a painted pattern. Gate = `base ∧ overlay`, evaluated per GLOBAL played column. The old cycle ⊂ abs1 ⊂ abs2 ⊂ abs3 hierarchy is just configurations of these.
+- **Abs1 = cycle with the cycling off.** The voice reads exactly what cycle mode reads (its own L, rotation R window-relative: R marks the voice's cell at global step 1, i.e. cell O + R%L), and SOUNDS only while the global step is inside [O,O+L) — one pass as the playhead crosses it. At every sounding step the read and the lane values equal cycle mode's at the same global step. Reverse = reverse of the cycle read (enters at R, counts down). Rotation is NOT "enter at R at the window start" and NOT ignored.
+- **Playhead outside the window** follows the global step (the strip's lane sweeps 1..G under the global's); silent.
+- **Mute semantics:** the cycle keeps running under a muted step; nothing is skipped or held.
+- **Painted overlay composes with BOTH bases** (cycle and range), indexed by global step. Painted cells outside the window are INERT (the window dominates).
+- **Painted mask is STATIC: fixed to global-step positions, independent of R and of voice direction.** Rotation only slides the content under the rhythm.
+
+**Probability-lane jump: at the voice's RANGE EDGE (the cycle predicate), regardless of any mask.** Abs1 evaluates the SAME edge predicate as cycle on the same cycle-consistent phase; it does not jump on mid-range entry. A mid-range entry plays the value latched at the previous edge (as cycle does at global step 1 with a non-zero rotation); aligned rotation puts the edge at the entry. "Re-draw on entry" is a possible later opt-in, NOT the default.
+
+**FOLLOW-R (abs3) IS RETIRED** (measured, not argued): the mask's slide direction must equal the voice's content direction (Forward: earlier; Reverse: later; transport direction irrelevant), the old re-pin applied "earlier" to every direction (wrong for Reverse), and Pendulum/PingPong reflect the content so NO single shift tracks it. Loaded patches with follow-R on behave as STATIC; the stored keys are still read. The anchor law, the re-pin and the abs2→abs3 paint workflow are superseded.
+
+**Moving the figure → a dedicated MASK SHIFT control (separate change; needs panel work).** The voice-lane row has 3 jacks/3 knobs (L,O,R) vs the lane rows' 4 (spread): the 4th position is free. Per-voice (East, poly jack) and Macro (mono jack): base knob + CV jack + depth, labelled MASK. Evaluated at STEP RATE as an integer rotation of the painted pattern on the G ring (`base + CV`), independent of R and direction. Replaces follow-R as the way to move the rhythm.
+
+**Accepted:** L may not divide G; the seam question belonged to follow-R and no longer applies.
+
+**Tests first (reproduce-first):** (1) abs1 sounding read AND lane values == cycle's at the same steps across O/R/direction sweeps; (2) abs1 latch steps == cycle's; (3) gate == `base ∧ overlay` per played column, both directions; (4) latch steps identical with/without any mask; (5) follow-R-on loads as static. Rack feel-test is the acceptance gate.
 
 ## MUSICAL PAYOFF OF THE MASK MODES — "rhythmic in and out" = the PRESENCE / STRUCTURE axis (Rodney)
 The extra absolute modes open a distinct musical register: **rhythmic in and out** — voices rhythmically
