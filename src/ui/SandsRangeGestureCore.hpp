@@ -148,6 +148,17 @@ struct SandsRangeGestureCore {
         return wrapMod(o + wrapMod(tick + r, l), ring);
     }
 
+    // (POSITION_RESOLVER_CONSOLIDATION) playheadSlotBar — the playhead-SLOT law that
+    // landed here in CC_PROMPT_REVERSE_VOICE_ROTATION_EDGE — MOVED to
+    // PositionResolver (the content↔slot mapping is a POSITION law: the doc's item
+    // 4, served from ONE place; the gesture core keeps the GESTURE math — edges,
+    // zones, containment). Call PositionResolver::playheadSlotBar (the primitives
+    // face) or PositionResolver::WalkResolver<SequencerEngine::WalkRev>::playheadSlotBar
+    // (the policy face — the reverse +1 IS its declared anchorBias; "reverse forgot
+    // its right-edge rule" is now a compile error). The read-cell twin
+    // lanePlayheadBar stays here for now — it is the UI's CONTENT-cell law; its
+    // migration is the consolidation's next slice.
+
     // ── (bug 12, LOR_EDITING_BUG_LIST) THE CHEVRON GEOMETRY ────────────────────
     // The rotation marker's chevron pair, sized to the GRID: the pair's total
     // x-extent is EXACTLY one step width (the old fixed 3 px arm overran the
@@ -222,6 +233,27 @@ struct SandsRangeGestureCore {
     // functions above (A: the press-anchored edge deltas; C: the rotation clamp;
     // the slide law). The paint/arm machinery (pressArmed/paintPress/mask) is NOT
     // LOR state — it stays widget-side.
+    // ── THE PER-ZONE SUSPEND MAP (CC_PROMPT_LANE_RANGE_DISPLAY_UNIFY, FINAL MODEL)
+    // — suspend EXACTLY what the gesture writes, mirroring lorDragReduce's per-zone
+    // writes (the coarse blanket `{zone != Z_ROTATION, zone != Z_ROTATION,
+    // zone == Z_ROTATION}` froze offset+length for EVERY drag, including a plain
+    // move that never touches length and an end-drag that never touches offset):
+    //   Z_WINDOW    writes OFFSET only  → suspend OFFSET; length AND rotation mod
+    //               keep running (rotation keeps moving the content as it slides);
+    //   Z_START     writes OFFSET+LENGTH (the end is anchored — both move) →
+    //               suspend OFFSET+LENGTH;
+    //   Z_END       writes LENGTH only (start anchored) → suspend LENGTH;
+    //   Z_ROTATION  writes ROTATION only → suspend ROTATION.
+    // Only the dimension under the finger stops; the others keep modulating live.
+    // The engine's setLorCvSuspend takes per-item bools — feed it this map (the
+    // item order is the LOR order: [0]=LEN [1]=OFF [2]=ROT). Living NEXT TO the
+    // reducer so a future zone-write change drags its suspend twin with it.
+    static std::array<bool, 3> lorGestureItemsFor(bool active, Zone zone) {
+        const bool len = active && (zone == Z_START || zone == Z_END);
+        const bool off = active && (zone == Z_WINDOW || zone == Z_START);
+        const bool rot = active && (zone == Z_ROTATION);
+        return {len, off, rot};
+    }
     struct LorDragState {
         enum Owner { O_NONE = 0, O_STRIP, O_LANE };
         Owner  owner     = O_NONE;

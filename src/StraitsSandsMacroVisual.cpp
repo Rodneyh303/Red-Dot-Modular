@@ -219,10 +219,6 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         maskStroke_.active = false;
         visualEditor->onMaskToggle = [this](int cell, bool play) {
             auto* m = getMonsoon(); if (!m) return;
-            // PAINT ONLY IN ABS2 (the UAS doc's resolution): cannot paint while
-            // follows-rotation is on (a moving target — flip back to abs2 to re-edit).
-            if ((int)std::lround(m->getMaskMacroKind()) == 2
-                && m->getMaskMacroFollowR() != 0.f) return;
             if (!maskStroke_.active) {                        // capture the stroke's BEFORE state
                 maskStroke_.active = true;
                 maskStroke_.kind   = (int)std::lround(m->getMaskMacroKind());
@@ -671,15 +667,7 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
                             }));
                     }
                 }));
-            menu->addChild(createCheckMenuItem("Painted pattern follows rotation (R)", "",
-                [m]() { return m->getMaskMacroFollowR() != 0.f; },
-                [m]() {
-                    const float oldF = m->getMaskMacroFollowR();
-                    const float newF = (oldF != 0.f) ? 0.f : 1.f;
-                    m->setMaskMacroFollowR(newF);
-                    redDot::applyAndPushStoreEdit<Monsoon>(m, "Global mask follow-R",
-                        [](Monsoon& m2, float f) { m2.setMaskMacroFollowR(f); }, oldF, newF);
-                }));
+            // (follow-R retired 2026-11-21: the painted pattern is static in global-step space)
             menu->addChild(new MenuSeparator);
             auto* allOn = new MaskBitsItem;
             allOn->text = "Set mask all on";
@@ -847,9 +835,13 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         if (auto* mm = dynamic_cast<StraitsSandsMacroVisual*>(module)) {
             const auto& ld = visualEditor ? visualEditor->lorDrag : redDot::SandsRangeGestureCore::LorDragState{};
             mm->lorGestureActive = ld.active && ld.owner == redDot::SandsRangeGestureCore::LorDragState::O_STRIP;
-            mm->lorGestureItems  = { ld.active && ld.zone != redDot::SandsRangeGestureCore::Z_ROTATION,
-                                     ld.active && ld.zone != redDot::SandsRangeGestureCore::Z_ROTATION,
-                                     ld.active && ld.zone == redDot::SandsRangeGestureCore::Z_ROTATION };
+            // (CC_PROMPT_LANE_RANGE_DISPLAY_UNIFY, FINAL MODEL) PER-ITEM suspend —
+            // the ONE zone→items map (lorGestureItemsFor) mirroring the reducer's
+            // per-zone writes: Z_WINDOW suspends OFFSET only, Z_START OFFSET+LENGTH,
+            // Z_END LENGTH only, Z_ROTATION ROTATION only. Was the coarse blanket
+            // ({zone != Z_ROTATION, ·, ·}) that froze offset+length for every drag.
+            mm->lorGestureItems  = redDot::SandsRangeGestureCore::lorGestureItemsFor(
+                mm->lorGestureActive, ld.zone);
         }
         kitStep();   // kit: dev-mode live-reload poll (no-op unless enabled)
         // ── the Sands subpanel snap cluster (ui/SandsSnap.hpp): 0.1 s adjacency
@@ -1057,18 +1049,32 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         // is handled by the delegation P-items (P4/P5/P6), not by hiding.
         for (rack::Widget* w : leftAttenuverters) if (w) w->visible = true;
         {
-            // Macro's V1 (and poly) LOR display ALWAYS shows MACRO's OWN global base +
-            // CV delta — the panel represents the Macro module's own state regardless of
-            // who owns the lane downstream (same principle as the poly display). Previously
-            // the tab1Mono branch showed MONO's LOR for Mono-owned lanes (and only 3 lanes,
-            // missing accent), so Macro's V1 page reflected Mono instead of Macro. l =
-            // engine lane (0=REST 1=MEL 2=OCT 3=ACC 4=QMIX) → editor lane.
+            // (CC_PROMPT_LANE_RANGE_DISPLAY_UNIFY Stage A) the lane-RANGE display reads
+            // the engine's LATCHED authority — effectiveLaneLor (base live + CV committed
+            // at the voice-frame edge) through the macro-row LOR representative, the SAME
+            // voice macroLaneDisplay uses — so the range, the playhead and the audio walk
+            // one window. Was `macroBase + macroCVDelta` (the manager's applyMacroCV
+            // recomputed it live every control block → the range glided at video rate).
+            // The send/tap deltas (macroPreDelta/macroPostDelta) keep their own reads;
+            // macroCVDelta remains the SEND source — only this RANGE display stopped
+            // reading it. l = editor lane == strand index (the unified addressing).
+            const int repVoice = eng.macroLaneRepVoice();
             for (int l = 0; l < dotModular::SandsGrid::POLY_LANES; ++l) {
-                int ownLen = (int)std::lround(mod->macroBase[l][0] + mod->macroCVDelta[l][0]);
-                int ownOff = (int)std::lround(mod->macroBase[l][1] + mod->macroCVDelta[l][1]);
-                int ownRot = (int)std::lround(mod->macroBase[l][2] + mod->macroCVDelta[l][2]);
+                int ownLen, ownOff, ownRot; SequencerEngine::LaneDir ownDir;
+                eng.effectiveLaneLor(dotModular::VoiceResolver::slot(repVoice + 1),
+                                     eng.strandLaneId(l), ownLen, ownOff, ownRot, ownDir);
                 ownLen = std::max(1, ownLen);
-                visualEditor->currentState.lanes[l].setDisplayLOR(ownLen, ownOff, ownRot);
+                visualEditor->setLaneDisplayLOR(l, ownLen, ownOff, ownRot);
+                // (Stage B, the FINAL MODEL) the lane's WIREFRAME row — base + PENDING
+                // (the live-modulated window) through the SAME representative; drawn
+                // only when the surface's modViz flag is on AND it diverges from the
+                // committed window (no CV ⇒ no wireframe).
+                {
+                    int pl_, po_, pr_; SequencerEngine::LaneDir pd_;
+                    eng.effectiveLanePreview(dotModular::VoiceResolver::slot(repVoice + 1),
+                                             eng.strandLaneId(l), pl_, po_, pr_, pd_);
+                    visualEditor->setLanePreviewLOR(l, pl_, po_, pr_);
+                }
                 // (CC_PROMPT_RETIRE_MACRO_LANE_HOLDER) the DERIVED VIEW replaces the
                 // retired macroLaneTick_ holder: the macro ROW's frame authority mapped
                 // through the lane's FULL latched LOR from the per-voice path — the same
@@ -1132,6 +1138,17 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
             int rp = eng.started() ? eng.macroFrameRead() : -1;
             int sg = eng.macroFrameSign();
             visualEditor->setRangeState(mL, mO, mR, rp, sg, false, rangeLabel_);
+            // (Stage B, the FINAL MODEL) the strip's WIREFRAME row — base + PENDING
+            // (the live-modulated window), the twin of the committed feed above;
+            // gated on the surface's existing modViz flag, drawn only when it
+            // diverges from what plays. The drag-time wireframe call (track vs
+            // freeze) stays the editor-side one-condition switch.
+            {
+                int pl_, po_, pr_; SequencerEngine::LaneDir pd_;
+                se->effectiveMacroRowPreview(pl_, po_, pr_, pd_);
+                visualEditor->setRangePreview(pl_, po_, pr_);
+            }
+            visualEditor->previewViz = monsoon->modVizMacro;
             // The mask surface reads the ENGINE's effective pattern (the UI-completion
             // unify — display-reads-engine, East's twin note): cycle = all-lit, range
             // = the window, painted = the ANCHORED working copy (rotates with R when
@@ -1371,11 +1388,16 @@ size_t StraitsSandsMacroVisual::sweepFingerprint_(void* dst) {
         auto& eng = mon->engine;
         const int nV = eng.numPolyVoices;
         std::array<int, dotModular::SandsGrid::POLY_LANES> stepArr{};
+        // (CC_PROMPT_LANE_RANGE_DISPLAY_UNIFY Stage A) the sweep's step cells read the
+        // latched authority through the macro-row LOR representative — the SAME window
+        // the lanes' range display and the audio walk use. Was macroBase+macroCVDelta
+        // (applyMacroCV's live compose → the fingerprint churned at video rate).
+        const int repVoice = eng.macroLaneRepVoice();
         for (int l = 0; l < dotModular::SandsGrid::POLY_LANES; ++l) {
-            const int ownLen = std::max(1, (int)std::lround(macroBase[l][0] + macroCVDelta[l][0]));
-            const int ownOff = (int)std::lround(macroBase[l][1] + macroCVDelta[l][1]);
-            const int ownRot = (int)std::lround(macroBase[l][2] + macroCVDelta[l][2]);
-            stepArr[l] = calcPlayhead(eng.playedColumn(), ownLen, ownOff, ownRot) & 0x0F;
+            int ownLen, ownOff, ownRot; SequencerEngine::LaneDir ownDir;
+            eng.effectiveLaneLor(dotModular::VoiceResolver::slot(repVoice + 1),
+                                 eng.strandLaneId(l), ownLen, ownOff, ownRot, ownDir);
+            stepArr[l] = calcPlayhead(eng.playedColumn(), std::max(1, ownLen), ownOff, ownRot) & 0x0F;
         }
         const bool ch = sweepSigChanged(sweepSig_, eng, stepArr.data(), nV);
 #ifdef MONSOON_PROFILE
@@ -1396,11 +1418,14 @@ void StraitsSandsMacroVisual::sweepProduce_() {
     const int nV = eng.numPolyVoices;
     const int nCh = 1 + nV;
     std::array<int, dotModular::SandsGrid::POLY_LANES> stepArr{};
+    // (Stage A, the sweep twin) the latched authority through the LOR representative —
+    // the capture and the fingerprint read the SAME window (one compose, both sites).
+    const int repVoice = eng.macroLaneRepVoice();
     for (int l = 0; l < dotModular::SandsGrid::POLY_LANES; ++l) {
-        const int ownLen = std::max(1, (int)std::lround(macroBase[l][0] + macroCVDelta[l][0]));
-        const int ownOff = (int)std::lround(macroBase[l][1] + macroCVDelta[l][1]);
-        const int ownRot = (int)std::lround(macroBase[l][2] + macroCVDelta[l][2]);
-        stepArr[l] = calcPlayhead(eng.playedColumn(), ownLen, ownOff, ownRot) & 0x0F;
+        int ownLen, ownOff, ownRot; SequencerEngine::LaneDir ownDir;
+        eng.effectiveLaneLor(dotModular::VoiceResolver::slot(repVoice + 1),
+                             eng.strandLaneId(l), ownLen, ownOff, ownRot, ownDir);
+        stepArr[l] = calcPlayhead(eng.playedColumn(), std::max(1, ownLen), ownOff, ownRot) & 0x0F;
     }
     // Capture the sig exactly as the resolve is about to consume it (the resolve is
     // read-only on every fingerprinted input, so the placement here is free).

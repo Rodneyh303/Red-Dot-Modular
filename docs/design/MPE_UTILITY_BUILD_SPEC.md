@@ -3,8 +3,11 @@
 > **STATUS: BUILT + code-reviewed 2026-09-03 (commit 60fd770) -- awaiting Rodney's Rack build + verify.**
 > Keppel ships the full CV->MPE-out: per-voice MPE Lower-Zone member channels, LRU voice->channel
 > allocation, RPN pitch-bend-sensitivity + MCM handshake, the nearest-note+bend split (MpeMath.hpp),
-> accent/VEL -> note-on velocity. The three formerly-open items are DONE: bend range 1..48; re-articulate
-> on range-exceed (default B, menu-toggleable, no boundary chatter); reverse-calc MONITOR output
+> accent/VEL -> note-on velocity. The three formerly-open items are DONE: bend range 1..48; over-range
+> expressive X during a held gate CLAMPS by default (slur/envelope preserved, no boundary chatter; the
+> cost is reach -- widen the range for more) with re-articulate as a menu opt-in for unlimited glide
+> reach -- NOTE this gates only the over-range path; the within-legato STEP_GATE re-articulation is a
+> separate deliberate trigger that always fires; reverse-calc MONITOR output
 > (reconstructVolts, round-trip unit-tested <1 cent at any range -- test_MpeMath.cpp, commit d1b331c).
 > Residual is RUNTIME only: scope MONITOR vs PITCH in Rack; confirm a real MPE receiver/DAW accepts the
 > RPN handshake at range 48; the full out->DAW->MPE-in round-trip (<1-2 cents); and add the
@@ -19,6 +22,121 @@ ZERO engine coupling -- can be built independently any time.
 A utility module: poly microtonal pitch CV + poly gate IN -> MPE MIDI OUT. Splits each voice into
 nearest-12-TET note + per-note pitch bend, one MPE member channel per voice, so poly microtonal
 patterns play out to a DAW / VST / external MPE synth with the tuning intact.
+
+## Separation of concerns (the cleanup principle)
+As Keppel is cleaned up, keep THREE layers of concern distinct -- they are easy to conflate because the
+microtonal case drove the build, but they are not the same thing:
+
+1. **General MPE-out (the substrate).** Per-voice member-channel allocation (LRU), the MPE Lower-Zone
+   config/RPN handshake, bend-range management, note/gate/velocity plumbing, the two-layer expression
+   mechanism (per dimension: a base layer A + an additive layer B, where B is gated by a trigger that is
+   itself bounded by A's note lifetime -- a NESTED gate), and the X/Y/Z -> bend/CC74/channel-pressure
+   wire encoding. This is a complete, reusable CV->MPE transmitter. It knows nothing about tuning or about
+   dot.modular. ANY poly CV source could drive it -- describe the B layer without the word "accent" and
+   nothing breaks.
+   > **STATUS: EXTRACTED.** Layer 1 now lives in `src/dsp/MpeTransmitter.hpp` as a Rack-agnostic,
+   > unit-tested class (`dotModular::mpe::MpeTransmitter`, test/test_MpeTransmitter.cpp, 9 cases): channel
+   > allocation (LRU + steal), the MPE config handshake, the note lifecycle, and dedupe. It emits RawMsg
+   > to an outbox the host drains into midi::Output. Keppel.cpp is now the FACE (CV read, microtonal
+   > split, A/B window, accent defaults, MONITOR) and delegates the transmitter to this class — so a
+   > second face (a standalone "CV→MPE" module) can be built on the same core without a fork.
+   > RELEASE VELOCITY is supported here: `noteOff(v, relVel, f)` emits 0x8 with a velocity byte; internal
+   > note-offs (steal / re-articulate) carry a neutral 64. Keppel samples release velocity from the VEL
+   > input at the falling edge (neutral 64 unpatched); a dedicated REL_VEL jack is a possible follow-up.
+
+2. **Microtonal-specific (one application of the substrate).** The nearest-12-TET note + per-note cents
+   split, cents->bend14 mapping, the narrow-bend-range default (+/-2) chosen to carry +/-50c, the
+   legato re-articulation on range-exceed, and the reverse-calc MONITOR. This is a PRINCIPLED, and
+   probably the most feasible, way to get microtonal pitch out over MIDI 1.0 -- but it is NOT the only
+   use of MPE. Pitch bend here means "retune to the true pitch," whereas in a non-microtonal patch X
+   bend means "expressive glide." Keep the microtonal mapping as a mode/responsibility layered ON the
+   substrate, not baked into it.
+
+3. **dot.modular-specific (the ecosystem glue).** That the poly pitch + poly gate come from
+   Monsoon/Colonnades/Duo already paired; that Y/Z feed from the correlated poly-CV pairs
+   ([[CA_EXPRESSION_CV_CORRELATION]]); the within-legato STEP_GATE grid tied to the sequencer's legato
+   model; Singapore-geography naming; panel kit. This is where Keppel is a dot.modular citizen rather
+   than a generic utility.
+
+### Worked example: "accent" is a core mechanism + a dot.modular skin
+Accent is the case that *felt* ambiguous between (1) and (3), and resolving it validates the model.
+Split it:
+- **Core mechanism (1):** the two-layer nested gate above. Strip Keppel to a transmitter and describe
+  it without the word accent -- "each dimension (velocity, X, Y, Z) has a base input A and an additive
+  input B gated by a trigger bounded by A." Velocity itself is core too (every note has one). Hand that
+  to someone with no dot.modular and they patch their own trigger to B; they never need to hear "accent".
+- **dot.modular skin (3):** that the B trigger IS the sequencer's ACCENT lane; the two-level velocity
+  fallback (velNormal/velAccent) and the opinionated unpatched-B defaults (velAccent, yAccentBrighten)
+  that make "patch just our ACCENT lane" sound musical for free; and the within-legato accent model.
+  The *word* accent, the defaults, and the lane wiring are the skin; the gated additive layer is the
+  mechanism.
+
+**Containment principle (the subgate parallel):** B is always bounded by A -- expression only transmits
+while the note is live -- exactly as STEP_GATE subdivides only within a held legato. The accent gate is
+a sub-window *inside* the note gate, the same shape as a subgate.
+
+**DECIDED -- Model A, keyed on whether the B gate is patched.** The ACCENT input is the B gate. Two gates:
+the main (A) gate = note lifetime, and the B gate. The B layer's window depends on whether a cable is in
+the B-gate jack (`inputs[ACCENT_INPUT].isConnected()`):
+- **B gate UNPATCHED:** layer B is a free additive layer on A for the WHOLE A gate -- a second always-on
+  expression source, no accent needed. (So patching just X_B gives you a plain second expression layer.)
+- **B gate PATCHED:** layer B applies only during (A gate AND B gate) -- the nested AND window; B is "the
+  accented sublayer," the same shape as STEP_GATE inside the note gate.
+Either way B is bounded by A (it is only ever read in the gateHigh branches). Implemented uniformly across
+X/Y/Z/velocity via `bActive = gateHigh && (bGatePatched ? bGateHigh : true)`. The unpatched-B "accent"
+defaults (the Y brighten, the velAccent boost) additionally require an actual accent gate high
+(`bGateHigh`) -- they only make sense when an accent gate is patched.
+- MIDI-output behaviour -> Rack feel-test (not headless-testable). Verify: (a) B gate unpatched, patch
+  X_B -> it rides the whole note added to X_A; (b) B gate patched -> X_B only sounds while the accent gate
+  is high (pulse it mid-note; B comes in for that sub-window and drops after).
+- (Rejected: Model B, patched B always free across the whole note with no A∧B option -- it gives no way to
+  express "only during the accent" and lets "accent" overclaim. The patched/unpatched key gives both.)
+
+Why it matters for the cleanup: a clean split means the general MPE-out substrate (1) stays a solid,
+testable transmitter; microtonal (2) is a mode that could be turned off for a straight expressive-MPE
+patch; and a future MIDI-2.0 path replaces the TRANSPORT in (1) without touching (2) or (3). It also
+keeps the door open for other MPE uses (expressive performance, CA-driven timbre/pressure morphs) that
+don't involve tuning at all.
+
+## MPE-in mirror (the reverse direction) -- core built
+The symmetric counterpart to Keppel: an MPE-IN module (MPE MIDI -> poly CV). Worth building because stock
+VCV MIDI-CV in MPE mode is limited where it matters here: no native CC74/Y output (its mod-wheel out is
+CC1 -- you reconfigure the controller or bolt on a separate MIDI-CC in MPE mode), V/OCT and pitch-bend
+come out on SEPARATE ports (you sum them yourself for true microtonal pitch), and there is no release-
+velocity output. The mirror is one integrated module: per-voice true-pitch V/OCT (bend folded in at the
+set range), GATE, VEL, RELEASE VEL, Y (CC74), Z (pressure), optional raw X.
+
+In is the EASIER half -- the hard MPE problems (channel allocation, voice stealing, the config handshake)
+all live on OUT. Rack's `midi::InputQueue` does the byte parsing; the receiver is bookkeeping: track each
+member channel's note/bend/CC74/pressure/vel and map member channel -> poly voice.
+
+STATUS: core + face built. Core: `src/dsp/MpeReceiver.hpp` (`dotModular::mpe::MpeReceiver`, Rack-agnostic,
+mirror of MpeTransmitter): `handleMessage(status,ch,d1,d2)` -- status is the high NIBBLE (0x8/0x9/..., as
+Rack's midi::Message::getStatus() returns) -- maintains per-voice state; accessors return CV in Keppel's
+exact conventions, so an out->in loop is identity. Shares MpeMath -- `reconstructVolts` (pitch) was
+already there + tested; added the exact inverse mappers (`yVoltsFromCc74`, `zVoltsFromPressure`,
+`velVoltsFrom127`, `xVoltsFromSemis`, `bendSemisFrom14`). Tests: test/test_MpeReceiver.cpp (10 cases) +
+test/test_MpeRoundTrip.cpp (6 cases) -- the latter drives MpeTransmitter, pipes its messages into
+MpeReceiver, and proves tx→rx identity (MIDI-domain exact + CV-domain within quantisation). Bend range
+must match the sender (default ±48); auto-setting it by parsing incoming MCM/RPN is a refinement.
+Zone-wide master-channel handling (global bend on all voices) is a documented v1 omission.
+
+Face: `src/Woodlands.cpp` [WORKING NAME -- Singapore's inbound checkpoint, mirroring Keppel the outbound
+harbour; rename before release, the slug is set in Woodlands.cpp + plugin.json + gen_woodlands.py].
+InputQueue -> receiver -> poly outputs (PITCH with bend folded in / GATE / VEL / R-VEL / Y / Z / X),
+bend-range knob, member-channel menu, MIDI input display. Panel: panel_src/gen_woodlands.py (single
+geometry source) -> res/panels/Woodlands_panel_{dark,light}.svg; the anchor↔bind audit passes (13
+anchors, all bound). Registered in plugin.cpp + plugin.json + Monsoon.hpp. REMAINING: like Keppel, the
+module face can't be compiled headless -- needs a Rack build + a visual feel-test (and optional output
+smoothing on the 7-bit Y/Z to avoid stair-stepping).
+
+CPU: both faces run their whole MIDI path at the project Control rate (~1500 Hz, SR-independent — the
+controlDivider convention in src/ui/RateManager.hpp, division = round(SR/1500)) via a dsp::ClockDivider,
+not per sample. Keppel's per-voice two-layer expression math was the cost (it ran 48k/s); gating it to
+~1.5k/s is ~30× fewer evaluations while staying far finer than MIDI's ~1 ms resolution (messages still
+carry setFrame for sub-block placement). Woodlands drains its input queue + refreshes outputs on the same
+tick (the queue buffers between ticks; MIDI can't overflow 0.67 ms). Edge/output timing coarsens to the
+tick (~0.67 ms, inaudible for MIDI) — a feel-test item. Make the rate a menu option if tuning by ear.
 
 ## Inputs (already available on dot.modular outputs -- Rodney confirmed)
 - **Poly pitch CV** (1V/oct, up to 16 channels) -- from a Monsoon/Colonnades/Duo poly pitch output.
@@ -41,10 +159,10 @@ patterns play out to a DAW / VST / external MPE synth with the tuning intact.
     the MPE module fills -- global bend vs per-voice bend.
 - So CV_MIDI.cpp is the STRUCTURAL TEMPLATE for note/gate/velocity/poly plumbing (copy its shape). The
   MPE delta: instead of one global setPitchWheel, put EACH VOICE ON ITS OWN MIDI CHANNEL with per-channel
-  bend, + the MPE config handshake. OPEN QUESTION for CC: does `dsp::MidiGenerator` support per-channel
-  output MIDI channels / an MPE zone, or does the MPE module need its own channel-routing layer on top
-  of `midi::Output` (likely the latter -- MidiGenerator looks single-zone)? Check the SDK's
-  dsp/midi.hpp / MidiGenerator before deciding whether to extend it or route channels manually.
+  bend, + the MPE config handshake. RESOLVED (the shipping code answers it): `dsp::MidiGenerator` is
+  single-zone, so Keppel does NOT use it -- it drives `midi::Output` directly with `midiOut.channel = -1`
+  and its own per-voice member-channel routing (each message's channel set per-voice). The "likely the
+  latter" guess was right; the MPE channel layer is Keppel's own, not MidiGenerator's.
 
 ## The conversion (per voice, per sample or per control-block)
 For each active voice i (0..channels-1):
@@ -78,7 +196,17 @@ For each active voice i (0..channels-1):
   voices > available members (steal oldest) and re-trigger. Keep a voice->channel table.
 - **Message ordering**: bend before note-on (above). Note-off frees channel AFTER sending note-off.
 
-## Per-voice expression X / Y / Z (gate-bounded, but CONTINUOUS within) -- PARKED, after q-mix
+## Per-voice expression X / Y / Z (gate-bounded, but CONTINUOUS within) -- BUILT (2026, shipping)
+> **STATUS: BUILT.** This section was "PARKED, after q-mix"; the shipping `src/Keppel.cpp` now has it.
+> Present on the module: the two-layer jacks `X_A/X_B` (expressive bend after the quantiser),
+> `Y_A/Y_B` (CC74 timbre, bipolar @64), `Z_A/Z_B` (channel pressure, unipolar from 0), `VEL_B`
+> (accent-gated velocity layer), and `STEP_GATE` (within-legato inner-note grid). A = main-gated base,
+> B = accent-gated additive, summed per voice; CC74/pressure streamed continuously within the gate
+> (not sample-and-held), re-sent on re-articulation/LRU with the `lastY74/lastZ7` dedupe. The design
+> rationale below is kept as the record of WHY it behaves this way. Still open: the two accent-wiring
+> decisions in the within-legato section (gate-vs-CV for accent-within-legato; dedicated
+> `STEP_LEGATO_ACCENT_GATE` jack vs derived recipe) -- revisit after UAS.
+
 This is what turns Keppel from "generative notes + bend" into a full generative MPE EXPRESSION source.
 Adds two per-voice poly-CV inputs (Y=slide/timbre, Z=pressure) alongside the existing note+bend+velocity.
 Design conversation 2026-09-xx. Sequenced AFTER q-mix (feeds from the correlated poly-CV pairs in

@@ -45,5 +45,5 @@ position holders. Tightly coupled by design; splitting it just scatters one stat
 
 ## Cross-refs
 - Concept ODR audit (CA1 = the latched-control lifecycle; CA4 = the effective-LOR shape).
-- Line-level audit F7 (`composeLor_`), F3 (direction authority — rides with the position/dir work).
+- Line-level audit (`LINE_LEVEL_ODR_AUDIT.md`) F7 (`composeLor_`), F3 (direction authority — rides with the position/dir work).
 - Natural pairing: the CA1 extraction + the C3 direction track, together.

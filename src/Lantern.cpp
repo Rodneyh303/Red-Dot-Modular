@@ -108,6 +108,9 @@ struct Lantern : Module {
     // Intertropical's inverse map (output -> slot -> voice, per active scene) so each output channel's
     // row shows the voice routed to it. Grid is transpose-agnostic; piano-roll adds post-transpose.
     int sourceMode = 0;
+    // Mask view: 0 = POST-mask (default — Lantern agrees with the scope: steps the output mask mutes draw empty),
+    // 1 = PRE-mask (what the voices generate before the output gate — the composing view). Pure view state.
+    int maskView = 0;
     // DEBUG ONLY (not the product path): when set in IT-source mode, overwrite each cell's pitch/gate
     // from Intertropical's ACTUAL output jack voltages (it->outputs[...].getVoltage(ch)) instead of the
     // engine reconstruction. Lets you A/B the engine-reconstructed view against literal jack truth in
@@ -159,6 +162,7 @@ struct Lantern : Module {
         // View state (was params before de-paramming — configParam gave persistence free)
         json_object_set_new(root, "viewMode",   json_integer(viewMode));
         json_object_set_new(root, "sourceMode", json_integer(sourceMode));
+        json_object_set_new(root, "maskView",   json_integer(maskView));
         json_object_set_new(root, "debugRawJacks", json_boolean(debugRawJacks));
         json_object_set_new(root, "zoomMode",   json_integer(zoomMode));
         json_object_set_new(root, "followMode", json_integer(followMode));
@@ -176,6 +180,7 @@ struct Lantern : Module {
         };
         rdInt("viewMode", viewMode);     rdInt("zoomMode", zoomMode);
         rdInt("sourceMode", sourceMode);
+        rdInt("maskView", maskView);
         if (json_t* j = json_object_get(root, "debugRawJacks")) debugRawJacks = json_boolean_value(j);
         rdInt("followMode", followMode); rdInt("rollView", rollView);
         rdInt("rollScroll", rollScroll); rdInt("rollColor", rollColor);
@@ -231,6 +236,7 @@ struct Lantern : Module {
         // step % 16) and the forStep decision pairing all live in the core. An
         // invalid edge is either "not a step change" or "the playhead outside the
         // ring" — nothing to record (the core still updated the view state).
+        rec.postMask = (maskView == 0);   // the mask view setting (post = the scope's truth)
         const LanternRecordCore::StepEdge edge = rec.beginSample(eng);
         if (!edge.valid) return;
 
@@ -1255,6 +1261,14 @@ struct LanternWidget : ModuleWidget {
                     }
                 }));
         }
+        menu->addChild(new MenuSeparator);
+        menu->addChild(createMenuLabel("Mask view"));
+        menu->addChild(createCheckMenuItem("Post-mask (matches the outputs)", "",
+            [m]() { return m->maskView == 0; },
+            [m]() { m->maskView = 0; }));
+        menu->addChild(createCheckMenuItem("Pre-mask (as generated)", "",
+            [m]() { return m->maskView == 1; },
+            [m]() { m->maskView = 1; }));
         menu->addChild(new MenuSeparator);
         menu->addChild(createMenuLabel("Debug"));
         menu->addChild(createCheckMenuItem("Verify vs raw jacks (IT-source)", "",

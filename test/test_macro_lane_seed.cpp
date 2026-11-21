@@ -74,7 +74,7 @@ int main() {
             eng.advancePlayhead(1, nullptr);
             const int T = t + 1;
             int vt, vs; eng.macroLaneDisplay(MEL, vt, vs);
-            ok = ok && vt == (((T - 1) % 10) + 2) % 7;
+            ok = ok && vt == (T - 1) % 7;   // RULED 2026-11-21: short lane free-runs inside a mapped global
         }
         check(ok, "1b: mapped global 10@2 + identity row — the IDENTITY arm seeds the bounded "
                   "GLOBAL walk, folded by the lane's own length (((T-1)%10 + 2) mod 7 — the "
@@ -99,7 +99,9 @@ int main() {
                   "period, NOT the free-run (pre-fix: the free-run, the row ignored)");
     }
 
-    // ── GATE 1d: an AUTHORED row (ABS1) — the row walks the FULL PHRASE ──
+    // ── GATE 1d: an AUTHORED row (ABS1) — CYCLE-CONSISTENT: the lane hangs under the row's own walk, exactly as 1c ──
+    // (UAS RESOLVED 2026-11-21) the range base only MUTES; content is the cycle read. WAS: the row walked the
+    // FULL PHRASE (((T-1+16)%32)%7).
     {
         SequencerEngine eng; eng.reset();
         eng.macroVoiceLor_[SequencerEngine::LOR_LEN] = 8;
@@ -111,11 +113,10 @@ int main() {
             eng.advancePlayhead(1, nullptr);
             const int T = t + 1;
             int vt, vs; eng.macroLaneDisplay(MEL, vt, vs);
-            ok = ok && vt == ((T - 1 + 16) % 32) % 7;
+            ok = ok && vt == ((T - 1) % 8) % 7;   // == 1c: abs1 is the cycle read plus a mute
         }
-        check(ok, "1d: authored row 8@16 (ABS1) — the row walks the FULL PHRASE (the ring, "
-                  "rho=(R-O): ((T-1+16)%32)%7), the lane still cycling its own 7 values "
-                  "(the voice rows' abs1 twin, one tier up)");
+        check(ok, "1d: authored row 8@16 (ABS1) — cycle-consistent: the lane hangs under the ROW's own walk "
+                  "(((T-1)%8)%7), IDENTICAL to 1c's CYCLE — the range base only mutes (UAS 2026-11-21)");
     }
 
     // ── GATE 2: EAST UNCHANGED (the identity arm) — the helper reproduces the inline law ──

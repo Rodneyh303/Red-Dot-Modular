@@ -195,9 +195,9 @@ int main() {
         for (int t = 0; t < 21; ++t) {
             eng.advancePlayhead(1, nullptr);
             const int T = t + 1;
-            ok = ok && eng.laneTick_[0] == (((T - 1) % 10) + 2) % 7;
+            ok = ok && eng.laneTick_[0] == (T - 1) % 7;   // RULED 2026-11-21: len-7 lane inside G=10@2 FREE-RUNS (was the bounded fold, restarting at the global edge)
         }
-        check(ok, "GATE 6: the mapped 10@2 fold (((T-1)%10 + 2) mod 7) — unchanged");
+        check(ok, "GATE 6: a len-7 lane in a mapped 10@2 global free-runs ((T-1)%7) — RULED 2026-11-21");
     }
 
     // ── GATE 7: PROMPT 2 — the phrase anchor (the voice row + the macro twin) ──

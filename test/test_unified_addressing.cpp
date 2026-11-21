@@ -501,7 +501,7 @@ int main() {
         for (size_t k = 0; k < reads.size(); ++k) {
             const long T = (long)k + 1;
             const int  walk = (int)(((T - 1) % 10 + 10) % 10);
-            const int  expect = ((walk + 2) % 6 + 3) & 0x0F;
+            (void)walk; const int  expect = (int)((((T - 1) + 2) % 6) + 3) & 0x0F;   // RULED 2026-11-21: a lane shorter than G free-runs (t mod L), no restart at the global edge
             isComposed = isComposed && reads[k] == expect;
         }
         check(isComposed,
@@ -661,23 +661,19 @@ int main() {
         eng.lorRef(dotModular::STRAND_RHYTHM, SequencerEngine::LOR_ROT) = 2;
         std::vector<int> fwd;
         for (int k = 0; k < 24; ++k) { eng.advancePlayhead(+1); fwd.push_back(eng.getRhythmStep()); }
-        // (SLICE 2 re-aim — CC_PROMPT_POSITION_RESOLVER_SLICE2_DERIVE) The reverse law
-        // replaces the RETRACE model: the voice map anchors at the phrase ENTRY in the
-        // travel direction (forward enters at R and counts up; REVERSE ENTERS AT R AND
-        // COUNTS DOWN — the oracle's rule), so the backward march no longer replays the
-        // forward reads (the old pure-function-of-the-column fold the wG law produced).
-        // Pinned instead, on the composed chain (the mapped voice x the authored lane):
-        // the 24-step backward march REACHES the reverse entry (stepIndex == endStep —
-        // the direction-stable truth), and the read there equals the FORWARD entry's
-        // read (fwd[0]) — the composed rotation is direction-agnostic at the anchor.
-        bool sawEntry = false, anchorOK = false;
-        for (int k = 0; k < 24; ++k) {
+        // (TRUE-RETRACE, Rodney 2026-11-21 — supersedes the SLICE 2 re-aim, which had replaced the retrace
+        // model with "reverse re-enters at R"). A mid-phrase reversal now walks the SAME read coordinate
+        // backwards (PositionResolver::readCoord is anchored to the traversal's ENTRY direction), so the backward
+        // march REPLAYS the forward reads bit-exactly on the composed chain (mapped voice x authored lane): the
+        // j-th backward step lands on forward step 22-j. A reverse that starts FRESH at the phrase entry still
+        // enters at R (test_reverse_rotation_anchor gate 2).
+        bool retraces = true;
+        for (int k = 0; k < 23; ++k) {
             eng.advancePlayhead(-1);
-            if (eng.playedColumn() == eng.endStep) { sawEntry = true; anchorOK = (eng.getRhythmStep() == fwd[0]); }
+            retraces = retraces && (eng.getRhythmStep() == fwd[22 - k]);
         }
-        check(sawEntry, "STAGE2: the 24-step backward march reaches the reverse entry (endStep)");
-        check(anchorOK, "STAGE2: REVERSIBILITY (re-aimed, slice 2) — the reverse ENTRY reads the same composed "
-                        "rotation as the forward entry (the direction-agnostic anchor; the retrace model is superseded)");
+        check(retraces, "STAGE2: REVERSIBILITY (true retrace, 2026-11-21) — a mid-phrase reversal replays the forward "
+                        "reads of the composed chain (mapped voice x authored lane) bit-exactly");
     }
     {
         // DELEGATION: the Macro row is the default for every voice; a local-East claim
@@ -1196,9 +1192,17 @@ int main() {
             bool fullOK = true;
             for (int k = 0; k < dotModular::kMaskRing; ++k) {
                 r.advancePlayhead(+1);
-                fullOK = fullOK && r.voiceReadPosition(M) == ((k + 7) % dotModular::kMaskRing);   // (t−1+R) mod RING — all 32, phased by R
+                // (CYCLE-CONSISTENT ABS1, Rodney 2026-11-21 — UAS RESOLVED block) abs1 = cycle with the
+                // cycling off: content is the CYCLE read (own L, R window-relative: cell O + (k+R)%L at
+                // global step k) and the range base only MUTES. At every SOUNDING step the read is
+                // cycle's; outside the window the voice is silent and the playhead follows the global
+                // step. WAS: the full-phrase read (k+R) mod RING, then the enter-at-R-at-window-start read.
+                if (r.outputMaskPasses(M, k))
+                    fullOK = fullOK && r.voiceReadPosition(M) == 5 + ((k + 7) % 8);
+                else
+                    fullOK = fullOK && r.voiceReadPosition(M) == k;   // silent: the playhead follows the global step
             }
-            check(fullOK, "STAGE4: abs1's READ runs the full phrase PHASED BY R — parent-step-1 reads R=7 (the anchor law, unified); only the output gates");
+            check(fullOK, "STAGE4: abs1's read is the CYCLE read at sounding steps (cell O+(k+R)%L) and follows the global step when silent — the range base only mutes");
             rk = 0.f;   // cycle: the SAME row confines the read
             r.pushMaskEditor(rb, rk, rf, reb, rek, ref, rle);
             // rho=R re-pin (the CC fix): the confined walk starts at WINDOW-STEP 7 = phrase 12.
@@ -1226,9 +1230,19 @@ int main() {
                 bool revOK = true;
                 for (int k = 0; k < dotModular::kMaskRing; ++k) {
                     q.advancePlayhead(+1);
-                    revOK = revOK && q.voiceReadPosition(M) == (((7 - (k + 1)) % dotModular::kMaskRing + dotModular::kMaskRing) % dotModular::kMaskRing);
+                    // (CC_PROMPT_REVERSE_ANCHOR_OFFBYONE) the reverse anchors AT R at
+                    // the first step: read = (R − t + 1) mod the ring — was (R − t),
+                    // which sat one cell left of rotation.
+                    // (CYCLE-CONSISTENT ABS1) a Reverse voice reads the CYCLE reverse law — enters at R at
+                    // global step 1 and counts down inside [O,O+L): cell O + (R − k) mod L — on the
+                    // SOUNDING steps; silent steps follow the global step. WAS the full-ring (R − t + 1)
+                    // mod 32 walk, then enter-at-R-at-window-start.
+                    if (q.outputMaskPasses(M, k))
+                        revOK = revOK && q.voiceReadPosition(M) == 5 + ((((7 - k) % 8) + 8) % 8);
+                    else
+                        revOK = revOK && q.voiceReadPosition(M) == k;
                 }
-                check(revOK, "STAGE4: abs1 + voice Reverse — the full-phrase read walks BACKWARD (read = (R−t) mod the ring; direction composes in BOTH base modes)");
+                check(revOK, "STAGE4: abs1 + voice Reverse — the read is the CYCLE reverse read at sounding steps (cell O+(R-k)%L) and follows the global step when silent (direction composes in BOTH base modes)");
             }
         }
         // THE OVERLAY COMPOSES: abs1 + a painted pattern = the AND (in-window AND bit).
@@ -1290,17 +1304,20 @@ int main() {
         check(stillStatic, "STAGE4: abs2 is STATIC — an R turn does not move the mask");
         macroFollowR = 1.f;   // switch the row to abs3: the SAME base state re-pins once
         eng.pushMaskEditor(macroBits, macroKind, macroFollowR, eastBits, eastKind, eastFollowR, localEast);
-        check(eng.outputMaskPasses(M, 1) && !eng.outputMaskPasses(M, 2),
-              "STAGE4: abs3 follows-R — the re-pin moves the play cell one step EARLIER (the content direction)");
+        // (FOLLOW-R RETIRED 2026-11-21 — UAS RESOLVED block) pushing the flag is ignored: the painted
+        // mask is STATIC in global-step space whatever R does. (It used to re-pin one step EARLIER —
+        // right for a Forward voice, wrong for Reverse, and undefined for Pendulum/PingPong.)
+        check(eng.outputMaskPasses(M, 2) && !eng.outputMaskPasses(M, 1),
+              "STAGE4: follow-R RETIRED — the flag is ignored and an R turn does not move the painted mask (static)");
         eng.macroVoiceLorRef(SequencerEngine::LOR_ROT) = 7;
         eng.pushMaskEditor(macroBits, macroKind, macroFollowR, eastBits, eastKind, eastFollowR, localEast);
         check(eng.outputMaskPasses(M, 2) && !eng.outputMaskPasses(M, 1),
-              "STAGE4: abs3 re-pin is reversible — R back restores the painted position");
+              "STAGE4: R back — the painted position is unchanged (it never moved)");
         macroBits[0] = 1ULL << 9;   // a REPAINT: re-anchors at the current base R
         eng.macroVoiceLorRef(SequencerEngine::LOR_ROT) = 12;
         eng.pushMaskEditor(macroBits, macroKind, macroFollowR, eastBits, eastKind, eastFollowR, localEast);
         check(eng.outputMaskPasses(M, 9) && !eng.outputMaskPasses(M, 10),
-              "STAGE4: a repaint re-anchors at the painted R (the anchor law's fresh link)");
+              "STAGE4: a repaint lands where it is painted (static)");
         // (A4) THE FOLLOW-R EVALUATION HOOK (the doc's "the rotation MODULATION offsets
         // relative to the anchor" — implemented): a MODULATED R (the CV fold writes the
         // store past the anchor — NO push, NO re-pin) offsets the pattern LIVE by the
@@ -1310,9 +1327,9 @@ int main() {
         eng.macroVoiceLorRef(SequencerEngine::LOR_ROT) = 14;   // +2 past the anchor (12) — the fold
         bool hookOK = true;
         for (int s = 0; s < 16; ++s)
-            hookOK = hookOK && eng.outputMaskPasses(M, s) == (s == 7);   // bit 9 moves 2 EARLIER
-        hookOK = hookOK && eng.effectiveOutputMask(M) == (uint64_t)(1ULL << 7);
-        check(hookOK, "STAGE4: follow-R evaluates the modulated R — +2 past the anchor plays the pattern 2 steps earlier (live, no re-pin)");
+            hookOK = hookOK && eng.outputMaskPasses(M, s) == (s == 9);   // (FOLLOW-R RETIRED) static: bit 9 stays put under a modulated R
+        hookOK = hookOK && eng.effectiveOutputMask(M) == (uint64_t)(1ULL << 9);
+        check(hookOK, "STAGE4: follow-R RETIRED — a modulated R (+2 past the anchor) does NOT move the painted mask (static; a dedicated MASK shift control is the way to move it)");
         eng.macroVoiceLorRef(SequencerEngine::LOR_ROT) = 12;   // Δ=0: the anchored copy stands
         check(eng.outputMaskPasses(M, 9) && !eng.outputMaskPasses(M, 7),
               "STAGE4: the evaluation offset is RELATIVE — back at the anchor, the anchored position plays (no double rotation)");
@@ -1354,7 +1371,7 @@ int main() {
         // cell (0x1869F, was 0x869F); only the bits ≥ the ring (≥ 32) drop.
         const bool clampsOK = eng.maskMacroKind_ == 2            // lround(7.4) clamped -> 2
                            && eng.maskMacroAnchored_ == dotModular::kMaskLenMask   // ~0ULL & lenMask -> the ring's all-on (32 bits)
-                           && eng.maskMacroFollowR_ == true
+                           && eng.maskMacroFollowR_ == false     // (FOLLOW-R RETIRED 2026-11-21) the flag is read and IGNORED: the painted mask is static
                            && eng.maskKind_[v2.v] == 0           // -1 -> 0 (cycle)
                            && eng.maskAnchored_[v2.v] == 0x1869FULL // 99999 & lenMask -> 0x1869F (the ring mask law at 32 — the ANCHORED copy; the write-only maskPainted_ echo is retired)
                            && eng.maskLocalEast_[v2.v] == true;  // 0.5 -> local
@@ -1411,8 +1428,8 @@ int main() {
         macroFollowR = 1.f;
         eng.macroVoiceLorRef(SequencerEngine::LOR_ROT) = 8;
         eng.pushMaskEditor(macroBits, macroKind, macroFollowR, eastBits, eastKind, eastFollowR, localEast);
-        check(eng.effectiveOutputMaskMacro() == (1ULL << 1),
-              "STAGE4-DISP: abs3 re-pin ROTATES the returned bits (the strip visibly follows R)");
+        check(eng.effectiveOutputMaskMacro() == (1ULL << 2),
+              "STAGE4-DISP: follow-R RETIRED — the returned bits stay at the painted cell when R turns (static)");
         // DELEGATION: a local-mask voice's accessor reads its own row; a follower's
         // (and the macro accessor) read the Macro tier.
         for (int v = 0; v < 16; ++v) { eastBits[v]=65535ULL; eastKind[v]=2.f; }
@@ -1541,18 +1558,17 @@ int main() {
             float lor[3] = {8.f, 0.f, (float)R};
             eng.pushVoiceLorEditor(lor, 0.f, eastLor, eastDir, localEastFlag);
             eng.pushMaskEditor(macroBits, macroKind, macroFollowR, eastBits, eastKind, eastFollowR, localEast);
-            const int bit = ((2 - R) % 32 + 32) % 32;   // the figure moves R-earlier (the content direction)
-            sweepOK = sweepOK && eng.outputMaskPasses(M, bit);
-            if (R > 0) sweepOK = sweepOK && !eng.outputMaskPasses(M, 2);   // the figure MOVED off the painted cell
+            // (FOLLOW-R RETIRED 2026-11-21) static: the figure stays on the painted cell for every R
+            sweepOK = sweepOK && eng.outputMaskPasses(M, 2) && !eng.outputMaskPasses(M, ((2 - R) % 32 + 32) % 32 == 2 ? 3 : ((2 - R) % 32 + 32) % 32);
         }
         // R=15 authored -> clamped to 7 == the current anchor: NO further movement —
         // the figure can never reach where R 8..15 would have put it (bit 19 unreachable).
         float lor15[3] = {8.f, 0.f, 15.f};
         eng.pushVoiceLorEditor(lor15, 0.f, eastLor, eastDir, localEastFlag);
         eng.pushMaskEditor(macroBits, macroKind, macroFollowR, eastBits, eastKind, eastFollowR, localEast);
-        sweepOK = sweepOK && eng.outputMaskPasses(M, 27) && !eng.outputMaskPasses(M, 19) && !eng.outputMaskPasses(M, 2);
+        sweepOK = sweepOK && eng.outputMaskPasses(M, 2) && !eng.outputMaskPasses(M, 27) && !eng.outputMaskPasses(M, 19);
         check(sweepOK,
-              "CCFIX PAINTED SWEEP: L=8 sweeps the figure by R-anchor over 0..7; authored R=15 clamps to 7 (the figure never reaches the R>=8 positions)");
+              "CCFIX PAINTED SWEEP: follow-R RETIRED — the painted figure stays on its cell for every R in 0..7 and for the clamped authored R=15 (static)");
     }
     {
         // PAINTED FOLLOWS ROTATION, gate 2 (the shrink re-pin): shrinking L below the
@@ -1577,10 +1593,10 @@ int main() {
         float lor8[3] = {8.f, 0.f, 12.f};            // the SAME authored R — L shrinks under it
         eng.pushVoiceLorEditor(lor8, 0.f, eastLor, eastDir, localEastFlag);
         eng.pushMaskEditor(macroBits, macroKind, macroFollowR, eastBits, eastKind, eastFollowR, localEast);
-        shrinkOK = shrinkOK && eng.macroVoiceLorRef(SequencerEngine::LOR_ROT) == 7   // the clamp
-                && eng.outputMaskPasses(M, 7) && !eng.outputMaskPasses(M, 2);        // the clamp-delta re-pin
+        shrinkOK = shrinkOK && eng.macroVoiceLorRef(SequencerEngine::LOR_ROT) == 7   // the authoring clamp still applies to R
+                && eng.outputMaskPasses(M, 2) && !eng.outputMaskPasses(M, 7);        // (FOLLOW-R RETIRED) static: no clamp-delta re-pin
         check(shrinkOK,
-              "CCFIX PAINTED SHRINK: L 16->8 below R=12 clamps R to 7 and the figure re-pins by the clamp delta (2 -> 7); the anchor then tracks the clamped R");
+              "CCFIX PAINTED SHRINK: L 16->8 below R=12 still clamps R to 7, and the painted figure does NOT move (follow-R retired — static)");
     }
 
 

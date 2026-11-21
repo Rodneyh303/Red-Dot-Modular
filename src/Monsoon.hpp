@@ -1161,8 +1161,11 @@ struct Monsoon : Module {
     void  setMaskMacroKind(float x)       { editor.maskMacroKind = x; }
     uint64_t getMaskMacroPatternBits() const { return editor.maskMacroPatternBits; }
     void  setMaskMacroPatternBits(uint64_t x){ editor.maskMacroPatternBits = x & dotModular::kMaskLenMask; }
-    float getMaskMacroFollowR() const     { return editor.maskMacroFollowR; }
-    void  setMaskMacroFollowR(float x)    { editor.maskMacroFollowR = x; }
+    // (FOLLOW-R RETIRED 2026-11-21 — UAS RESOLVED block) the painted mask is static; the stored key is
+    // still saved/loaded for patch compatibility but never acts. The getters report 0 and the
+    // setters are no-ops so no UI path can re-arm it or block painting on it.
+    float getMaskMacroFollowR() const     { return 0.f; }
+    void  setMaskMacroFollowR(float)      { }
     // per-cell view over the bit pattern (the paint surface reads/writes cells)
     bool  getMaskMacroCell(int c) const {
         return (c >= 0 && c < dotModular::kMaskRing) && (((editor.maskMacroPatternBits >> c) & 1ULL) != 0); }
@@ -1175,8 +1178,8 @@ struct Monsoon : Module {
     uint64_t getMaskEastPatternBits(int v) const { return vLorOk(v) ? editor.maskEastPatternBits[v] : 0ULL; }
     void  setMaskEastPatternBits(int v, uint64_t x) {
         if (vLorOk(v)) editor.maskEastPatternBits[v] = x & dotModular::kMaskLenMask; }
-    float getMaskEastFollowR(int v) const     { return vLorOk(v) ? editor.maskEastFollowR[v] : 0.f; }
-    void  setMaskEastFollowR(int v, float x)  { if (vLorOk(v)) editor.maskEastFollowR[v] = x; }
+    float getMaskEastFollowR(int) const       { return 0.f; }   // (FOLLOW-R RETIRED — see the macro accessor)
+    void  setMaskEastFollowR(int, float)      { }
     bool  getMaskEastCell(int v, int c) const {
         return (vLorOk(v) && c >= 0 && c < dotModular::kMaskRing) && (((editor.maskEastPatternBits[v] >> c) & 1ULL) != 0); }
     void  setMaskEastCell(int v, int c, bool play) {
@@ -1890,6 +1893,7 @@ extern Model* modelColonnades;                 // tuning+scale authoring expande
 extern Model* modelColonnadesDuo;              // tuning+scale authoring expander, 24-tone (microtonal Phase 3)
 extern Model* modelMonsoonShophouseMicro;      // tuning+scale scene modulator for Colonnades/Duo (.dmtune fronts)
 extern Model* modelKeppel;                     // poly microtonal CV → MPE MIDI out (standalone utility)
+extern Model* modelWoodlands;                  // MPE MIDI in → poly CV (the mirror of Keppel) [working name]
 extern Model* modelLantern;                    // Lantern note-output visualiser
 // West retired (Straits redesign)
 //extern Model* modelMonsoonStraitsSands;        // NEW (Macro): global DNA controls (compact)

@@ -42,6 +42,29 @@ struct SandsLaneWindowCore {
     }
     void syncDisplayToEdit() { setDisplayLOR(length, offset, rotation); }
 
+    // ── (CC_PROMPT_LANE_RANGE_DISPLAY_UNIFY Stage B, the FINAL MODEL) the PENDING
+    // preview window — base + pending CV (the live-modulated window exactly, the
+    // engine's effective*Preview authority). THE WIREFRAME's three markers read it;
+    // the SOLID window never does (the solid = the committed display row above —
+    // there is NO separate base/authored outline and NO divergence echo). With no
+    // CV pending == committed and the wireframe hides (previewDiverged() false —
+    // one window on the grid, as today).
+    int  pLength = 0;   // 0/invalid until the host feeds the preview accessor
+    int  pOffset = 0;
+    int  pRotation = 0;
+    bool previewValid = false;
+    void setPreviewLOR(int len, int off, int rot) {
+      pLength   = std::max(1, std::min(len, dotModular::kPatternLengthCap));
+      pOffset   = ((off % dotModular::kPatternLengthCap) + dotModular::kPatternLengthCap) % dotModular::kPatternLengthCap;
+      pRotation = ((rot % dotModular::kPatternLengthCap) + dotModular::kPatternLengthCap) % dotModular::kPatternLengthCap;
+      previewValid = true;
+    }
+    // The wireframe's gate: fed AND actually diverging from what plays (no CV ⇒
+    // false ⇒ no wireframe — the committed window is the only element).
+    bool previewDiverged() const {
+      return previewValid && (pLength != dispLength || pOffset != dispOffset || pRotation != dispRotation);
+    }
+
     // ── Single source of truth for "which physical bars are in the window" ──
     // Reads the DISPLAY L/O/R so the visible window reflects CV modulation; with
     // no CV these equal the edit values (kept in sync via syncDisplayToEdit()).

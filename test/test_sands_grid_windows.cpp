@@ -133,7 +133,7 @@ int main() {
         check(lane.barInWindow(20) && !lane.barInWindow(5), "R5: the DISPLAY window follows setDisplayLOR (reads the engine window, never recomputes)");
         check(lane.length == 16 && lane.offset == 0, "R5: the EDIT values untouched by the display push (dimming is display only)");
         check(lane.editStartBar() == 0, "R5: the edit edges stay put (drag hit-testing acts on the user's window)");
-        check(lane.lorDiverged(), "the divergence flag fires when display != edit (the ghost echo's trigger)");
+        check(lane.lorDiverged(), "the divergence flag fires when display != edit (was the ghost echo's trigger — the echo is DELETED in the FINAL MODEL; the predicate stays a state helper, the wireframe gates on previewDiverged instead)");
         lane.syncDisplayToEdit();
         check(!lane.lorDiverged(), "syncDisplayToEdit restores the identity (no CV -> display == edit)");
     }

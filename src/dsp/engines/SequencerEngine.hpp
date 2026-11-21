@@ -368,6 +368,71 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
     // equal the old f(global counter) walk bit-for-bit. Forward/Reverse return the raw
     // (t-1) / -t values; their consumers mod by the lane length locally.
     static int64_t laneTickFor(LaneDir d, int64_t t, int len);
+    // (CC_PROMPT_REVERSE_ANCHOR_OFFBYONE) THE ANCHOR BIAS — the rotation-anchored
+    // reads' REVERSE-ONLY correction: laneTickFor(Reverse, 1, L) = −1 ≡ L−1, so a
+    // reversed row anchored at the parent's first step sat ONE CELL LEFT of R
+    // (walking R−1, R−2, …). The bias starts the reverse walk at 0 — matching
+    // Forward, Pendulum and PingPong, which already anchor at R — so the anchor
+    // lands at R in EVERY direction. A CONSTANT per direction: every sign law
+    // differences two biased reads, so the cues are unchanged exactly.
+    // laneTickFor itself is UNTOUCHED (the time-symmetric primitive the bounce
+    // walks and the STEPS_32 goldens depend on); the correction lives where
+    // rotation is applied — uniformly, via this ONE helper (CA5-adjacent: the
+    // same law lives in several read sites; a single helper keeps them from
+    // drifting).
+    static inline int64_t anchorBias(LaneDir d) { return (d == LaneDir::Reverse) ? 1 : 0; }
+
+    // ── POSITION RESOLVER CONSOLIDATION (POSITION_RESOLVER_CONSOLIDATION.md) ─────
+    // The four WALK POLICIES — the SandsModifierPolicy pattern's transfer onto the
+    // direction axis (the doc's ruling on WHERE the concept pattern pays). Each
+    // declares { tick (via laneTickFor, UNCHANGED — the time-symmetric primitive the
+    // bounce walks and the STEPS_32 goldens depend on), anchorBias (the read anchor's
+    // reverse-only constant, 7aae5ee9), entryEdge (the direction-entry box-offset) };
+    // PositionResolver::WalkResolver<Policy> folds rotation / offset / box-offset /
+    // content↔slot ONCE over the WalkPolicy concept. The policies live HERE (they
+    // name LaneDir + laneTickFor, which the resolver cannot — the engine includes the
+    // resolver). anchorBias(d) above stays the runtime constant (the sites' bias
+    // supply); the per-policy declarations are its pinned twins (the bridge test
+    // asserts the equality across all four).
+    struct WalkFwd {
+        static int64_t tick(int64_t t, int len) { return laneTickFor(LaneDir::Forward, t, len); }
+        static constexpr int64_t anchorBias() { return 0; }
+        static constexpr int64_t entryEdge(int) { return 0; }             // the LEFT slot
+    };
+    struct WalkRev {
+        static int64_t tick(int64_t t, int len) { return laneTickFor(LaneDir::Reverse, t, len); }
+        static constexpr int64_t anchorBias() { return 1; }               // 7aae5ee9's read anchor
+        static constexpr int64_t entryEdge(int len) { return len - 1; }   // the RIGHT slot
+    };
+    struct WalkPend {
+        static int64_t tick(int64_t t, int len) { return laneTickFor(LaneDir::Pendulum, t, len); }
+        static constexpr int64_t anchorBias() { return 0; }
+        static constexpr int64_t entryEdge(int) { return 0; }
+    };
+    struct WalkPP {
+        static int64_t tick(int64_t t, int len) { return laneTickFor(LaneDir::PingPong, t, len); }
+        static constexpr int64_t anchorBias() { return 0; }
+        static constexpr int64_t entryEdge(int) { return 0; }
+    };
+    // The RUNTIME dispatcher — the ONE fold the read sites call (byte-identical to
+    // the shipped inline laneTickFor(d,t,len) + anchorBias(d); the bridge test sweeps
+    // the full grid). The commit edge's wEdge rides the same table (walkEdge — the
+    // shipped law keys Reverse vs everything else, so Pend/PingPong land Forward's
+    // entry edge exactly as they did).
+    static int64_t walkFold(LaneDir d, int64_t t, int len) {
+        switch (d) {
+            case LaneDir::Reverse:  return PositionResolver::WalkResolver<WalkRev>::frameValue(t, len);
+            case LaneDir::Pendulum: return PositionResolver::WalkResolver<WalkPend>::frameValue(t, len);
+            case LaneDir::PingPong: return PositionResolver::WalkResolver<WalkPP>::frameValue(t, len);
+            default:                return PositionResolver::WalkResolver<WalkFwd>::frameValue(t, len);
+        }
+    }
+    static int64_t walkEdge(LaneDir d, int len) {
+        switch (d) {
+            case LaneDir::Reverse:  return PositionResolver::WalkResolver<WalkRev>::entryEdge(len);
+            default:                return PositionResolver::WalkResolver<WalkFwd>::entryEdge(len);
+        }
+    }
 
     // ── UNIFIED ADDRESSING Stage 1 (CC_PROMPT_UNIFIED_ADDRESSING_SPEC.md) ──────────
     // The GLOBAL-level LOR map — the top of the nested global->voice->lane chain. Under the
@@ -509,6 +574,12 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
     std::array<int, dotModular::NUM_STRANDS> lanePhase_ = {};
     std::array<std::array<int, dotModular::NUM_STRANDS>, kVoiceSlots> lanePhaseV_ = {};   // per-voice: ≡ the RAW effective clock's t0 (mod the walk's period)
     std::array<int, kVoiceSlots> voiceFramePhase_ = {};   // mapped voice rows: ≡ the RAW effective clock's t0 (mod the row walk's period)
+    // (CC_FIX_GLOBAL_BELOW_VOICE_PHASE_DESYNC) the BUG-2 edge snapshot is RETIRED:
+    // the lane-edge commit now keys off the LIVE rotation anchor
+    // (voiceFrameEdgeLive_ — a pure function of the transport's phrase position +
+    // the voice's advance offset), so the head and the derive agree within an
+    // event with nothing latched — a latched phase reference is exactly what a
+    // live global-length change would strand (the voice-wrap +1's cousin).
     // (CC_FIX_MACRO_LANE_SEED Part 2) the MACRO ROW's frame phase — the mapped macro
     // row's walk congruence, the container the Macro lanes hang under. Mirrors
     // voiceFramePhase_ for the one shared row (the follower voices' rows resolve to
@@ -616,7 +687,26 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
         else
             effectiveLaneLor(bank, LaneId{EDITOR_LANE_VARIATION}, vl, vo, vrr, vd);
         const int varLen = vl;
-        scanOfsV_[bank.v] = (scanOfsV_[bank.v] + 1) % (varLen > 0 ? varLen : 1);
+        // (CC_FIX_GLOBAL_BELOW_VOICE_PHASE_DESYNC) the scan bound follows the
+        // window's DECLARED geometry — the driver row's authored window (ABS1's
+        // ring = the current global phrase), never a cached min — and
+        // deliberately NOT the live global length: the scan is a LOCAL window
+        // search over authored geometry, so its bound is a pure function of the
+        // authored rows and the static-no-modulation dip differential stays
+        // byte-identical BY CONSTRUCTION (Rodney's regression floor). Where the
+        // rotation anchor re-enters is TIMING — the commit edge's live law —
+        // not the scan's modulus. (Was the raw varLen with no row bound at
+        // all: today's :629 bug.)
+        int bound = varLen;
+        {
+            int fL, fO, fR; LaneDir fD;
+            effectiveVoiceLor(bank.v, fL, fO, fR, fD);
+            if (fL < 1) fL = 1;
+            if (voiceFrameReadsFullPhrase(bank.v)) fL = std::max(1, cachedLength);   // (DESYNC abs1) ABS1's ring = the current global phrase
+            bound = std::min(bound, fL);
+        }
+        if (bound < 1) bound = 1;
+        scanOfsV_[bank.v] = (scanOfsV_[bank.v] + 1) % bound;
     }
     // PER-VOICE STEP-ADVANCE (PER_VOICE_STEP_ADVANCE_PLAN.md §59-99, ruled by
     // CC_PER_VOICE_ADVANCE_SIGNOFF.md): the SECOND per-voice offset on top of LOR —
@@ -780,22 +870,39 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
     uint64_t maskMacroLastPushed_                  = kMaskLenMask;
     // The played steps move delta phrase steps EARLIER (the content direction — see
     // the anchor note): new bit j = old bit (j + delta). Rotation rides the ring.
-    static uint64_t rotMaskRing(uint64_t m, int delta) {
-        delta = ((delta % kMaskRing) + kMaskRing) % kMaskRing;
-        return delta ? (((m >> delta) | (m << (kMaskRing - delta))) & kMaskLenMask) : m;
+    // (UAS ABS1+MASK) the ring is a PARAMETER: the EVALUATION ring is the current
+    // global phrase G — the low G bits rotate cyclically among themselves and the
+    // bits beyond G stay DORMANT (preserved on the 32-wide storage; they reappear
+    // when G grows back). The 32-wide default keeps the authoring/re-pin callers.
+    static uint64_t rotMaskRing(uint64_t m, int delta, int ring = kMaskRing) {
+        if (ring < 1) ring = 1;
+        if (ring > kMaskRing) ring = kMaskRing;
+        delta = ((delta % ring) + ring) % ring;
+        if (!delta) return m;
+        const uint64_t loMask = kMaskLenMask >> (kMaskRing - ring);   // the low ring bits
+        const uint64_t lo = m & loMask;
+        const uint64_t rot = ((lo >> delta) | (lo << (ring - delta))) & loMask;
+        return (m & ~loMask) | rot;   // the dormant high bits ride through untouched
     }
-    static bool maskWindowContains(int O, int L, int phraseStep) {
-        if (L >= kMaskRing) return true;
-        const int s = ((phraseStep - O) % kMaskRing + kMaskRing) % kMaskRing;
+    // (DESYNC abs1 ruling) the RING is a parameter: the output gate passes the CURRENT
+    // GLOBAL PHRASE length (absolute = absolute-WITHIN-PHRASE — the global-phrase ring
+    // bounds what sounds; a declared L ≥ the phrase sounds the whole phrase, the
+    // declared L stays as authored — no cached min); the ring-wide default keeps the
+    // static callers (the presets, the tests) unchanged.
+    static bool maskWindowContains(int O, int L, int phraseStep, int ring = kMaskRing) {
+        if (ring < 1) ring = 1;
+        if (L >= ring) return true;
+        const int s = ((phraseStep - O) % ring + ring) % ring;
         return s < L;
     }
-    // The window as a ring-wide play mask (bit c = phrase step c+1 in [O, O+L)) — the
+    // The window as a play mask over the ring (bit c = phrase step c in [O, O+L)) — the
     // "mask from range" preset and the tests.
-    static uint64_t windowMaskBits(int L, int O) {
-        L = std::max(1, std::min(L, kMaskRing));
-        O = ((O % kMaskRing) + kMaskRing) % kMaskRing;
+    static uint64_t windowMaskBits(int L, int O, int ring = kMaskRing) {
+        if (ring < 1) ring = 1;
+        L = std::max(1, std::min(L, ring));
+        O = ((O % ring) + ring) % ring;
         uint64_t m = 0;
-        for (int c = 0; c < kMaskRing; ++c) if (maskWindowContains(O, L, c)) m |= (uint64_t(1) << c);
+        for (int c = 0; c < ring; ++c) if (maskWindowContains(O, L, c, ring)) m |= (uint64_t(1) << c);
         return m;
     }
     // The per-block authoring push (Monsoon's float mask rows -> this store), the
@@ -820,7 +927,19 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
     // step. CYCLE (and the painted overlay, which composes on either base) keeps
     // the confined window walk. Read-side only: the gate, the strip's window and
     // the chevron still read effectiveVoiceLor unchanged.
+    // (RETIRED 2026-11-21 — "[RESOLVED] CYCLE-CONSISTENT ABSOLUTE MODE", UAS doc) the range
+    // base (MASK_DYNAMIC) no longer reads the full phrase: content is ALWAYS the cycle read
+    // (the voice's own L, R window-relative) and the base only MUTES outside [O,O+L) at the
+    // output gate. The switch is kept (false) so the retired full-phrase branches stay
+    // reviewable and revertible until the Rack feel-test passes; a follow-up deletes them.
+    static constexpr bool kRangeBaseReadsFullPhrase = false;
     bool voiceFrameReadsFullPhrase(int v) const {
+        if (!kRangeBaseReadsFullPhrase) return false;
+        if (v < 0 || v >= kVoiceSlots) return false;
+        return (maskLocalEast_[v] ? maskKind_[v] : maskMacroKind_) == MASK_DYNAMIC;
+    }
+    // The range BASE is active for this voice (the output gate mutes outside [O,O+L)).
+    bool voiceBaseIsRange(int v) const {
         if (v < 0 || v >= kVoiceSlots) return false;
         return (maskLocalEast_[v] ? maskKind_[v] : maskMacroKind_) == MASK_DYNAMIC;
     }
@@ -843,13 +962,20 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
         // push exactly, so both sides of Δ read the same row.
         const int rowR    = local ? voiceLorStore_[v][LOR_ROT] : macroVoiceLor_[LOR_ROT];
         const int anchorR = local ? maskAnchorR_[v] : maskMacroAnchorR_;
-        return rotMaskRing(anchored, rowR - anchorR);
+        // (UAS ABS1+MASK) the follow-R rotation rides the CURRENT GLOBAL PHRASE ring:
+        // a painted mute at step k lands at (k − Δ) mod G — the mute travels with the
+        // content's rotation and composes with the re-anchor. The anchor/re-pin law
+        // is unchanged (the authoring plane stays on the 32-wide storage).
+        return rotMaskRing(anchored, rowR - anchorR, std::max(1, cachedLength));
     }
     // THE ONE GATE: does this voice's output pass at phrase step s (0..15)? The
     // OutputGenerator multiplies the voice's GATE + CV OUT by this every sample.
     // s < 0 (transport stopped) passes — the run gate already silences everything.
     bool outputMaskPasses(dotModular::VoiceSlot bank, int phraseStep) const {
-        if (phraseStep < 0 || phraseStep >= kMaskRing) return true;
+        // (UAS ABS1+MASK) the overlay indexes the CURRENT GLOBAL PHRASE ring: the
+        // phrase step is G-relative, and the (pat >> phraseStep) apply below reads
+        // exactly the mask's low-G bits — the bits beyond G are dormant.
+        if (phraseStep < 0 || phraseStep >= std::max(1, cachedLength)) return true;
         const int v = bank.v;
         const bool local = maskLocalEast_[v];
         const int  kind  = local ? maskKind_[v] : maskMacroKind_;
@@ -865,7 +991,10 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
         // full phrase, cycle confined).
         if (kind == MASK_DYNAMIC) {   // abs1: the region IS the voice LOR
             int L, O, R; LaneDir d; effectiveVoiceLor(v, L, O, R, d);
-            if (!maskWindowContains(O, L, phraseStep)) return false;
+            // (DESYNC abs1) the gate's ring = the CURRENT GLOBAL PHRASE — the sounding
+            // set is a pure function of (step mod G, O, L): drift-free by construction,
+            // immediate on a global change.
+            if (!maskWindowContains(O, L, phraseStep, std::max(1, cachedLength))) return false;
         }
         const uint64_t pat = effectiveOverlayPattern(v);   // the overlay ANDs (follow-R evaluates the mod)
         if (pat != kMaskLenMask) return (pat >> phraseStep) & 1u;
@@ -890,19 +1019,22 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
         uint64_t m = kMaskLenMask;
         if (kind == MASK_DYNAMIC) {   // abs1: the voice LOR window
             int L, O, R; LaneDir d; effectiveVoiceLor(v, L, O, R, d);
-            m = windowMaskBits(L, O);
+            m = windowMaskBits(L, O, std::max(1, cachedLength));   // (DESYNC abs1) the display tracks the gate's global-phrase ring
         }
         const uint64_t pat = effectiveOverlayPattern(v);   // the overlay ANDs (follow-R evaluates the mod)
         return (pat == kMaskLenMask) ? m : (m & pat);
     }
     // The MACRO tier's own pattern (the global strip's read — no voice delegation).
     uint64_t effectiveOutputMaskMacro() const {
+        // (UAS ABS1+MASK) the same G-ring as the per-voice tier: the window bits and
+        // the follow-R rotation both ride the current global phrase.
+        const int G = std::max(1, cachedLength);
         uint64_t m = kMaskLenMask;
         if (maskMacroKind_ == MASK_DYNAMIC)
-            m = windowMaskBits(macroVoiceLor_[LOR_LEN], macroVoiceLor_[LOR_OFF]);
+            m = windowMaskBits(macroVoiceLor_[LOR_LEN], macroVoiceLor_[LOR_OFF], G);
         uint64_t pat = maskMacroAnchored_;
         if (pat != kMaskLenMask && maskMacroFollowR_)     // the follow-R evaluation hook
-            pat = rotMaskRing(pat, macroVoiceLor_[LOR_ROT] - maskMacroAnchorR_);
+            pat = rotMaskRing(pat, macroVoiceLor_[LOR_ROT] - maskMacroAnchorR_, G);
         return (pat == kMaskLenMask) ? m : (m & pat);
     }
 
@@ -974,6 +1106,36 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
     int lorCvSuspendLane_ = -1;
     std::array<bool, LOR_ITEMS> lorCvSuspendLaneItems_ = {};
     void setLorCvSuspend(const bool* macro3, int voiceIdx, const bool* voice3, int laneIdx, const bool* lane3);
+    // ── (CC_PROMPT_LANE_RANGE_DISPLAY_UNIFY REMAINING BUGS 5) THE STICKY SUSPEND ──
+    // The suspend above is tied to the drag: on mouse-up it lifts at once and the
+    // modulation lands straight back on the just-made edit — the display jumps by
+    // the held sample the frame the drag guard lifts. MODEL B1 (Rodney, confirmed
+    // 2026-11-17): the drop IS the new base. setLorCvSuspend ZEROES each released
+    // item's committed CV sample on the active→cleared transition (the edit takes
+    // effect at once — the effective reads the hand) and ONLY the CV waits,
+    // disconnected, until the scope's own boundary, where the pend commits and the
+    // window re-resolves from the new base (the modulation lands on the downbeat).
+    // Human edit = live; machine modulation = latched. THE LANE SCOPES latch this
+    // sticky overlay (the members below): every commit path — the release-path
+    // immediate accept included — is gated until the voice's next frame edge
+    // (voiceFramePhase_[v]==0), where the edge sites clear it on the same pass the
+    // commit runs. The macro/row scopes need no overlay: refreshVoiceLorLatches
+    // only ever runs at their boundaries (the phrase edge / the unlock flush), so
+    // the zero alone holds them to the reconnect. One sticky lane scope, mirroring
+    // the suspend's own single-scope vocabulary; reset clears it.
+    int lorCvStickyVoice_ = -1;
+    int lorCvStickyLane_ = -1;
+    std::array<bool, LOR_ITEMS> lorCvStickyLaneItems_ = {};
+    // The lane sticky's reconnect point — called ONLY at the engine's TRUE
+    // frame-edge commit sites (the advance head + the derive re-check), never
+    // inside refreshLaneLatchesForVoice itself: the defaulted-args call (the
+    // release-path immediate accept) must NOT clear it.
+    void clearLorCvStickyLaneFor_(int v) {
+        if (lorCvStickyLane_ >= 0 && lorCvStickyVoice_ == v) {
+            lorCvStickyLane_ = -1;
+            lorCvStickyLaneItems_.fill(false);
+        }
+    }
 
     // The EFFECTIVE voice LOR row (delegation + Macro tier) — the one resolution authority.
     // (C1b Stage B) the L/O/R = the BASE rows (LIVE — the pre-C1 delegation; a knob
@@ -1104,6 +1266,21 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
     // congruence when non-null.
     int64_t voiceFrameTickAt(int v, int64_t effTick1based,
                              int64_t* framePhaseOut = nullptr) const;
+    // (CC_FIX_GLOBAL_BELOW_VOICE_PHASE_DESYNC) THE LIVE ROTATION ANCHOR — the
+    // voice-frame edge, ONE law for the advance head + the derive's re-check
+    // (BUG 6's landed-phase test, re-based): the frame re-anchors to the global's
+    // first step, evaluated LIVE each step against the CURRENT global length —
+    // never a precomputed period or a latched snapshot. The identity row rides
+    // the global phrase edge (its pass-through cycle IS the phrase); ABS1 walks
+    // the full ring on the raw congruence (transport-synced by design); CYCLE
+    // keys off the SAME transport-signed phrase coordinate the read folds
+    // (wrapMod(sPosV + advanceOffset_[v], lenG) — the derive's law, verbatim),
+    // so the commit lands exactly where the read wraps. Consequences that fall
+    // out (nothing stored): a global shorter than the voice hands it only
+    // min(global, voice) steps of its own window before the re-anchor; a
+    // non-dividing global re-anchors at every live phrasePos==0; a global dip
+    // moves the boundary immediately (STEP-rate) and leaves no residue.
+    bool voiceFrameEdgeLive_(int v) const;
     // THIS voice's LOR length for a strand (the walk's wrap point) — the shared table
     // (was a lambda duplicated in the two old recompute blocks).
     int     polyStrandLenOf(int v, int strand) const;
@@ -1256,6 +1433,54 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
         d = (bank.v >= 0 && bank.v < kVoiceSlots && el >= 0 && el < dotModular::NUM_STRANDS)
             ? laneDirV_[bank.v][el] : LaneDir::Forward;
     }
+    // ── (CC_PROMPT_LANE_RANGE_DISPLAY_UNIFY Stage B) the PENDING-PREVIEW twins ──
+    // The wireframe's authority: base + PENDING (the live-modulated window exactly —
+    // the manager pushes pending = round(knob+CV) − base every control block), vs the
+    // effective reads' base + COMMITTED (what plays, latched at the C1b commit gates).
+    // The FINAL MODEL draws committed as THE SOLID window and pending as the wireframe;
+    // NO audio path ever reads these (read-only display authorities — the battery stays
+    // byte-identical). Same row invariants: lorRowClamp_ re-applied; the dir has no
+    // pending (C3's slice — live, same as the effective reads).
+    void effectiveLanePreview(dotModular::VoiceSlot bank, LaneId lane, int& L, int& O, int& R, LaneDir& d) const {
+        const int el = editorLane(lane.l);
+        const int vv = (bank.v >= 0 && bank.v < kVoiceSlots) ? bank.v : 0;
+        L = polyLOR(bank, LaneId{el}, LOR_LEN) + laneLorCvPend_[vv][el][LOR_LEN];
+        O = polyLOR(bank, LaneId{el}, LOR_OFF) + laneLorCvPend_[vv][el][LOR_OFF];
+        R = polyLOR(bank, LaneId{el}, LOR_ROT) + laneLorCvPend_[vv][el][LOR_ROT];
+        lorRowClamp_(L, O, R);
+        d = (bank.v >= 0 && bank.v < kVoiceSlots && el >= 0 && el < dotModular::NUM_STRANDS)
+            ? laneDirV_[bank.v][el] : LaneDir::Forward;
+    }
+    void effectiveMonoLanePreview(int strand, int& L, int& O, int& R, LaneDir& d) const {
+        const int s = strandClamp(strand);
+        L = lor(s, LOR_LEN) + laneLorCvPend_[0][s][LOR_LEN];
+        O = lor(s, LOR_OFF) + laneLorCvPend_[0][s][LOR_OFF];
+        R = lor(s, LOR_ROT) + laneLorCvPend_[0][s][LOR_ROT];
+        lorRowClamp_(L, O, R);
+        d = (strand >= 0 && strand < dotModular::NUM_STRANDS) ? laneDir_[strand] : LaneDir::Forward;
+    }
+    void effectiveVoicePreview(int v, int& L, int& O, int& R, LaneDir& d) const {
+        if (v < 0 || v >= kVoiceSlots) { L = kPatternLengthCap; O = 0; R = 0; d = LaneDir::Forward; return; }
+        if (voiceLorLocalEast_[v]) {
+            L = voiceLorStore_[v][LOR_LEN] + voiceLorCvPend_[v][LOR_LEN];
+            O = voiceLorStore_[v][LOR_OFF] + voiceLorCvPend_[v][LOR_OFF];
+            R = voiceLorStore_[v][LOR_ROT] + voiceLorCvPend_[v][LOR_ROT];
+            d = voiceLorDir_[v];
+        } else {
+            L = macroVoiceLor_[LOR_LEN] + voiceLorCvPendMacro_[LOR_LEN];
+            O = macroVoiceLor_[LOR_OFF] + voiceLorCvPendMacro_[LOR_OFF];
+            R = macroVoiceLor_[LOR_ROT] + voiceLorCvPendMacro_[LOR_ROT];
+            d = macroVoiceLorDir_;
+        }
+        lorRowClamp_(L, O, R);
+    }
+    void effectiveMacroRowPreview(int& L, int& O, int& R, LaneDir& d) const {
+        L = macroVoiceLor_[LOR_LEN] + voiceLorCvPendMacro_[LOR_LEN];
+        O = macroVoiceLor_[LOR_OFF] + voiceLorCvPendMacro_[LOR_OFF];
+        R = macroVoiceLor_[LOR_ROT] + voiceLorCvPendMacro_[LOR_ROT];
+        lorRowClamp_(L, O, R);
+        d = macroVoiceLorDir_;
+    }
     // (CC_PROMPT_RETIRE_MACRO_LANE_HOLDER) the Macro strip's lane playhead + direction
     // cue — the DERIVED VIEW (the doc's option (a), confirmed): the macro ROW's frame
     // authority (macroFrameT0_ — the mapped arm's frame value; the identity row's raw
@@ -1267,6 +1492,15 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
     // the raw-congruence phase (the old macroLanePhase_, ≡ the transport mod the
     // walk period by construction) is re-derived on demand, not stored.
     void macroLaneDisplay(int lane, int& tick, int& sign) const;
+    // The ONE macro-row LOR-representative voice: the lowest macro-following voice
+    // (the row delegation), falling back to V2. macroLaneDisplay reads its latched
+    // lane LOR through it; the lane-RANGE display reads (CC_PROMPT_LANE_RANGE_DISPLAY_
+    // UNIFY Stage A) reuse this exact choice so the range and the playhead agree.
+    int macroLaneRepVoice() const {
+        for (int v = 1; v < kVoiceSlots; ++v)
+            if (!voiceLorLocalEast_[v]) return v;
+        return 1;
+    }
     // (C0 FAMILY 2) the mono strand step — the accessor feeds getStrandIdx (the ONE
     // read point for the mono strand windows; the transform itself unchanged).
     int monoLaneStep(int strand, int tick) const {

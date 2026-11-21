@@ -44,13 +44,17 @@ namespace dm = dotModular;
 
 // The old-model reference: the closed form at the raw tick (the f(counter) law), with
 // the recomp's local wrap — what every lane cache read under the counter model.
+// (CC_PROMPT_REVERSE_ANCHOR_OFFBYONE) the reference includes the ANCHOR BIAS: a
+// reversed lane anchors AT its rotation (the walk starts at 0, like Forward) —
+// the engine's reads apply the same one-helper law, so the closed form + bias is
+// the correct reverse (recomputed to the ruling, not the ruling to the golden).
 static int fOf(const E& e, int s, int64_t tick) {
     const int len = std::max(1, e.strandLen(s));
-    return (int)(((E::laneTickFor(e.laneDir_[s], tick, len) % len) + len) % len);
+    return (int)((((E::laneTickFor(e.laneDir_[s], tick, len) + E::anchorBias(e.laneDir_[s])) % len) + len) % len);
 }
 static int fOfV(const E& e, int v, int s, int64_t tEff) {
     const int len = std::max(1, e.polyStrandLenOf(v, s));
-    return (int)(((E::laneTickFor(e.laneDirV_[v][s], tEff, len) % len) + len) % len);
+    return (int)((((E::laneTickFor(e.laneDirV_[v][s], tEff, len) + E::anchorBias(e.laneDirV_[v][s])) % len) + len) % len);
 }
 
 static void authorNonDiv(E& e) {
@@ -166,8 +170,8 @@ int main() {
     e.setWindow(10, 4);                            // → mapped
     for (int64_t i = 13; i <= 30; ++i) {
         e.advancePlayhead();
-        const int walk = (int)(((i - 1) % 10 + 10) % 10) + 4;   // the mapped read law
-        exact = exact && (e.laneTick_[dm::STRAND_RHYTHM] == (walk % 7 + 7) % 7);
+        // RULED 2026-11-21: a len-7 lane inside a G=10 window free-runs (no restart at the global edge)
+        exact = exact && (e.laneTick_[dm::STRAND_RHYTHM] == fOf(e, dm::STRAND_RHYTHM, i));
     }
     e.setWindow(16, 0);                            // → back to pass-through
     for (int64_t i = 31; i <= 60; ++i) {

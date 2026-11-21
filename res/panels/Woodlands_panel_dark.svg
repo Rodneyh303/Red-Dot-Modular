@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="210.0" height="379.43" viewBox="0 0 210.0 379.43">
+<rect width="210.0" height="379.43" fill="#16181c"/>
+<rect x="0" y="0" width="210.0" height="3.54" fill="#d4001a"/>
+<circle cx="105.0" cy="47.24" r="15.35" fill="#0f1114" stroke="#4a4a4a" stroke-width="0.5"/>
+<circle cx="105.0" cy="47.24" r="12.99" fill="#2a2e34" stroke="#5a616a" stroke-width="0.6"/>
+<line x1="105.0" y1="34.84" x2="105.0" y2="40.16" stroke="#f0f0f0" stroke-width="0.6"/>
+<rect x="23.62" y="73.82" width="162.76" height="50.2" rx="2.95" fill="#0a0c0e" stroke="#4a4a4a" stroke-width="0.5"/>
+<circle cx="105.0" cy="137.3" r="4.72" fill="#0f1114" stroke="#4a4a4a" stroke-width="0.3"/>
+<circle cx="54.8" cy="177.17" r="11.22" fill="#0c0e11" stroke="#4a4a4a" stroke-width="0.5"/>
+<circle cx="155.2" cy="177.17" r="11.22" fill="#0c0e11" stroke="#4a4a4a" stroke-width="0.5"/>
+<circle cx="54.8" cy="218.5" r="11.22" fill="#0c0e11" stroke="#4a4a4a" stroke-width="0.5"/>
+<circle cx="155.2" cy="218.5" r="11.22" fill="#0c0e11" stroke="#4a4a4a" stroke-width="0.5"/>
+<circle cx="54.8" cy="259.84" r="11.22" fill="#0c0e11" stroke="#4a4a4a" stroke-width="0.5"/>
+<circle cx="155.2" cy="259.84" r="11.22" fill="#0c0e11" stroke="#4a4a4a" stroke-width="0.5"/>
+<circle cx="105.0" cy="301.18" r="11.22" fill="#0c0e11" stroke="#4a4a4a" stroke-width="0.5"/>
+<g inkscape:label="components" inkscape:groupmode="layer">
+<circle id="wordmark" cx="105.00" cy="20.67" r="0.5" fill="none" stroke="none"/>
+<circle id="param_bendrange" cx="105.00" cy="47.24" r="0.5" fill="none" stroke="none"/>
+<rect id="midi_display" x="23.62" y="73.82" width="162.76" height="50.20" fill="none" stroke="none"/>
+<circle id="light_active" cx="105.00" cy="137.30" r="0.5" fill="none" stroke="none"/>
+<circle id="output_pitch" cx="54.80" cy="177.17" r="0.5" fill="none" stroke="none"/>
+<circle id="output_gate" cx="155.20" cy="177.17" r="0.5" fill="none" stroke="none"/>
+<circle id="output_vel" cx="54.80" cy="218.50" r="0.5" fill="none" stroke="none"/>
+<circle id="output_rvel" cx="155.20" cy="218.50" r="0.5" fill="none" stroke="none"/>
+<circle id="output_y" cx="54.80" cy="259.84" r="0.5" fill="none" stroke="none"/>
+<circle id="output_z" cx="155.20" cy="259.84" r="0.5" fill="none" stroke="none"/>
+<circle id="output_x" cx="105.00" cy="301.18" r="0.5" fill="none" stroke="none"/>
+<circle id="label_bendrange" cx="105.00" cy="62.01" r="0.5" fill="none" stroke="none"/>
+<circle id="label_mpein" cx="105.00" cy="369.09" r="0.5" fill="none" stroke="none"/>
+</g>
+</svg>

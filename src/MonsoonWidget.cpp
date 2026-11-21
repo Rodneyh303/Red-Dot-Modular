@@ -1082,10 +1082,10 @@ void MonsoonWidget::appendContextMenu(ui::Menu* menu) {
             add("Monsoon — pitch/octave sliders", &m->modVizMonsoonMelody);
             add("Monsoon — knobs (probability, slew, mix)", &m->modVizMonsoonOther);
             sm->addChild(new ui::MenuSeparator);
-            add("Straits East (per-voice)", &m->modVizEast);
+            add("Straits East (per-voice + range)", &m->modVizEast);   // (FINAL MODEL) now also gates the LOR-range pending wireframe
             add("Straits West (per-voice)", &m->modVizWest);
-            add("Sands Macro (spread)", &m->modVizMacro);
-            add("Sands Mono (spread)", &m->modVizMono);
+            add("Sands Macro (spread + range)", &m->modVizMacro);      // (FINAL MODEL) now also gates the LOR-range pending wireframe
+            add("Sands Mono (spread)", &m->modVizMono);   // the Mono grid's own range overlay is the flagged follow-up — label unchanged until it draws
             add("Change Alley (grain/step)", &m->modVizChangeAlley);
         }));
         // Rhythm behaviour: the two leading-edge policy toggles (RHYTHM_BEHAVIOUR_POLICIES.md).

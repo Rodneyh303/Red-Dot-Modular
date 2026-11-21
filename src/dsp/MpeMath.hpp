@@ -111,5 +111,21 @@ inline int zPressureFromVolts(float v) {
     return n > 127 ? 127 : n;
 }
 
+// ── MPE-value → CV mappers (the exact inverses of the CV→MPE mappers above) ─────────────────────────
+// For an MPE-IN receiver: turn incoming per-voice MIDI quantities back into the SAME CV conventions
+// Keppel emits, so an out→in loop is identity. y/z/vel round-trip exactly (xFromVolts∘xToVolts == id for
+// every 0..127). Pitch uses reconstructVolts (above); X here is the raw bend expressed in semitones.
+inline float xVoltsFromSemis(float semis) { return semis; }                       // inverse of xSemisFromVolts (identity: 1V = 1 semitone)
+inline float yVoltsFromCc74(int cc74)      { return (float)((cc74 - 64) / 12.8); } // inverse of yCc74FromVolts (0V at 64)
+inline float zVoltsFromPressure(int p)     { return (float)(p / 12.7); }           // inverse of zPressureFromVolts (0V..10V = 0..127)
+inline float velVoltsFrom127(int vel)      { return (float)(vel / 12.7); }         // velocity 0..127 → 0..10V (matches Keppel's VEL in)
+
+// Raw member pitch bend as a signed semitone offset (the inverse of bend14()). reconstructVolts folds
+// this into V/OCT; expose it separately when a module wants a standalone X (bend) CV.
+inline float bendSemisFrom14(int bend14Val, float bendRangeSemis) {
+    if (bendRangeSemis < 1.f) bendRangeSemis = 1.f;
+    return (float)(((double)bend14Val - 8192.0) * ((double)bendRangeSemis / 8192.0));
+}
+
 } // namespace mpe
 } // namespace dotModular

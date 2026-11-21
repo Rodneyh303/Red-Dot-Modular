@@ -4,6 +4,7 @@
 #include "Monsoon.hpp"                    // pluginInstance
 #include "ui/SvgPanelKit.hpp"
 #include "dsp/MpeMath.hpp"
+#include "dsp/MpeTransmitter.hpp"
 
 using namespace rack;
 
@@ -41,10 +42,14 @@ namespace KeppelIds {
 struct Keppel : Module {
     midi::Output midiOut;
 
-    // MPE Lower Zone: master = MIDI channel 1 (index 0); members = channels 2..(1+memberCount)
-    // (indices 1..memberCount). Default 15 members (the full lower zone).
-    static constexpr int MAX_MEMBERS = 15;
-    int   memberCount = MAX_MEMBERS;
+    // The generic CV→MPE-out transmitter (Layer 1 of the separation-of-concerns): member-channel
+    // allocation (LRU), the MPE lower-zone config handshake, the per-voice note lifecycle (incl. release
+    // velocity + re-articulation), and continuous bend/CC74/pressure with dedupe. Rack-agnostic and
+    // unit-tested (test/test_MpeTransmitter.cpp). THIS module is the FACE: it reads CV, does the
+    // microtonal split + the A/B expression window + the accent defaults, and feeds tx computed
+    // MIDI-domain values. Member-zone size + handshake state live on tx (tx.memberCount, tx.needHandshake).
+    dotModular::mpe::MpeTransmitter tx;
+    static constexpr int MAX_MEMBERS = dotModular::mpe::MpeTransmitter::MAX_MEMBERS;
 
     // Two-level velocity from the ACCENT input (dot.modular's accent is a 10V/0V gate). Sampled per
     // voice at note-on: accent-gate high → velAccent, else velNormal. Unpatched ACCENT → every note
@@ -56,33 +61,33 @@ struct Keppel : Module {
     // X and Z silent). +32 CC74 ≈ half-range toward open/bright.
     int   yAccentBrighten = 32;
 
-    // Legato past ±bendRange: a single held note+bend can only CLAMP (wrong pitch) there. Default B
-    // (MPE_UTILITY_BUILD_SPEC): re-articulate — re-note on the same member channel so the pitch is
-    // always correct, at the cost of a retrigger. Menu-toggleable to the old CLAMP behaviour (smooth
-    // but capped) for players who patch the step gates and never exceed the range.
-    bool  reArticulateOnExceed = true;
+    // Expressive X bend past ±bendRange during a HELD gate: CLAMP (default) vs re-articulate.
+    //   - CLAMP (default): the bend rails at ±bendRange; the note stays alive, the slur/envelope is
+    //     preserved, and there is no boundary chatter. The cost is reach — the pitch ceilings at the
+    //     rail and the top of a big slide is lost (visible on MONITOR). A held gate means "sustain this
+    //     note", so a silent re-attack mid-gesture is the wrong default; widen the range for more reach.
+    //     The microtonal residual is ≤0.5 st, so with range ≥2 clamp NEVER mistunes the tuning content —
+    //     it only ever caps the expressive X.
+    //   - re-articulate (menu opt-in): re-note on the same member channel so the pitch tracks past the
+    //     range, at the cost of a retrigger (breaks the slur). For players who specifically want
+    //     unlimited glide reach.
+    // NOTE: this flag gates ONLY the over-range path. The within-legato STEP_GATE re-articulation is a
+    // separate, deliberate trigger (inner-note boundaries) and always fires regardless of this flag.
+    bool  reArticulateOnExceed = false;
 
-    // Per-voice (poly channel) → member-channel assignment + last state, for edge detect + note-off.
-    struct VoiceState {
-        bool  active       = false; // gate currently high (a note is sounding)
-        int   memberCh     = -1;    // MIDI channel index (1..memberCount) or -1
-        int   note         = 60;    // latched MIDI note (fixed for the note's lifetime)
-        int   vel          = 80;    // latched note-on velocity (reused when re-articulating past ±range)
-        int   lastBend14   = 8192;  // last bend value sent (dedupe held-voice re-sends)
-        int   lastY74      = 64;    // last CC74 (timbre) sent — dedupe (carried across re-articulation/LRU)
-        int   lastZ7       = 0;     // last channel pressure sent — dedupe (carried across re-articulation/LRU)
-        bool  gatePrev     = false; // previous-block main gate for edge detection
-        bool  stepGatePrev = false; // previous-block within-legato (step) gate for inner-boundary detect
-    };
-    VoiceState voices[16];
+    // Edge-detection state for THIS module's gate inputs (the note/channel/dedupe state lives on tx).
+    // gatePrev = previous-block main gate; stepGatePrev = previous-block within-legato (step) gate.
+    bool gatePrev[16]     = {};
+    bool stepGatePrev[16] = {};
 
-    // Member-channel occupancy (index 1..memberCount used; 0 = master, unused for notes). Value = voice
-    // index owning it, or -1 free. lruOrder tracks age for stealing (front = oldest).
-    int  memberOwner[16];
-    std::vector<int> lruOrder;    // member-channel indices, oldest first
-
-    float lastBendRange = -1.f;   // triggers the MPE config handshake on change
-    bool  needHandshake = true;   // send on init / device change / range change
+    // CPU: MIDI output needs nowhere near audio rate, so the whole CV→MPE path runs at the project's
+    // Control rate (~1500 Hz, SR-independent — the RateManager/controlDivider convention in
+    // src/ui/RateManager.hpp: division = round(SR/1500)). That cuts the per-voice expression math from
+    // 48k/s to ~1.5k/s (~30×) while staying far finer than MIDI's ~1 ms resolution; messages still carry
+    // setFrame(args.frame) for sub-block placement. Edge timing coarsens to ~0.67 ms (inaudible for MIDI).
+    rack::dsp::ClockDivider controlDiv_;
+    void setControlRate(float sr) { int d = (int)std::round(sr / 1500.f); controlDiv_.setDivision(d < 1 ? 1 : d); }
+    void onSampleRateChange(const SampleRateChangeEvent& e) override { setControlRate(e.sampleRate); }
 
     Keppel() {
         using namespace KeppelIds;
@@ -104,120 +109,56 @@ struct Keppel : Module {
         configInput(VEL_B_INPUT, "Poly velocity-B CV (accent-gated additive; 0–10V→0-127; unpatched = accent boost)");
         configInput(STEP_GATE_INPUT, "Poly within-legato (step) gate — inner note divisions / forced re-artic grid");
         configOutput(MONITOR_OUTPUT, "Reverse-calc monitor: reconstructed pitch CV (scope vs PITCH in)");
-        for (int i = 0; i < 16; ++i) memberOwner[i] = -1;
         midiOut.channel = -1;     // we set each message's channel ourselves (per-voice MPE)
+        // CV→MPE: the input poly-voice index is meaningful, so default to a STABLE voice→channel mapping
+        // (voice v → member v+1). Keeps a voice on one MIDI channel over time — a Keppel→MPE-in loop then
+        // lands on the same voice. Menu switches to Dynamic (LRU) for a real MPE synth / stealing.
+        tx.alloc = dotModular::mpe::MpeTransmitter::Alloc::Fixed;
+        setControlRate(APP->engine->getSampleRate());   // MIDI runs at Control rate, not audio rate
     }
 
-    // ── raw MIDI send helpers (build a Message, set its channel, send) ────────────────────────────
-    void send3(uint8_t status, uint8_t ch, uint8_t d1, uint8_t d2, int64_t frame) {
-        midi::Message m;                       // 3 bytes by default
-        m.setStatus(status);
-        m.setChannel(ch);
-        m.setNote(d1);
-        m.setValue(d2);
-        m.setFrame(frame);
-        midiOut.sendMessage(m);
-    }
-    void sendCC(uint8_t ch, uint8_t cc, uint8_t val, int64_t frame)  { send3(0xB, ch, cc, val, frame); }
-    void sendNoteOn(uint8_t ch, uint8_t note, uint8_t vel, int64_t f){ send3(0x9, ch, note, vel, f); }
-    void sendNoteOff(uint8_t ch, uint8_t note, int64_t f)           { send3(0x8, ch, note, 0, f); }
-    void sendBend(uint8_t ch, int pw14, int64_t frame) {
-        send3(0xE, ch, (uint8_t)(pw14 & 0x7f), (uint8_t)((pw14 >> 7) & 0x7f), frame);
-    }
-    // Channel Pressure (MPE Z dimension): a 2-byte message (0xDn, pressure). Built explicitly with
-    // setSize(2) so the third byte isn't sent — most receivers tolerate a stray 0, but MPE receivers
-    // are picky and we want the wire bytes exact.
-    void sendPressure(uint8_t ch, uint8_t val, int64_t frame) {
-        midi::Message m;
-        m.setSize(2);
-        m.setStatus(0xD);
-        m.setChannel(ch);
-        m.bytes[1] = val & 0x7f;
-        m.setFrame(frame);
-        midiOut.sendMessage(m);
+    // ── drain the transmitter's outbox into the MIDI port (RawMsg → midi::Message). The core builds the
+    // exact wire bytes; this just carries them out. 2-byte messages (channel pressure) skip byte 2 so no
+    // stray third byte reaches picky MPE receivers. ────────────────────────────────────────────────────
+    void drain() {
+        for (const auto& msg : tx.outbox) {
+            midi::Message m;
+            m.setSize(msg.size);
+            m.setStatus(msg.status);
+            m.setChannel(msg.channel);
+            m.bytes[1] = msg.d1;
+            if (msg.size >= 3) m.bytes[2] = msg.d2;
+            m.setFrame(msg.frame);
+            midiOut.sendMessage(m);
+        }
+        tx.outbox.clear();
     }
 
-    // ── MPE Configuration handshake: set the lower-zone member count + per-note bend range. Sent on
-    // init / device change / bend-range change (the make-or-break RPN sequence). ─────────────────────
-    void sendMpeConfig(int bendRangeSemis, int64_t frame) {
-        // 1) MPE Configuration Message (RPN 6) on the MASTER channel (index 0): member count.
-        sendCC(0, 101, 0x00, frame);   // RPN MSB
-        sendCC(0, 100, 0x06, frame);   // RPN LSB = 6 (MCM)
-        sendCC(0,   6, (uint8_t)memberCount, frame);   // Data Entry MSB = member channel count
-        sendCC(0, 101, 0x7f, frame);   // RPN Null (close MCM before opening the next RPN)
-        sendCC(0, 100, 0x7f, frame);
-        // 2) Pitch-bend sensitivity (RPN 0) = bendRangeSemis, on master + every member channel.
-        //    Master + members both carry the range: members use it for the per-note microtonal bend;
-        //    master range is harmless (we never send master-channel bends). Matches moDllz MIDIpolyMPE.
-        for (int ch = 0; ch <= memberCount; ++ch) {
-            sendCC(ch, 101, 0x00, frame);            // RPN MSB
-            sendCC(ch, 100, 0x00, frame);            // RPN LSB = 0 (pitch-bend sensitivity)
-            sendCC(ch,   6, (uint8_t)bendRangeSemis, frame);  // Data Entry MSB = semitones
-            sendCC(ch,  38, 0x00, frame);            // Data Entry LSB = cents (0)
-            sendCC(ch, 101, 0x7f, frame);            // RPN Null (close)
-            sendCC(ch, 100, 0x7f, frame);
-        }
-    }
-
-    // Send note-off for everything sounding (device change / teardown) — no stuck notes.
-    void allNotesOff(int64_t frame) {
-        for (int v = 0; v < 16; ++v) {
-            if (voices[v].active && voices[v].memberCh >= 0)
-                sendNoteOff((uint8_t)voices[v].memberCh, (uint8_t)voices[v].note, frame);
-            voices[v].active = false;
-            voices[v].memberCh = -1;
-        }
-        for (int i = 0; i < 16; ++i) memberOwner[i] = -1;
-        lruOrder.clear();
-    }
-
-    // Allocate a free member channel (1..memberCount) for voice v; steal the oldest if none free.
-    int allocMember(int v, int64_t frame) {
-        for (int ch = 1; ch <= memberCount; ++ch) {
-            if (memberOwner[ch] < 0) {
-                memberOwner[ch] = v; lruOrder.push_back(ch); return ch;
-            }
-        }
-        // None free → steal the oldest (front of LRU): note-off its owner first.
-        if (!lruOrder.empty()) {
-            int ch = lruOrder.front(); lruOrder.erase(lruOrder.begin());
-            int prevOwner = memberOwner[ch];
-            if (prevOwner >= 0 && voices[prevOwner].active) {
-                sendNoteOff((uint8_t)ch, (uint8_t)voices[prevOwner].note, frame);
-                voices[prevOwner].active = false;
-                voices[prevOwner].memberCh = -1;
-            }
-            memberOwner[ch] = v; lruOrder.push_back(ch); return ch;
-        }
-        return -1;
-    }
-    void freeMember(int ch) {
-        if (ch < 0) return;
-        memberOwner[ch] = -1;
-        for (auto it = lruOrder.begin(); it != lruOrder.end(); ++it)
-            if (*it == ch) { lruOrder.erase(it); break; }
-    }
+    // Panic / teardown (off the audio thread — menu, reset, patch load): queue note-offs for everything
+    // sounding and flush immediately. Clears any pending outbox first so nothing is double-sent.
+    void panic() { tx.outbox.clear(); tx.allNotesOff(-1); drain(); }
 
     void onReset() override {
-        allNotesOff(-1);
-        needHandshake = true;
-        lastBendRange = -1.f;
+        panic();
+        tx.needHandshake = true;
+        tx.lastBendRange = -1;
     }
 
     void process(const ProcessArgs& args) override {
         using namespace KeppelIds;
+        // Run the whole CV→MPE path at the Control rate (~1500 Hz), not per sample — MIDI needs no more.
+        // Between ticks there is nothing to send, so this is where the CPU saving lives.
+        if (!controlDiv_.process()) return;
+
         // MPE requires per-message channels: keep the Port from force-overwriting them. The on-panel
-        // MidiDisplay channel row can set this live, so re-assert every block (it self-corrects to
+        // MidiDisplay channel row can set this live, so re-assert every control tick (it self-corrects to
         // "All channels"). Driver/device selection on the display is unaffected.
         midiOut.channel = -1;
         const int bendRange = (int)std::round(params[BEND_RANGE_PARAM].getValue());
 
-        // (Re)send the MPE config on init or when the bend range changes.
-        if (needHandshake || (float)bendRange != lastBendRange) {
-            sendMpeConfig(bendRange, args.frame);
-            lastBendRange = (float)bendRange;
-            needHandshake = false;
-        }
+        // Clears the outbox for this block and (re)sends the MPE config on init / member-count change /
+        // bend-range change. We drain the outbox into midiOut at the end of the block.
+        tx.beginBlock(bendRange, args.frame);
 
         const int channels = inputs[PITCH_INPUT].getChannels();
         outputs[MONITOR_OUTPUT].setChannels(channels);
@@ -248,115 +189,111 @@ struct Keppel : Module {
                 && inputs[STEP_GATE_INPUT].getChannels() > v
                 && inputs[STEP_GATE_INPUT].getVoltage(v) >= 1.f;
 
-            VoiceState& vs = voices[v];
-            const bool rising  =  gateHigh && !vs.gatePrev;
-            const bool falling = !gateHigh &&  vs.gatePrev;
+            const bool rising  =  gateHigh && !gatePrev[v];
+            const bool falling = !gateHigh &&  gatePrev[v];
 
-            // ── Two-layer expression read (per dimension: A main-gated base + B accent-gated additive).
-            // The accent window opens ONLY while the accent gate is high AND the note is live (main gate
-            // held). Computed every block for use in the rising + hold branches.
-            const bool accentLive = gateHigh
+            // ── Two-layer expression read. The ACCENT input is the B GATE. Model A
+            // (MPE_UTILITY_BUILD_SPEC separation-of-concerns), refined by whether the B gate is PATCHED:
+            //   - B gate UNPATCHED: layer B is a free additive layer on A for the WHOLE A (main) gate
+            //     (a second always-on expression source — no accent needed).
+            //   - B gate PATCHED: layer B applies only during (A gate AND B gate) — the nested AND window,
+            //     i.e. B is "the accented sublayer" (same shape as STEP_GATE inside the note gate).
+            // Either way B is bounded by A (it is only ever read in the gateHigh branches). bActive is the
+            // window B contributes in; bGateHigh additionally drives the unpatched-B "accent" defaults
+            // (which only make sense when an accent gate is actually patched + high).
+            const bool bGatePatched = inputs[ACCENT_INPUT].isConnected();
+            const bool bGateHigh = bGatePatched
                 && inputs[ACCENT_INPUT].getChannels() > v
                 && inputs[ACCENT_INPUT].getVoltage(v) >= 5.f;
+            const bool bActive = gateHigh && (bGatePatched ? bGateHigh : true);
 
             // X — expressive pitch bend (semitones, rest 0). Added AFTER the note+residual decomposition
             // (bypasses the quantiser — continuous expression pitch, not a scale-degree move). The sum is
             // unbounded here; bend14 clamps to ±bendRange at the wire, and over-range feeds re-articulation.
             const float xA = dotModular::mpe::xSemisFromVolts(readPoly(X_A_INPUT, v));
-            const float xB = dotModular::mpe::xSemisFromVolts(readPoly(X_B_INPUT, v)); // 0 (silent) when unpatched
+            // B over bActive: whole A gate if the B gate is unpatched, else only the A∧B accent window.
+            const float xB = bActive ? dotModular::mpe::xSemisFromVolts(readPoly(X_B_INPUT, v)) : 0.f;
             const float xTotal = dotModular::mpe::sumAroundRest(xA, xB, 0.f, -1000.f, 1000.f);
 
-            // Y — CC74 timbre (0-127, rest 64). B default: accent brighten when Y_B unpatched.
+            // Y — CC74 timbre (0-127, rest 64). Patched Y_B applies over bActive; the accent-brighten
+            // default (Y_B unpatched) needs an actual accent gate high (bGateHigh). Rest 64 otherwise.
             const int yA = dotModular::mpe::yCc74FromVolts(readPoly(Y_A_INPUT, v));
             const int yB = inputs[Y_B_INPUT].isConnected()
-                ? dotModular::mpe::yCc74FromVolts(readPoly(Y_B_INPUT, v))
-                : (accentLive ? 64 + yAccentBrighten : 64);
+                ? (bActive ? dotModular::mpe::yCc74FromVolts(readPoly(Y_B_INPUT, v)) : 64)
+                : (bGateHigh ? 64 + yAccentBrighten : 64);
             const int yVal = (int)std::lround(dotModular::mpe::sumAroundRest(
                 (float)yA, (float)yB, 64.f, 0.f, 127.f));
 
-            // Z — channel pressure (0-127, rest 0). B silent unless patched.
+            // Z — channel pressure (0-127, rest 0). B over bActive: whole A gate if the B gate is
+            // unpatched, else only the A∧B accent window (also silent when Z_B unpatched).
             const int zA = dotModular::mpe::zPressureFromVolts(readPoly(Z_A_INPUT, v));
-            const int zB = dotModular::mpe::zPressureFromVolts(readPoly(Z_B_INPUT, v)); // 0 (silent) when unpatched
+            const int zB = bActive ? dotModular::mpe::zPressureFromVolts(readPoly(Z_B_INPUT, v)) : 0;
             const int zVal = (int)std::lround(dotModular::mpe::sumAroundRest(
                 (float)zA, (float)zB, 0.f, 0.f, 127.f));
 
             if (rising) {
-                const int note  = dotModular::mpe::noteFor(pitchV);
+                // Why Keppel exists — vs stock CV→MIDI. Core CV_MIDI.cpp does the SAME nearest-note round
+                // (note = round(pitchV*12 + 60), clamp 0..127) but then DISCARDS the fractional cents: its
+                // pitch wheel is a separate global PW input read on channel 0 only, not derived from the
+                // pitch CV, so microtonal detail is rounded away and 12-TET is all that reaches the DAW.
+                // (The round lives in the MODULE, not dsp::MidiGenerator — that class is transport-only and
+                // takes an already-integer note via setNoteGate.) Keppel rounds the same way with noteFor,
+                // then KEEPS the remainder (centsOffsetSemis) and encodes it as a PER-VOICE 14-bit bend on
+                // this voice's member channel — recovering exactly the information stock CV_MIDI throws out.
+                const int   note  = dotModular::mpe::noteFor(pitchV);
                 // Bend at note-on = centred residual + X expression (X bypasses the quantiser).
                 const float resid = dotModular::mpe::centsOffsetSemis(pitchV);
-                const int    pw14 = dotModular::mpe::bend14(resid + xTotal, (float)bendRange);
-                const int    ch   = allocMember(v, args.frame);
-                if (ch >= 0) {
-                    // Velocity at note-on (one-shot, latched). Two-layer: A = VEL CV (patched) or the
-                    // two-level fallback (velNormal / velAccent); B = VEL_B CV (patched, additive) or the
-                    // default accent boost. Back-compat: VEL patched overrides accent entirely (velB=0
-                    // default), matching the original "overrides accent when patched". With NEITHER VEL nor
-                    // VEL_B patched, accent → velAccent, else velNormal (exactly the original behaviour).
-                    int velA, velB;
-                    if (inputs[VEL_INPUT].isConnected()) {
-                        velA = clamp127((int)std::round(inputs[VEL_INPUT].getPolyVoltage(v) / 10.f * 127.f), 1);
-                        velB = inputs[VEL_B_INPUT].isConnected()
-                            ? clamp127((int)std::round(inputs[VEL_B_INPUT].getPolyVoltage(v) / 10.f * 127.f), 0)
-                            : 0;   // no accent default when VEL is patched (user took explicit control)
-                    } else {
-                        velA = velNormal;
-                        velB = inputs[VEL_B_INPUT].isConnected()
-                            ? clamp127((int)std::round(inputs[VEL_B_INPUT].getPolyVoltage(v) / 10.f * 127.f), 0)
-                            : (accentLive ? (velAccent - velNormal) : 0);
-                    }
-                    const int vel = clamp127(velA + velB, 1);
-                    // BEND FIRST, THEN note-on (note starts at pitch, not sliding in), THEN initial Y/Z so
-                    // the receiver opens the note with the right timbre + pressure (MPE_UTILITY_BUILD_SPEC).
-                    sendBend((uint8_t)ch, pw14, args.frame);
-                    sendNoteOn((uint8_t)ch, (uint8_t)note, (uint8_t)vel, args.frame);
-                    sendCC((uint8_t)ch, 74, (uint8_t)yVal, args.frame);       // initial Y (CC74)
-                    sendPressure((uint8_t)ch, (uint8_t)zVal, args.frame);     // initial Z (channel pressure)
-                    vs.active = true; vs.memberCh = ch; vs.note = note; vs.vel = vel;
-                    vs.lastBend14 = pw14; vs.lastY74 = yVal; vs.lastZ7 = zVal;
+                const int   pw14  = dotModular::mpe::bend14(resid + xTotal, (float)bendRange);
+                // Velocity at note-on (one-shot, latched). Two-layer, Model A, evaluated at the onset:
+                // A = VEL CV (patched) or the velNormal base; B = the B layer, applied over bActive
+                // (whole note when the B gate is UNPATCHED → a free additive boost; only the A∧B window
+                // when the B gate IS patched). The unpatched-B default (the velAccent boost) needs an
+                // actual accent gate high (bGateHigh) — no accent gate patched ⇒ plain velNormal.
+                int velA, velB;
+                if (inputs[VEL_INPUT].isConnected()) {
+                    velA = clamp127((int)std::round(inputs[VEL_INPUT].getPolyVoltage(v) / 10.f * 127.f), 1);
+                    velB = (bActive && inputs[VEL_B_INPUT].isConnected())
+                        ? clamp127((int)std::round(inputs[VEL_B_INPUT].getPolyVoltage(v) / 10.f * 127.f), 0)
+                        : 0;
+                } else {
+                    velA = velNormal;
+                    velB = inputs[VEL_B_INPUT].isConnected()
+                        ? (bActive ? clamp127((int)std::round(inputs[VEL_B_INPUT].getPolyVoltage(v) / 10.f * 127.f), 0) : 0)
+                        : (bGateHigh ? (velAccent - velNormal) : 0);
                 }
+                const int vel = clamp127(velA + velB, 1);
+                // The core allocates the member channel and emits bend → note-on → CC74 → pressure in
+                // that order (note opens at pitch with the right timbre/pressure).
+                tx.noteOn(v, note, pw14, yVal, zVal, vel, args.frame);
             } else if (falling) {
-                if (vs.memberCh >= 0) {
-                    sendNoteOff((uint8_t)vs.memberCh, (uint8_t)vs.note, args.frame);
-                    freeMember(vs.memberCh);
-                }
-                vs.active = false; vs.memberCh = -1;
-            } else if (gateHigh && vs.active && vs.memberCh >= 0) {
-                // Total bend = tuning residual (vs.note latched) + X expression. Over-range (past
-                // ±bendRange) OR a within-legato step-gate rising edge forces a re-articulation on the SAME
-                // member channel — correct pitch / real note boundary at the cost of a retrigger. Re-noting
+                // RELEASE VELOCITY: sample the VEL input at the falling edge (how the "key" was released);
+                // neutral 64 when VEL is unpatched. A dedicated REL_VEL jack is a possible follow-up (a
+                // panel change) — reusing VEL at note-off needs no new I/O and is meaningful when VEL is
+                // modulated per note. The core emits 0x8 + this velocity and frees the member channel.
+                const int relVel = inputs[VEL_INPUT].isConnected()
+                    ? clamp127((int)std::round(inputs[VEL_INPUT].getPolyVoltage(v) / 10.f * 127.f), 0)
+                    : 64;
+                tx.noteOff(v, relVel, args.frame);
+            } else if (gateHigh && tx.active(v) && tx.voices[v].memberCh >= 0) {
+                // Total bend = tuning residual (latched note) + X expression. Over-range (past ±bendRange)
+                // OR a within-legato step-gate rising edge forces a re-articulation on the SAME member
+                // channel — correct pitch / real note boundary at the cost of a retrigger. Re-noting
                 // recentres the residual near 0, so the pitch-exceed path does NOT oscillate at the edge.
-                const float resid = dotModular::mpe::offsetFromNoteSemis(pitchV, vs.note);
+                const float resid = dotModular::mpe::offsetFromNoteSemis(pitchV, tx.noteOf(v));
                 const float totalOffset = resid + xTotal;
-                const bool stepRise = stepGateHigh && !vs.stepGatePrev;
+                const bool stepRise = stepGateHigh && !stepGatePrev[v];
                 const bool exceed = reArticulateOnExceed && std::fabs(totalOffset) > (float)bendRange;
                 if (exceed || stepRise) {
                     const int newNote = dotModular::mpe::noteFor(pitchV);
-                    const float newResid = dotModular::mpe::centsOffsetSemis(pitchV);
-                    const int newBend = dotModular::mpe::bend14(newResid + xTotal, (float)bendRange);
-                    sendNoteOff((uint8_t)vs.memberCh, (uint8_t)vs.note, args.frame);
-                    sendBend((uint8_t)vs.memberCh, newBend, args.frame);      // bend before note-on
-                    sendNoteOn((uint8_t)vs.memberCh, (uint8_t)newNote, (uint8_t)vs.vel, args.frame);
-                    // Re-affirm Y/Z at the new note-on (current values — no discontinuity; carried across).
-                    sendCC((uint8_t)vs.memberCh, 74, (uint8_t)yVal, args.frame);
-                    sendPressure((uint8_t)vs.memberCh, (uint8_t)zVal, args.frame);
-                    vs.note = newNote; vs.lastBend14 = newBend; vs.lastY74 = yVal; vs.lastZ7 = zVal;
+                    const int newBend = dotModular::mpe::bend14(dotModular::mpe::centsOffsetSemis(pitchV) + xTotal, (float)bendRange);
+                    // Core: note-off (neutral release) → bend → note-on (reused vel) → re-affirm Y/Z.
+                    tx.rearticulate(v, newNote, newBend, yVal, zVal, args.frame);
                 } else {
                     // Continuous tracking: the MIDI note stays latched and only bend/Y/Z move, so glides /
-                    // timbre / pressure sweeps within range play smoothly with no re-articulation. Re-send
-                    // each only on a change (dedupe, like lastBend14) to avoid flooding at audio rate.
+                    // timbre / pressure sweeps within range play smoothly with no re-articulation. The core
+                    // dedupes each so a held voice doesn't flood the wire at audio rate.
                     const int pw14 = dotModular::mpe::bend14(totalOffset, (float)bendRange);
-                    if (pw14 != vs.lastBend14) {
-                        sendBend((uint8_t)vs.memberCh, pw14, args.frame);
-                        vs.lastBend14 = pw14;
-                    }
-                    if (yVal != vs.lastY74) {
-                        sendCC((uint8_t)vs.memberCh, 74, (uint8_t)yVal, args.frame);
-                        vs.lastY74 = yVal;
-                    }
-                    if (zVal != vs.lastZ7) {
-                        sendPressure((uint8_t)vs.memberCh, (uint8_t)zVal, args.frame);
-                        vs.lastZ7 = zVal;
-                    }
+                    tx.updateContinuous(v, pw14, yVal, zVal, args.frame);
                 }
             }
 
@@ -366,34 +303,37 @@ struct Keppel : Module {
             // scope alongside PITCH in — they overlay to sub-cent when Keppel is correct; any gap (e.g. a
             // clamped slide with re-articulation OFF, or X pushed past the range) is visible.
             if (present) {
-                const float mv = (vs.active && vs.memberCh >= 0)
-                    ? dotModular::mpe::reconstructVolts(vs.note, vs.lastBend14, (float)bendRange)
+                const float mv = (tx.active(v) && tx.voices[v].memberCh >= 0)
+                    ? dotModular::mpe::reconstructVolts(tx.noteOf(v), tx.lastBend14(v), (float)bendRange)
                     : 0.f;
                 outputs[MONITOR_OUTPUT].setVoltage(mv, v);
             }
 
-            vs.gatePrev = gateHigh;
-            vs.stepGatePrev = stepGateHigh;
-            anyActive = anyActive || vs.active;
+            gatePrev[v] = gateHigh;
+            stepGatePrev[v] = stepGateHigh;
+            anyActive = anyActive || tx.active(v);
         }
 
+        // Carry every message the core queued this block out to the MIDI port.
+        drain();
         lights[ACTIVE_LIGHT].setBrightness(anyActive ? 1.f : 0.f);
     }
 
     json_t* dataToJson() override {
         json_t* root = json_object();
         json_object_set_new(root, "midi", midiOut.toJson());
-        json_object_set_new(root, "memberCount", json_integer(memberCount));
+        json_object_set_new(root, "memberCount", json_integer(tx.memberCount));
         json_object_set_new(root, "velNormal", json_integer(velNormal));
         json_object_set_new(root, "velAccent", json_integer(velAccent));
         json_object_set_new(root, "reArticulateOnExceed", json_boolean(reArticulateOnExceed));
+        json_object_set_new(root, "fixedAlloc", json_boolean(tx.alloc == dotModular::mpe::MpeTransmitter::Alloc::Fixed));
         return root;
     }
     void dataFromJson(json_t* root) override {
         if (json_t* m = json_object_get(root, "midi")) midiOut.fromJson(m);
         if (json_t* mc = json_object_get(root, "memberCount")) {
             int v = (int)json_integer_value(mc);
-            memberCount = v < 1 ? 1 : (v > MAX_MEMBERS ? MAX_MEMBERS : v);
+            tx.memberCount = v < 1 ? 1 : (v > MAX_MEMBERS ? MAX_MEMBERS : v);
         }
         auto readVel = [&](const char* key, int& dst) {
             if (json_t* j = json_object_get(root, key)) {
@@ -405,8 +345,11 @@ struct Keppel : Module {
         readVel("velAccent", velAccent);
         if (json_t* j = json_object_get(root, "reArticulateOnExceed"))
             reArticulateOnExceed = json_boolean_value(j);
+        if (json_t* j = json_object_get(root, "fixedAlloc"))
+            tx.alloc = json_boolean_value(j) ? dotModular::mpe::MpeTransmitter::Alloc::Fixed
+                                             : dotModular::mpe::MpeTransmitter::Alloc::Dynamic;
         midiOut.channel = -1;
-        needHandshake = true;   // re-handshake after a patch load
+        tx.needHandshake = true;   // re-handshake after a patch load
     }
 };
 
@@ -462,12 +405,12 @@ struct KeppelWidget : ModuleWidget,
         menu->addChild(new MenuSeparator);
         menu->addChild(createMenuLabel("MPE (lower zone, master ch 1)"));
         // Member-zone size 1..15.
-        menu->addChild(createSubmenuItem("Member channels", std::to_string(mod->memberCount),
+        menu->addChild(createSubmenuItem("Member channels", std::to_string(mod->tx.memberCount),
             [mod](Menu* sub) {
                 for (int n : {4, 8, 12, 15}) {
                     sub->addChild(createCheckMenuItem(std::to_string(n) + " voices", "",
-                        [mod, n]() { return mod->memberCount == n; },
-                        [mod, n]() { mod->allNotesOff(-1); mod->memberCount = n; mod->needHandshake = true; }));
+                        [mod, n]() { return mod->tx.memberCount == n; },
+                        [mod, n]() { mod->panic(); mod->tx.memberCount = n; mod->tx.needHandshake = true; }));
                 }
             }));
         // Two-level velocity from the ACCENT input.
@@ -488,9 +431,22 @@ struct KeppelWidget : ModuleWidget,
                 }
             }));
         menu->addChild(new MenuSeparator);
+        // Channel assignment: Fixed = stable voice→channel (best for CV→MPE and round-tripping back);
+        // Dynamic = LRU first-free + steal (standard MPE, for a real synth / voices > member channels).
+        using Alloc = dotModular::mpe::MpeTransmitter::Alloc;
+        menu->addChild(createSubmenuItem("Channel assignment",
+            mod->tx.alloc == Alloc::Fixed ? "Fixed (voice=channel)" : "Dynamic (LRU)",
+            [mod](Menu* sub) {
+                sub->addChild(createCheckMenuItem("Fixed (voice = channel)", "",
+                    [mod]() { return mod->tx.alloc == Alloc::Fixed; },
+                    [mod]() { mod->panic(); mod->tx.alloc = Alloc::Fixed; }));
+                sub->addChild(createCheckMenuItem("Dynamic (LRU + steal)", "",
+                    [mod]() { return mod->tx.alloc == Alloc::Dynamic; },
+                    [mod]() { mod->panic(); mod->tx.alloc = Alloc::Dynamic; }));
+            }));
         menu->addChild(createBoolPtrMenuItem("Re-articulate on big slides", "", &mod->reArticulateOnExceed));
-        menu->addChild(createMenuItem("Panic (all notes off)", "", [mod]() { mod->allNotesOff(-1); }));
-        menu->addChild(createMenuItem("Re-send MPE config", "", [mod]() { mod->needHandshake = true; }));
+        menu->addChild(createMenuItem("Panic (all notes off)", "", [mod]() { mod->panic(); }));
+        menu->addChild(createMenuItem("Re-send MPE config", "", [mod]() { mod->tx.needHandshake = true; }));
     }
 
     void step() override {
