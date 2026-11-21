@@ -265,5 +265,40 @@ struct PositionResolver {
             return PositionResolver::playheadSlotBar(readCell, len, off, rot, P::anchorBias(), ring);
         }
     };
+
+    // ── (3) THE PHASE-HOLDER SKELETON — CA5 (CONCEPT_ODR_AUDIT CA5; ──
+    // ── CC_PROMPT_REVERSE_COMPLETIONS_THEN_CA5 Part 2). "Maintain a bounded walk ──
+    // ── PHASE congruent to a driver coordinate, re-seed when the walk KEY changes" ──
+    // ── was written out FIVE times in tickHolders (the global walk, the Macro row's ──
+    // ── frame, the voice frames, the per-voice lanes, the mono lanes) and re-rolled ──
+    // ── in anchorTransport's re-anchor path — ONE law now. The KEY arrives OPAQUE ──
+    // ── (the engine's walkKeyOf(dir, len), or the global walk's bare length): the ──
+    // ── skeleton does not know what is in it, so the KNOWN incompleteness ──
+    // ── (walkKeyOf omits the parent cycle — the CA5 blind spot) stays the engine's ──
+    // ── KEY POLICY, deliberately unchanged by this extraction (the gated, ──
+    // ── reproduce-first NEXT step owns it — no behaviour change here). ──
+    // ──    advance: same key → phase + k (the driver's raw delta); key change → ──
+    // ──              the closed form at the driver's t0 (the re-anchor law). ──
+    // ──    reseed:  the anchor IS a re-entry — the closed form unconditionally. ──
+    // ── BYTE-IDENTICAL BRIDGE: both forms are the shipped inline ternaries moved ──
+    // ── verbatim (wrapModTick_ == the engine's wrapMod, pinned); ──
+    // ── test_phase_holder_bridge sweeps the closed-form grid AND the engine marches ──
+    // ── (retrace, free-run, stop, rewind, the anchor) pinning the holders' congruence ──
+    // ── phase ≡ t0 (mod period); the battery passing unchanged is the proof. ──
+    struct PhaseHolder {
+        // tickHolders' law. Maintains the stored key; returns the new phase.
+        static int advance(int& storedKey, int phase, int key, int64_t t0, int64_t k, int period) {
+            const int p = (storedKey != key)
+                ? wrapModTick_(t0, period)
+                : wrapModTick_(phase + k, period);
+            storedKey = key;
+            return p;
+        }
+        // anchorTransport's law (the re-anchor path). Maintains the stored key.
+        static int reseed(int& storedKey, int key, int64_t t0, int period) {
+            storedKey = key;
+            return wrapModTick_(t0, period);
+        }
+    };
 };
 
