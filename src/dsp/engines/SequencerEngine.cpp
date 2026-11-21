@@ -3156,7 +3156,12 @@ float SequencerEngine::quantize(float vIn) {
             if (cand < 0.f || cand > 5.f) continue;
             float dist = std::fabs(vIn - cand);
             if (dist <= radius + 1e-4f) {
-                float score = w / (dist + 1e-4f);
+                // Score = weight over (distance + one semitone). The old 1e-4 floor made an EXACT hit score ~w/1e-4,
+                // so a degree at weight 0.005 still beat a full-weight neighbour one semitone away for any CV sitting
+                // on it (every scale-quantised source, every 0 V channel). With the semitone floor the weight decides
+                // between claimants (a faint degree loses to a strong neighbour), distance only breaks near-ties, and
+                // uniform weights still pick the nearest degree exactly as before.
+                float score = w / (dist + 1.f / 12.f);
                 if (score > bestScore) { bestScore = score; bestV = cand; }
             }
         }

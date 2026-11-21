@@ -34,6 +34,25 @@ int main() {
         for (float cv = 0.f; cv <= 5.f; cv += 0.013f)
             CHECK(degOf(eng.quantize(cv)) != 0, "no CV in [0,5] V may quantise to a muted C");
     }
+    // WEIGHT IS USED (Rodney, Rack): C at ~0.005 with the other faders near 1.0 lit far too often, because an EXACT hit
+    // scored w/1e-4 and beat any full-weight neighbour. A CV sitting exactly on a faint degree now goes to the strong
+    // neighbour; a full-weight degree still takes its own exact hit; uniform weights still pick the nearest.
+    {
+        float m[12]; for (int i = 0; i < 12; ++i) m[i] = 1.f;
+        m[0] = 0.005f;
+        eng.rebuildScaleCache(m, 12);
+        for (int o = 0; o <= 4; ++o)
+            CHECK(degOf(eng.quantize((float)o)) != 0, "exact C at weight 0.005 with strong neighbours must not stay on C");
+        CHECK(degOf(eng.quantize(2.0f + 4.f / 12.f)) == 4, "a full-weight degree keeps its own exact hit (E)");
+        float u[12]; for (int i = 0; i < 12; ++i) u[i] = 1.f;
+        eng.rebuildScaleCache(u, 12);
+        CHECK(degOf(eng.quantize(2.0f + 5.f / 12.f)) == 5, "uniform weights: exact hit stays (F)");
+        CHECK(degOf(eng.quantize(2.0f + 5.2f / 12.f)) == 5, "uniform weights: nearest degree wins (5.2 -> F)");
+        // a sparse scale: with no neighbour in range the faint degree is the only claimant and still passes
+        float sp[12] = {}; sp[0] = 0.005f; sp[7] = 1.f;
+        eng.rebuildScaleCache(sp, 12);
+        CHECK(degOf(eng.quantize(2.0f)) == 0, "sparse scale: no neighbour reaches an exact C, so it passes");
+    }
     if (g_fail) { std::printf("test_quantize_cache_invalidate: %d FAILED\n", g_fail); return 1; }
     std::printf("test_quantize_cache_invalidate: OK\n");
     return 0;
