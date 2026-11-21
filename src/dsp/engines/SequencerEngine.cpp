@@ -1429,6 +1429,32 @@ void SequencerEngine::deriveHolders(int signMotion, const int8_t* voiceMotion) {
         const int64_t wnow = ((((walkFold(vd, ft0 + 1, L) + rho) % L) + L) % L);
         voiceDriver_[v] = wnow + 1;
         voiceRead_[v]   = frameReadCell(wnow, O, kMaskRing);   // ONE law: the frame value folded into the window (no offG — see frameReadCell)
+        if (abs1Read) {
+            // (ABS1 WINDOW EXTENT — Rodney's ruling A) abs1 = cycle with the cycling off:
+            // the voice sounds once as the global playhead passes the window [O, O+Lw),
+            // and ROTATION wraps INSIDE the window like cycle's does. wnow = (sFold+R-O)
+            // mod G, so the window-relative position of the global step is pos = wnow-R
+            // (mod G). In-window (pos < Lw) the cell is O + (pos+R) mod Lw — identical to
+            // the old read at R==0 (and whenever pos+R < Lw), never past O+Lw-1. Outside
+            // the window the output gate (outputMaskPasses) already silences, so the
+            // read there is left as it was. CYCLE never enters this branch.
+            int Lw, Ow, Rw; LaneDir dw;
+            effectiveVoiceLor(v, Lw, Ow, Rw, dw);
+            if (Lw < 1) Lw = 1;
+            if (vd == LaneDir::Reverse) {
+                // A REVERSE voice plays its window backwards: it enters at R and counts down,
+                // wrapping inside [O, O+Lw) — cycle's reverse law. The window position is the
+                // GLOBAL played column (the very step the output gate tests), so the read and
+                // the gate cannot disagree.
+                const int64_t posR = wrapMod((int64_t)pos_.playedColumn() - (int64_t)Ow, (int64_t)L);
+                if (posR < Lw)
+                    voiceRead_[v] = frameReadCell(Ow + wrapMod((int64_t)Rw - posR, (int64_t)Lw), 0, kMaskRing);
+            } else {
+                const int64_t pos = wrapMod(wnow - (int64_t)Rw, (int64_t)L);   // L == lenG here
+                if (pos < Lw)
+                    voiceRead_[v] = frameReadCell(Ow + ((pos + Rw) % Lw), 0, kMaskRing);
+            }
+        }
         const int64_t wprev = ((((walkFold(vd, wrapMod(ft0 - frameBack, walkPeriod(vd, L)) + 1, L) + rho) % L) + L) % L);
         const int64_t dd    = voiceDriver_[v] - (wprev + 1);
         // A wrap (the voice's own window, or the global window beneath it) is a BEAT,
