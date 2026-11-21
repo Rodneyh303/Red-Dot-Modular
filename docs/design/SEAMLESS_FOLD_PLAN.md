@@ -13,6 +13,23 @@ MODULE_DISCOVERY_AND_VARIABLE_WIDTH.md. Rodney's rulings are marked (R).
   voices. Sands East's jacks are already poly across voices, so they cannot be packed
   again. Sands Macro's inputs are mono across voices, so they can.
 
+## Later rulings (R, 2026-11-22)
+
+- (R) JACKS STAY ON THE MAIN PANEL, always visible. The optional pop-out band is the
+  sizeable panel (grows left of Sands, right of Distribution) and holds ONLY the
+  attenuverters / depth knobs. It holds no ports, so collapsing it can never drop a cable.
+- (R) East-role Distribution is voice-poly: 56 jacks, channel = voice slot, so every voice
+  is modulated independently. It cannot lane-pack (7 x 16 > 16 channels). Macro-role
+  Distribution packs to 8 poly inputs by lane. The folded module has SEPARATE Distribution
+  bands for the two tiers.
+- Sands East's 47 inputs stay unpacked: the 28 CV and 3 voice-range CV are voice-poly, and
+  the dir/deleg gate-mods are read per voice (`getChannels()` up to 16).
+- Depth values keep applying when the band is collapsed. A dot on the main panel marks a
+  hidden non-default depth. New depths default to unity.
+- Sands attenuverters already live in stores (`editor.macroAtten`, `voiceLorAttenEast`):
+  moving them is UI only. Distribution has NO attenuverters today (fixed `* 0.1f` at the
+  jack): its 56 depth knobs are NEW and need a store (save/load/default) and a failing-first test.
+
 ## Port inventory (read from code 2026-11-21)
 
 | Panel | Ports | Notes |
@@ -60,6 +77,17 @@ Offer a context-menu option to keep the full mono jack layout in the folded modu
 5. **Loadout slots** (SEAMLESS_SUBPANEL_IDEA.md): exclusive vs additive.
 6. Optional: a converter that rewrites old cables into the folded model's packed ports.
    Not needed for compatibility, because the old modules stay.
+
+## Engine change, separate prompt (not part of the fold)
+
+East-role Distribution per-voice mod: `publishOwnMods` currently writes only the displayed
+voice (`distOwnDelta[displayedVoice]`) and zeroes the previous voice on a switch. Make it
+loop all voices, channel v -> `distOwnDelta[v]`; drop the zero-on-switch. The store is
+already per voice. Risks: up to 56 x 16 reads per block, and a warp-mirror lane rebuild per
+changed (voice, lane): needs the existing change-epsilon gate plus control-rate scheduling,
+and a profile. Decide: mono-cable broadcast convention (match East's CV code), and whether
+the old Distribution module gets the fix too. Failing-first test: two voices receive
+different deltas from different channels.
 
 ## Open questions
 
