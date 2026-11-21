@@ -1716,6 +1716,10 @@ int SequencerEngine::getNoteLenIdx(float baseNoteParam, const PatternInput& inpu
 }
 
 void SequencerEngine::rebuildScaleCache(const float weights[], int n) {
+    // The quantize() one-entry memo (lastQuantIn/Out) is keyed on the INPUT VOLTAGE only, so it must die
+    // with the active-degree set: a held CV (a chord-pad / Scaler note) kept returning a degree whose
+    // weight had just been zeroed — the quantised note (and its green flash) landed on a muted fader.
+    lastQuantIn = -100.f;
     activeSemiCount = 0;
     for (int s = 0; s < n; ++s) {
         float w = pe_clamp<float>(weights[s], 0.f, 1.f);
