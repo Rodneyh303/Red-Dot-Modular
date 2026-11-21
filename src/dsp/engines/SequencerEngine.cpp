@@ -945,8 +945,8 @@ void SequencerEngine::anchorTransport(int64_t tick1based) {
         int rl, ro, rr; LaneDir rd;
         effectiveMonoLaneLor(dotModular::STRAND_RHYTHM, rl, ro, rr, rd);
         const int rLen = std::max(1, rl);
-        globalT0Phase_ = wrapMod(t0, rLen);
-        globalT0Key_   = rLen;
+        // (CA5) the ONE re-anchor law — was the global walk's inline re-roll.
+        globalT0Phase_ = PositionResolver::PhaseHolder::reseed(globalT0Key_, rLen, t0, rLen);
     }
     for (int s = 0; s < dotModular::NUM_STRANDS; ++s) {
         // (C0 FAMILY 2) the mono lanes' seeds read the mono chokepoint, the Macro
@@ -954,8 +954,8 @@ void SequencerEngine::anchorTransport(int64_t tick1based) {
         int lm, lom, rm; LaneDir dm;
         effectiveMonoLaneLor(s, lm, lom, rm, dm);
         const int len = std::max(1, lm);
-        lanePhase_[s] = wrapMod(t0, walkPeriod(dm, len));
-        laneKey_[s]   = walkKeyOf(dm, len);
+        // (CA5) the ONE re-anchor law — was the mono lane's inline re-roll.
+        lanePhase_[s] = PositionResolver::PhaseHolder::reseed(laneKey_[s], walkKeyOf(dm, len), t0, walkPeriod(dm, len));
         // (CC_PROMPT_RETIRE_MACRO_LANE_HOLDER) the macro lanes' phase seeds are GONE
         // with the holder — macroLaneDisplay re-derives the congruence on demand.
     }
@@ -974,8 +974,8 @@ void SequencerEngine::anchorTransport(int64_t tick1based) {
         int mL = ML;
         if (mL < 1) mL = 1;
         if (kRangeBaseReadsFullPhrase && maskMacroKind_ == MASK_DYNAMIC) mL = kMaskRing;   // the macro row's abs1: the full phrase
-        macroFramePhase_ = wrapMod(t0, walkPeriod(md, mL));
-        macroFrameKey_   = walkKeyOf(md, mL);
+        // (CA5) the ONE re-anchor law — was the Macro row's inline re-roll.
+        macroFramePhase_ = PositionResolver::PhaseHolder::reseed(macroFrameKey_, walkKeyOf(md, mL), t0, walkPeriod(md, mL));
     }
     for (int v = 0; v < kVoiceSlots; ++v) {
         // The voice's RAW effective clock: tEffV = tick + offset (the old bridge
@@ -999,8 +999,8 @@ void SequencerEngine::anchorTransport(int64_t tick1based) {
             int lv, lov, rv; LaneDir dv;
             effectiveLaneLor(VoiceResolver::slot(v + 1), strandLaneId(s), lv, lov, rv, dv);
             const int vlen = std::max(1, lv);
-            lanePhaseV_[v][s] = wrapMod(tEffV - 1, walkPeriod(dv, vlen));
-            laneKeyV_[v][s]   = walkKeyOf(dv, vlen);
+            // (CA5) the ONE re-anchor law — was the per-voice lane's inline re-roll.
+            lanePhaseV_[v][s] = PositionResolver::PhaseHolder::reseed(laneKeyV_[v][s], walkKeyOf(dv, vlen), tEffV - 1, walkPeriod(dv, vlen));
         }
         advOffSeen_[v] = advanceOffset_[v];   // the transport's shadow syncs at the anchor
     }
@@ -1040,10 +1040,8 @@ void SequencerEngine::tickHolders(int transportMotion, int signMotion, const int
         int rl, ro, rr; LaneDir rd;
         effectiveMonoLaneLor(dotModular::STRAND_RHYTHM, rl, ro, rr, rd);
         const int rLen = std::max(1, rl);
-        globalT0Phase_ = (globalT0Key_ != rLen)
-            ? wrapMod(t0Now, rLen)
-            : wrapMod((int64_t)globalT0Phase_ + transportMotion, rLen);
-        globalT0Key_ = rLen;
+        // (CA5) the ONE phase-holder law — was the global walk's fifth inline copy.
+        globalT0Phase_ = PositionResolver::PhaseHolder::advance(globalT0Key_, globalT0Phase_, rLen, t0Now, transportMotion, rLen);
     }
     // (CC_PROMPT_RETIRE_MACRO_LANE_HOLDER) the Macro lanes' phase advance is GONE
     // with the holder — the display view re-derives the congruence from the transport
@@ -1064,11 +1062,8 @@ void SequencerEngine::tickHolders(int transportMotion, int signMotion, const int
             int mL = ML;
             if (mL < 1) mL = 1;
             if (kRangeBaseReadsFullPhrase && maskMacroKind_ == MASK_DYNAMIC) mL = kMaskRing;   // the macro row's abs1: the full phrase
-            const int key = walkKeyOf(md, mL);
-            macroFramePhase_ = (macroFrameKey_ != key)
-                ? wrapMod(t0Now, walkPeriod(md, mL))
-                : wrapMod((int64_t)macroFramePhase_ + transportMotion, walkPeriod(md, mL));
-            macroFrameKey_ = key;
+            // (CA5) the ONE phase-holder law — was the Macro row's inline copy.
+            macroFramePhase_ = PositionResolver::PhaseHolder::advance(macroFrameKey_, macroFramePhase_, walkKeyOf(md, mL), t0Now, transportMotion, walkPeriod(md, mL));
         }
     }
     // ── the voice frames + their lane phases (the RAW effective-clock deltas) ──
@@ -1120,11 +1115,8 @@ void SequencerEngine::tickHolders(int transportMotion, int signMotion, const int
             effectiveVoiceLor(v, L, O, R, vd);
             if (L < 1) L = 1;
             if (voiceFrameReadsFullPhrase(v)) L = std::max(1, cachedLength);   // (DESYNC abs1) the FULL PHRASE = the current global phrase
-            const int key = walkKeyOf(vd, L);
-            voiceFramePhase_[v] = (frameKey_[v] != key)
-                ? wrapMod(t0EffNow, walkPeriod(vd, L))
-                : wrapMod((int64_t)voiceFramePhase_[v] + kV, walkPeriod(vd, L));
-            frameKey_[v] = key;
+            // (CA5) the ONE phase-holder law — was the voice frame's inline copy.
+            voiceFramePhase_[v] = PositionResolver::PhaseHolder::advance(frameKey_[v], voiceFramePhase_[v], walkKeyOf(vd, L), t0EffNow, kV, walkPeriod(vd, L));
         }
         for (int s = 0; s < dotModular::NUM_STRANDS; ++s) {
             // (C0 FAMILY 2) the per-voice lane advance reads the poly chokepoint —
@@ -1132,11 +1124,8 @@ void SequencerEngine::tickHolders(int transportMotion, int signMotion, const int
             int lv, lov, rv; LaneDir dv;
             effectiveLaneLor(VoiceResolver::slot(v + 1), strandLaneId(s), lv, lov, rv, dv);
             const int vlen = std::max(1, lv);
-            const int key = walkKeyOf(dv, vlen);
-            lanePhaseV_[v][s] = (laneKeyV_[v][s] != key)
-                ? wrapMod(t0EffNow, walkPeriod(dv, vlen))
-                : wrapMod((int64_t)lanePhaseV_[v][s] + kV, walkPeriod(dv, vlen));
-            laneKeyV_[v][s] = key;
+            // (CA5) the ONE phase-holder law — was the per-voice lane's inline copy.
+            lanePhaseV_[v][s] = PositionResolver::PhaseHolder::advance(laneKeyV_[v][s], lanePhaseV_[v][s], walkKeyOf(dv, vlen), t0EffNow, kV, walkPeriod(dv, vlen));
         }
     }
     // ── the MONO lane phases (V1's frame is their driver; k_0 = the transport motion:
@@ -1146,11 +1135,8 @@ void SequencerEngine::tickHolders(int transportMotion, int signMotion, const int
         int lm, lom, rm; LaneDir dm;
         effectiveMonoLaneLor(s, lm, lom, rm, dm);
         const int len = std::max(1, lm);
-        const int key = walkKeyOf(dm, len);
-        lanePhase_[s] = (laneKey_[s] != key)
-            ? wrapMod(t0Now, walkPeriod(dm, len))
-            : wrapMod((int64_t)lanePhase_[s] + transportMotion, walkPeriod(dm, len));
-        laneKey_[s] = key;
+        // (CA5) the ONE phase-holder law — was the mono lane's inline copy.
+        lanePhase_[s] = PositionResolver::PhaseHolder::advance(laneKey_[s], lanePhase_[s], walkKeyOf(dm, len), t0Now, transportMotion, walkPeriod(dm, len));
     }
     // ── derive every read cache from the (new) holders ──
     deriveHolders(signMotion, voiceMotion);
