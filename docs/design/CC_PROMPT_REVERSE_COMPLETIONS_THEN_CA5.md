@@ -154,3 +154,15 @@ a Reverse voice (1b).
 
 ## CA5 note: entryDir_ is path-dependent (2026-11-21)
 `readCoord()` anchors to `entryDir_` (direction of first nonzero motion; reset by `reset()` and by `setWindow` on a real length/offset change). The same column can therefore read differently depending on how the run started. This is a time-zero convention. Cleaner form: `read = f(t - t0, config)` with `t0` the run start, a pure function of time. Fold into the PositionResolver migration if it can be done byte-identically; otherwise leave. Untested: host transport stop/rewind/phase-snap effects on `entryDir_`/`t0`.
+
+## CA5 key-completion GATE result (2026-11-22): NO REPRO
+Reproduce-first run on `fix/ca5-holder-migration`: the old same-seed dip differential
+(`debug/global-dip-logging` `diag_global_dip_advoffset.cpp`) still shows `advanceOffset_`
+diverging after a 16->4->16 global dip with live variation modulation, BUT the phase holders stay
+congruent to `transport + advanceOffset_` (mod period) at every step (416 checks, 0 bad). The key's
+parent-length blind spot therefore has no observable phase drift: a parent change moves t0Eff only through
+`advanceOffset_`, and `k` carries that delta. Completing the key would re-seed to the value the congruence already
+holds (a no-op). The reproduced divergence is the wander accumulator `advanceOffset_` itself (see
+CC_FIX_GLOBAL_BELOW_VOICE_PHASE_DESYNC.md RESOLVED: cycle nesting not clamped to the global window), which the key
+cannot fix. Per this prompt's rule, STOP: no key change made. `test_holder_congruence_parent_change` pins the
+invariant (repeated global length/offset changes; mutation-checked).
