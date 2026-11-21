@@ -21,6 +21,7 @@ static_assert((uint32_t)dotModular::SB_SANDS_Q == (1u << 13), "SB_SANDS_Q bit ou
 #include "../../MonsoonCausewayPolyExpander.hpp"
 #include "../../MonsoonStraitsExpander.hpp"   // Q2: poly quantiser CV-in (StraitsIds::QUANT_CV_INPUT)
 #include "MonsoonExpanderManager.hpp"
+#include "../VoiceResolver.hpp"   // CC_PROMPT_STRONG_TYPES: VoiceSlot minting (mono/slot)
 
 using namespace rack;
 
@@ -41,18 +42,55 @@ void ModeController::updatePolyVoiceRest_() {
     // poly voices). Once primed, obey the lock.
     if (polyVoiceCachePrimed_
         && !dotModular::LockManager::liveNow(dotModular::Control::BigFive, engine.locked, engine.scopeLiveMask)) return;
-    for (int i = 0; i < engine.numPolyVoices; ++i) {
-        engine.voices[i].restProb   = mainModule->getEffectivePolyRest(i);
-        engine.voices[i].accentProb = mainModule->getEffectivePolyAccent(i);
+    // INTENTIONAL slot→poly bridge (not debt): i is the voiceSlot (1=V2..15=V16) into
+    // voices[i]; the getEffectivePoly* family below is 0-based poly (0=V2) — hence i - 1.
+    // The matching +1 lives INSIDE those functions, at the cable boundary (ch0 = mono/V1).
+    for (int i = 1; i <= engine.numPolyVoices; ++i) {
+        // i = voiceSlot (V2..); slot(V) takes the VOICE number (= i+1)
+        const auto vs = dotModular::VoiceResolver::slot(i + 1);
+        engine.voices[vs].restProb   = mainModule->getEffectivePolyRest(i - 1);
+        engine.voices[vs].accentProb = mainModule->getEffectivePolyAccent(i - 1);
         // Task 4 (poly QMIX): per-voice q-mix LEVEL, mirroring rest/accent. The engine reads
-        // voices[i].qmixLevel per-step in executePolyVoice's source-select. getEffectivePolyQmix
+        // the slot's qmixLevel per-step in executePolyVoice's source-select. getEffectivePolyQmix
         // is the single resolver (Straits knob; no Causeway q-mix CV yet).
-        engine.voices[i].qmixLevel  = mainModule->getEffectivePolyQmix(i);
+        engine.voices[vs].qmixLevel  = mainModule->getEffectivePolyQmix(i - 1);
+        // QMIX_OCTAVE Stage 2 (CC_PROMPT_QMIX_OCTAVE + QMIX_OCTAVE_PLAN.md): the octave axis's
+        // resolved threshold, from the Straits qmix-octave bank through QmixOctave::resolve —
+        // own-subpanel claim (tier 1) > {global | follow-degree} by the switch. The follow
+        // tier reads the qmixLevel JUST written above (the subgate resolver's
+        // order-dependency note applies verbatim) — so with nothing authored the resolved
+        // value == the degree level EXACTLY (bit-identity default: the octave decision IS
+        // the degree decision, today's behaviour). Same BigFive latch class as the main
+        // probs (the early-return above gates the whole loop). The qmixOctLive flip is the
+        // Stage 1 gate opening: from here the engine's second read consumes THIS value.
+        engine.voices[vs].qmixOctLevel = mainModule->qmixOctaveThreshold(i);
+        engine.voices[vs].qmixOctLive  = true;
         // VAR/LEG per-voice knobs — mirror rest/accent/q-mix. The engine reads these in
         // executePolyVoice to threshold the per-voice VAR/LEG draws (which already exist
         // as slewedPolyVariation/Legato → polyRandom(PL_VARIATION/PL_LEGATO)).
-        engine.voices[i].variationProb = mainModule->getEffectivePolyVariation(i);
-        engine.voices[i].legatoProb    = mainModule->getEffectivePolyLegato(i);
+        // STEP-ADVANCE VALUE (CC_PROMPT_STEP_ADVANCE_CONSUMPTION Stage 2; the rectified
+        // twin RETIRED by CC_PROMPT_STEP_ADVANCE_FIX_DRAW_SOURCE — its only consumer,
+        // the ghost-candidacy gate, is deleted; candidacy is the subgate REST decision),
+        // poly rows: the poly per-voice VAR knobs are [0,1] params with no negative
+        // modulation source yet (no poly VAR CV — the mono CV2/Junction path has no
+        // poly analogue), so the clamp is a no-op today; when a poly negative source
+        // lands, the unclamped sum replaces the single read exactly as the mono write
+        // below does.
+        const float pv = mainModule->getEffectivePolyVariation(i - 1);
+        engine.voices[vs].variationProb     = pv;
+        engine.voices[vs].legatoProb    = mainModule->getEffectivePolyLegato(i - 1);
+        // SUBGATE TIER (CC_PROMPT_STRAITS_SUBGATE_KNOBS_SPEC): resolve the three-way
+        // per-voice thresholds from the Straits subgate bank — own-subpanel claim
+        // (tier 1) > {global | follow-main} by the per-decision switch, the mod
+        // deltas added post-resolution. The resolver reads the main values JUST
+        // written above (follow-main tier ⟹ subRes == the mains when nothing is
+        // authored — the byte-identity default), so this sits AFTER them in the
+        // same loop iteration. Same BigFive latch class as the main probs (the
+        // early-return above gates the whole loop).
+        for (int l = 0; l < dotModular::SubgateKnobs::LEVELS; ++l)
+            for (int d = 0; d < dotModular::SubgateKnobs::DECS; ++d)
+                engine.voices[vs].subRes[l][d] = mainModule->subgateDisplayThreshold(i, l, d);
+        engine.voices[vs].subResLive = true;   // the reads may trust subRes from here on
     }
     polyVoiceCachePrimed_ = true;
 }
@@ -106,28 +144,65 @@ void ModeController::updatePatternInput() {
                 currentPatternInput.semiWeights[i] = 0.f;
         }
     }
-    if (rhythmLive) {   // BigFive LATCH — hold REST/VARIATION/LEGATO/NOTE_VALUE under lock
+    if (rhythmLive) {   // BigFive LATCH — hold REST/VARIATION/NOTE_VALUE under lock
         // MONO rest: use the Causeway-modulated effective value (mirrors the poly idiom
-        // engine.voices[i].restProb = mainModule->getEffectivePolyRest(i) above). Falls back to the
+        // engine.voices[dotModular::VoiceResolver::slot(i + 1)].restProb = mainModule->getEffectivePolyRest(i - 1) above). Falls back to the
         // raw param when there's no mainModule.
         currentPatternInput.restProb      = mainModule ? mainModule->getEffectiveMonoRest(paramManager.getRestUnclamped())
                                                        : paramManager.getRest();
         engine.writeLedger.noteWrite(WriteRole::MONO, WriteField::RestProb); // STEP1 WriteLedger: mono currentPatternInput.restProb (R2)
         currentPatternInput.variationAmount = paramManager.getVariation();
-        // LEGATO + NOTE_VALUE now staged here (were passed live at the executeMode call sites); the
-        // call sites read in.legato / in.noteValue so the lock hold applies to them too.
-        currentPatternInput.legato        = paramManager.getLegato();
         currentPatternInput.noteValue     = paramManager.getNoteValue();
-        // ACCENT: single writer now (was engine.accentProb written at 3 sites — control-rate plus a
-        // redundant re-fetch in executeModeE/A). Causeway-modulated effective value, mirroring rest.
-        currentPatternInput.accentProb    = mainModule ? mainModule->getEffectiveMonoAccent(paramManager.getAccentUnclamped())
-                                                       : paramManager.getAccent();
-        // Task 4 (QMIX): mono q-mix threshold level — Causeway-modulated effective value, mirroring
-        // rest/accent above. The Causeway QMIX_CV_INPUT (ch0 = mono) attenuated by MONO_QMIX_ATT +
-        // the global is added to the QMIX_LEVEL_PARAM knob, then clamped to [0,1]. Falls back to the
-        // raw param when there's no mainModule.
-        currentPatternInput.qmixLevel     = mainModule ? mainModule->getEffectiveMonoQmix(paramManager.getQmixLevel())
-                                                       : paramManager.getQmixLevel();
+        // Phase A: V1's per-voice params (legato, accent, qmix) now written DIRECTLY to the
+        // mono slot — NOT transported through PatternInput scalars (deleted). The
+        // controller is the SOLE writer of the mono slot, mirroring how
+        // updatePolyVoiceRest_() is the sole writer of the poly slots.
+        // CC_PROMPT_STRONG_TYPES: the mono ROLE, TYPED (was the bare voices[0] hardcode).
+        auto& monoVoice = engine.voices[dotModular::VoiceResolver::mono()];
+        monoVoice.restProb      = currentPatternInput.restProb;
+        monoVoice.legatoProb   = paramManager.getLegato();
+        monoVoice.accentProb   = mainModule ? mainModule->getEffectiveMonoAccent(paramManager.getAccentUnclamped())
+                                             : paramManager.getAccent();
+        monoVoice.qmixLevel    = mainModule ? mainModule->getEffectiveMonoQmix(paramManager.getQmixLevel())
+                                             : paramManager.getQmixLevel();
+        // QMIX_OCTAVE Stage 2 (CC_PROMPT_QMIX_OCTAVE): V1's octave threshold (storageSlot 0 =
+        // the mono row of the bank), the same three-way law as the poly rows above. Without a
+        // mainModule the bank is unreachable — the fields are never written and qmixOctLive
+        // stays false, which is the follow-degree identity from the mono qmixLevel just
+        // written (exactly what the resolver would return with nothing authored — the Stage 1
+        // gate stays closed, Monsoon alone plays exactly as before).
+        if (mainModule) {
+            monoVoice.qmixOctLevel = mainModule->qmixOctaveThreshold(0);
+            monoVoice.qmixOctLive  = true;
+        }
+        // STEP-ADVANCE VALUE (CC_PROMPT_STEP_ADVANCE_CONSUMPTION Stage 2; the rectified
+        // twin RETIRED — see the poly note above; the BIPOLAR SCOPE per
+        // CC_PROMPT_STEP_ADVANCE_FREEZE_AND_BIPOLAR): GATE MODE reinterprets the knob
+        // BIPOLAR — (2*knob - 1) + CV2 + Junction, ONE clamp [-1,+1]. The KNOB ALONE
+        // reaches negative ("positive step forward, negative step back": 1 -> +1,
+        // 0.5 -> 0 = the by-design stutter, 0 -> -1 = always backward). Clock/phase
+        // keep the UNIPOLAR note-length reads — currentPatternInput.variationAmount
+        // above stays rectified (the mode-A longer–shorter consumer + the rack-free
+        // contract read the scalar); the shared 0.5 default breaks nothing there.
+        const float varSum = paramManager.getVariationGateUnclamped();
+        monoVoice.variationProb     = clampv(varSum, -1.f, +1.f);
+        // SUBGATE TIER: V1's resolved thresholds (storageSlot 0 = the mono row of the
+        // bank), the same three-way law as the poly rows. Without a mainModule the
+        // bank is unreachable — follow-main identity from the mono values just
+        // written (which is what the resolver would return with nothing authored).
+        if (mainModule) {
+            for (int l = 0; l < dotModular::SubgateKnobs::LEVELS; ++l)
+                for (int d = 0; d < dotModular::SubgateKnobs::DECS; ++d)
+                    monoVoice.subRes[l][d] = mainModule->subgateDisplayThreshold(0, l, d);
+        } else {
+            const float monoMain[dotModular::SubgateKnobs::DECS] = {
+                monoVoice.restProb, monoVoice.legatoProb,
+                monoVoice.variationProb, monoVoice.accentProb };   // SK dec order
+            for (int l = 0; l < dotModular::SubgateKnobs::LEVELS; ++l)
+                for (int d = 0; d < dotModular::SubgateKnobs::DECS; ++d)
+                    monoVoice.subRes[l][d] = monoMain[d];
+        }
+        monoVoice.subResLive = true;   // the reads may trust subRes from here on
     }
     if (octLive) {   // OctaveRange LATCH — hold OCT LO/HI under lock (see pitch-axis note above)
         currentPatternInput.octaveLo      = paramManager.getOctaveLo();
@@ -163,11 +238,25 @@ void ModeController::updatePatternInput() {
             paramManager.setJunctionOffset(i, cv * att);
         }
     }
+    // SLEW latches UNCONDITIONALLY every control cycle (slew-latch regression fix): slew
+    // is an independent distributional param — NOT an A/B-mix property, no own Lock
+    // control — so it must NOT sit behind the ABMix-liveness gate below. It used to ride
+    // along inside latchMix, which left *SlewLatched STALE under an ABMix lock and the
+    // phrase-boundary roll re-derived with the OLD slew (moving the knob did nothing).
+    // Consumed only at the roll (redraw → recomputeEffective* reads *SlewLatched via
+    // slewKnobToR → new r → ZCache miss → re-derive); latching here is what makes "move
+    // slew → probabilities change at the next phrase boundary" work with ABMix LOCKED.
+    // Macro AND east slew both flow through the paramManager getters above → one site.
+    // Per-stream: a frozen A/B stream still latches SLEW — only its MIX holds. A
+    // per-stream slew freeze would need its OWN lock control (out of scope).
+    engine.pe.latchSlew(currentPatternInput.rhythmSlew,
+                        currentPatternInput.melodySlew,
+                        currentPatternInput.qmixSlew);
     // PLAYABLE LIVE MORPH: apply the live MIX every process (control rate), like
     // spread — this is the continuous A<->B blend. recomputeEffective only does
     // work when MIX actually changes, so it is cheap. SLEW is NOT applied here;
     // it is consumed at roll time (shapes B). Lock freezes the morph.
-    // A/B mix scope (LOCK_SCOPE_MENU): latchMix now gates each stream independently, so the freeze is
+    // A/B mix scope (LOCK_SCOPE_MENU): latchMix gates each stream independently, so the freeze is
     // EXACT per axis — rhythm A/B and melody A/B latch/free on their own bits (no combined coupling).
     {
         const bool abR = dotModular::LockManager::liveNow(dotModular::Control::ABMix, engine.locked, engine.scopeLiveMask, /*melodyAxis=*/false);
@@ -181,9 +270,6 @@ void ModeController::updatePatternInput() {
             engine.pe.latchMix(currentPatternInput.rhythmMix,
                                currentPatternInput.melodyMix,
                                currentPatternInput.qmixMix,
-                               currentPatternInput.rhythmSlew,
-                               currentPatternInput.melodySlew,
-                               currentPatternInput.qmixSlew,
                                /*applyRhythm=*/abR, /*applyMelody=*/abM, /*applyQmix=*/abQ);
     }
     if (mainModule) {
@@ -226,26 +312,21 @@ void ModeController::postExecute_(const StepResult& result) {
 
 // ──── Mode A: Clock-Driven Sequencing ───────────────────────────────────────
 
-// Mode E: phase-driven. The dispatch (Monsoon.cpp) only calls this when
-// phase.sixteenthEdge fired, so a 1/16 step is due now. Reuses the Mode A decision
-// path exactly (clock-style stepping) — the only difference is the edge SOURCE is
-// the phase ramp, not the clock. A synthesized clock-view carries sixteenthEdge=true
-// into engine.executeModeA, which reads nothing else from the clock. (Forward only;
+// Mode E: phase-driven. The dispatch (Monsoon.cpp) only calls this when the Step tier
+// ticked (fed from the phase sixteenth edge), so a 1/16 step is due now. Reuses the Mode A
+// decision path exactly (clock-style stepping) — the only difference is the tier feed's
+// SOURCE is the phase ramp, not the clock. (The old synthesized phaseView — a ClockEngine
+// with sixteenthEdge=true — died with the S3b tier conversion: executeModeA asks the
+// RateManager, which the dispatch already advanced on the phase edge.) (Forward only;
 // reverse traversal is the next branch.)
 bool ModeController::executeModeE() {
-    // ACCENT is now assembled once in updatePatternInput() (in.accentProb) — the redundant re-fetch
-    // that used to live here is gone (single-writer; see PatternInput::accentProb note).
+    // Phase A: accent assembled once in updatePatternInput() → voices[0].accentProb.
     PatternInput in = assemblePatternInput_();
 
-    ClockEngine phaseView;            // edge-only view; executeModeA reads sixteenthEdge
-    phaseView.sixteenthEdge = true;
-
     StepResult result = engine.executeModeA(
-        phaseView,
-        in.restProb,
-        in.legato,          // BigFive LATCH: staged in updatePatternInput (was paramManager.getLegato())
+        rateManager,
         in.noteValue,       // BigFive LATCH: staged in updatePatternInput (was paramManager.getNoteValue())
-        in,
+        in,                 // Phase A: V1 params via voices[0] (populated in updatePatternInput)
         phaseReverse ? -1 : +1        // within-draw reverse traversal
     );
     postExecute_(result);
@@ -254,18 +335,18 @@ bool ModeController::executeModeE() {
 }
 
 bool ModeController::executeModeA() {
-    if (clock.sixteenthEdge) {
-        // ACCENT assembled once in updatePatternInput() (in.accentProb) — redundant re-fetch removed.
+    // RATE MANAGER (S3b): the Step tier — the same condition the dispatch gated on
+    // (the tier is fed by the clock sixteenth edge in this mode); no raw clock re-read.
+    if (rateManager.ticked(redDot::Rate::Step)) {
+        // Phase A: accent assembled in updatePatternInput() → voices[0].accentProb.
         // Ensure pattern input is fresh
         PatternInput in = assemblePatternInput_();
 
         // Execute the mode
         StepResult result = engine.executeModeA(
-            clock,
-            in.restProb,
-            in.legato,          // BigFive LATCH: staged in updatePatternInput (was paramManager.getLegato())
+            rateManager,
             in.noteValue,       // BigFive LATCH: staged in updatePatternInput (was paramManager.getNoteValue())
-            in
+            in                  // Phase A: V1 params via voices[0] (populated in updatePatternInput)
         );
         
         // Handle post-execution
@@ -289,30 +370,40 @@ bool ModeController::executeModeB(const InputState& input,
     if (useSubGate) {
         PatternInput in = assemblePatternInput_();
         StepResult result = engine.executeModeBSubdivided(gate1Rise, gate1High, input.subGateRise,
-                                                          in.restProb, in.legato, in.noteValue, in,
+                                                          in.noteValue, in,
                                                           input.ghostRise, input.ghostHigh);
         postExecute_(result);
         updateLastStepIndex();
         return result.stepped;
     }
-    if (gate1Rise || (gate1High && engine.stepIndex == -1)) {
+    if (gate1Rise || (gate1High && !engine.started())) {
         // In Mode B, variation and note length should have no impact on the gate.
         // Only legato, rest, and accent apply.
         // Create a local copy of PatternInput and override relevant values for Mode B.
         PatternInput modeBPatternInput = currentPatternInput; // Start with current settings
         modeBPatternInput.noteVariationMask = 0b111; // Allow all note lengths (e.g., 1/1 to 1/32T)
-        modeBPatternInput.variationAmount = 0.5f;    // No bias for longer/shorter notes
+        // Phase A: Mode B overrides V1's variation to neutral (no bias for longer/shorter notes).
+        // Was modeBPatternInput.variationAmount = 0.5f; now writes the mono slot directly (TYPED).
+        // STALE — REMOVED (the step-advance Stage 2 completion): that neutralization
+        // targeted NOTE-LENGTH variation, which flows through the PatternInput copy +
+        // the neutral noteVal passed below (executeModeB never reads the voice field
+        // for note length). Since the step-advance build the voice field IS the
+        // gate-mode advance threshold, so forcing 0.5 deafened the PLAIN Mode B path
+        // to the Variation knob — the advance decision read a constant where the
+        // subdivided path read the resolved value (which never had this write).
+        // Stage 1's spec clause: p_advance = the RESOLVED VARIATION probability, per
+        // voice, through the resolver path — NOT a constant. The controller's
+        // per-block write (mono variationProb above) now stands un-overridden in
+        // both Mode B paths.
 
         // Execute the mode
         StepResult result = engine.executeModeB(
             gate1Rise,
             gate1High,
-            modeBPatternInput.restProb, // Rest still applies
-            modeBPatternInput.legato,   // BigFive LATCH: staged in updatePatternInput (was paramManager.getLegato())
             // Note value (which influences note length) should have no impact.
             // Pass a neutral value (e.g., 2.f for 1/4 note, a common default).
             0.f,
-            modeBPatternInput // Pass the modified PatternInput
+            modeBPatternInput // Pass the modified PatternInput (V1 params via voices[0])
         );
         
         // Handle post-execution

@@ -4,7 +4,8 @@
 #include "MonsoonShophouseMicro.hpp"
 #include "Monsoon.hpp"
 #include "MicroTuning.hpp"                 // MicroTuningModule (Colonnades/Duo) — the host we attach to
-#include "ui/VisualExpanderHelpers.hpp"   // redDot::findMonsoonEitherSide
+#include "ui/VisualExpanderHelpers.hpp"   // redDot::findMonsoonEitherSide (service-internal)
+#include "ui/ModuleLookup.hpp"   // THE lookup authority: lookupMonsoon (CC_PROMPT_MODULE_LOOKUP_AUTHORITY_START)
 #include "ui/SvgPanelKit.hpp"
 #include "ui/ConnectMark.hpp"
 #include "ui/WrappingMenuLabel.hpp"       // full loaded-slot names in the context menu (spec §480)
@@ -26,7 +27,7 @@ void MonsoonShophouseMicro::process(const ProcessArgs&) {
     // DETERMINISTICALLY — tuning.N is downstream (reads 12 until the Micro claims) so we don't infer
     // from it. Find Monsoon on either side (the Colonnades sits between us and Monsoon; the chain-walk
     // hops it) for the phrase-boundary edge.
-    Monsoon* mon = redDot::findMonsoonEitherSide(this);
+    Monsoon* mon = redDot::lookupMonsoon(this);
     rack::Module* host = mon ? mon->expanderManager.cachedColonnadesExpander : nullptr;
     hostMicro_ = host;
     if (!host || !mon) { modeConflict = false; return; }   // standalone / no complete rig: nothing to modulate
@@ -303,7 +304,7 @@ struct MonsoonShophouseMicroWidget : ModuleWidget,
             connectMark->markPx   = sz * 0.85f;
             MonsoonShophouseMicro* mm = mod;
             connectMark->connected  = [mm]() { return mm && mm->attachedToMicro(); };
-            connectMark->lightTheme = [mm]() { Monsoon* h = mm ? redDot::findMonsoonEitherSide(mm) : nullptr; return h && h->lightTheme; };
+            connectMark->lightTheme = [mm]() { Monsoon* h = mm ? redDot::lookupMonsoon(mm) : nullptr; return h && h->lightTheme; };
             addChild(connectMark);
         }
 
@@ -356,7 +357,7 @@ struct MonsoonShophouseMicroWidget : ModuleWidget,
         ModuleWidget::step();
         kitStep();
         if (!module) return;
-        Monsoon* m = redDot::findMonsoonEitherSide(module);
+        Monsoon* m = redDot::lookupMonsoon(module);
         int wantLight = (m && m->lightTheme) ? 1 : 0;
         if (wantLight != lastThemeLight) {
             lastThemeLight = wantLight;

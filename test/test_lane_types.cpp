@@ -1,9 +1,8 @@
 // test_lane_types.cpp — the EditorLane/EngineLane strong types + toEngine/toEditor bridge.
 //
-// These types exist to make "editor lane vs engine lane" a COMPILE-TIME distinction, so the
-// recurring "MELODY row modulates REST" bug (an editor index fed into an engine-order store)
-// can't be written. This test pins the runtime conversion; the compile-time safety is proven
-// by the static_asserts in dsp/LaneMapping.hpp and the (commented) negative cases below.
+// Lane-index unification: editor == engine == strand (the PL_* enum was reordered
+// to match the visual/editor/strand order). toEngine/toEditor are now IDENTITY.
+// These types are kept for call-site readability but no longer permute.
 #include "dsp/LaneMapping.hpp"
 #include <cstdio>
 
@@ -13,26 +12,26 @@ static int failures = 0;
 #define CHECK(cond, msg) do { if (!(cond)) { std::printf("  FAIL: %s\n", msg); ++failures; } } while (0)
 
 int main() {
-    // Editor order (panel rows): 0 MEL, 1 OCT, 2 QMIX, 3 REST, 4 ACC, 5 VAR, 6 LEG.
-    // Engine order (store):      0 REST, 1 MEL, 2 OCT, 3 ACC, 4 QMIX.
-    CHECK(toEngine(EditorLane(0)).v == 1, "editor MELODY -> engine 1");
-    CHECK(toEngine(EditorLane(1)).v == 2, "editor OCTAVE -> engine 2");
-    CHECK(toEngine(EditorLane(2)).v == 4, "editor QMIX -> engine 4");
-    CHECK(toEngine(EditorLane(3)).v == 0, "editor REST -> engine 0");
-    CHECK(toEngine(EditorLane(4)).v == 3, "editor ACCENT -> engine 3");
+    // Lane-index unification: editor == engine (identity).
+    //   0 MEL  1 OCT  2 QMIX  3 REST  4 ACC  5 VAR  6 LEG
+    CHECK(toEngine(EditorLane(0)).v == 0, "editor MELODY -> engine 0 (identity)");
+    CHECK(toEngine(EditorLane(1)).v == 1, "editor OCTAVE -> engine 1 (identity)");
+    CHECK(toEngine(EditorLane(2)).v == 2, "editor QMIX -> engine 2 (identity)");
+    CHECK(toEngine(EditorLane(3)).v == 3, "editor REST -> engine 3 (identity)");
+    CHECK(toEngine(EditorLane(4)).v == 4, "editor ACCENT -> engine 4 (identity)");
 
-    // SANDS CONSOLIDATION Step 1: VAR/LEG are now FULL poly lanes (no longer mono-only / POLY_NONE).
-    CHECK(toEngine(EditorLane(5)).v == 5, "editor VAR -> engine 5 (Step 1; was POLY_NONE)");
-    CHECK(toEngine(EditorLane(6)).v == 6, "editor LEG -> engine 6 (Step 1; was POLY_NONE)");
-    CHECK(toEditor(toEngine(EditorLane(5))).v == 5, "editor VAR round-trips (Step 1)");
-    CHECK(toEditor(toEngine(EditorLane(6))).v == 6, "editor LEG round-trips (Step 1)");
+    // VAR/LEG are full poly lanes (identity too).
+    CHECK(toEngine(EditorLane(5)).v == 5, "editor VAR -> engine 5 (identity)");
+    CHECK(toEngine(EditorLane(6)).v == 6, "editor LEG -> engine 6 (identity)");
+    CHECK(toEditor(toEngine(EditorLane(5))).v == 5, "editor VAR round-trips (identity)");
+    CHECK(toEditor(toEngine(EditorLane(6))).v == 6, "editor LEG round-trips (identity)");
 
-    // Inverse: engine -> editor for the five poly lanes.
-    CHECK(toEditor(EngineLane(0)).v == 3, "engine REST -> editor 3");
-    CHECK(toEditor(EngineLane(1)).v == 0, "engine MEL  -> editor 0");
-    CHECK(toEditor(EngineLane(2)).v == 1, "engine OCT  -> editor 1");
-    CHECK(toEditor(EngineLane(3)).v == 4, "engine ACC  -> editor 4");
-    CHECK(toEditor(EngineLane(4)).v == 2, "engine QMIX -> editor 2");
+    // Inverse: engine -> editor (identity).
+    CHECK(toEditor(EngineLane(0)).v == 0, "engine 0 -> editor 0 (identity)");
+    CHECK(toEditor(EngineLane(1)).v == 1, "engine 1 -> editor 1 (identity)");
+    CHECK(toEditor(EngineLane(2)).v == 2, "engine 2 -> editor 2 (identity)");
+    CHECK(toEditor(EngineLane(3)).v == 3, "engine 3 -> editor 3 (identity)");
+    CHECK(toEditor(EngineLane(4)).v == 4, "engine 4 -> editor 4 (identity)");
 
     // Round-trip over the poly lanes.
     for (int el = 0; el < POLY_LANE_COUNT; ++el)

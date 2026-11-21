@@ -1,9 +1,21 @@
 #pragma once
+#include <cstdint>
+#include <array>   // P-B: std::array member state (ARRAY_CONTAINER_AUDIT)                  // int64_t — the unbounded net-step counter (KILL_DNA_LCM)
+#include "RhythmDecisionCore.hpp"   // RDM: MonoDecision + ParentView — the R-2 seam (plan §2)
 #include "PatternEngine.hpp"
+#include "../SpreadInterp.hpp"   // effectiveProbability's spread term (the a2ccb842 one-accessor design it subsumes was deleted by UI_TO_RESOLVER step 2)
 #include "../gates/GateState.hpp"
+#ifdef MONSOON_PROFILE
+#include "../../MonsoonProfile.hpp"   // CC_PROMPT_cpu_section_profile: Suspect-A call counter (empty flag-off)
+#endif
 #include "ClockEngine.hpp"
+#include "../../ui/RateManager.hpp"   // RATE MANAGER (S3b): executeModeA gates on the Step tier (rack-free)
 #include "../NoteValues.hpp"
 #include "../LaneMapping.hpp"
+#include "../SubgateKnobs.hpp"   // SUBGATE TIER: the resolved-threshold dims + the three-way resolver (rack-free)
+#include "../StepAdvance.hpp"     // STEP-ADVANCE: the pure decideAdvance(p, u) (CC_PROMPT_GATE_STEP_ADVANCE_SPEC, rack-free)
+#include "../VoiceLaneTypes.hpp"   // VoiceSlot — the VoiceBank below (strong per-voice indexing)
+#include "PositionResolver.hpp"   // POSITION_UNIFICATION slice 1: the ONE position authority (a pure mirror)
 #include <cassert>
 #include <cstdio>
 
@@ -14,16 +26,9 @@
 
 // ── Poly voice architecture ────────────────────────────────────────────────────
 
-// What mono decided on the most recent step edge.
-// Poly voices read this to determine their own behaviour.
-enum class MonoDecision {
-    MidNote,    // note still held from a previous step — poly just ticks, no new draw
-    Rest,       // mono rested — poly cannot initiate
-    Tie,        // mono extended hold (same pitch) — poly voices hold their own notes
-    Legato,     // mono slid to a new pitch (no retrigger) — poly may draw new notes
-    LegatoMax,  // legatoProb >= 0.999 — poly may draw, no retrigger
-    NewNote     // mono retriggered — poly may retrigger independently
-};
+// (MonoDecision MOVED to RhythmDecisionCore.hpp — R-2 of RHYTHM_DECISION_MANAGER_PLAN:
+//  the decision vocabulary is RDM vocabulary, carried by ParentView. Included above, so
+//  every existing user sees the type unchanged.)
 
 // Returned by executeStep and the mode executors.
 struct StepResult {
@@ -33,7 +38,7 @@ struct StepResult {
     bool wrapped = false;   // true if the phrase boundary wrapped
     bool accented = false;  // true if this step is accented (NEW)
     bool qmixHit  = false;  // Task 4: true if the mono q-mix draw crossed QMIX_LEVEL this step
-    int  forStep = -1;      // the stepIndex this result was computed for (Lantern pairs decision→column)
+    int  forStep = -1;      // the PLAYED COLUMN this result was computed for (pos_.playedColumn(); Lantern pairs decision→column)
 };
 
 // One additional voice beyond mono.  Owns its own GateState and rest
@@ -47,8 +52,63 @@ struct PolyVoice {
                                // draw is thresholded against. 0 = always quantised (legacy), 1 =
                                // always generated. Mirrors restProb/accentProb (per-voice decision
                                // cache written by ModeController from getEffectivePolyQmix).
-    float variationProb = 0.5f; // per-voice VARIATION probability — mirrors restProb/accentProb.
+    // QMIX_OCTAVE (CC_PROMPT_QMIX_OCTAVE + QMIX_OCTAVE_PLAN.md Stage 1): the octave axis's own
+    // threshold — the SECOND read of the SAME r_qmix draw (the subgate pattern: multiple reads
+    // of one stream, different thresholds). r_qmix >= qmixOctResolved() → the OCTAVE is
+    // generated (the r_oct roll); else external (the quantised CV's whole-volt position). The
+    // degree axis keeps qmixLevel exactly as before.
+    //   qmixOctLive = the subResLive-shaped gate (adjudication 3): false ⟹ the engine has never
+    //   been through ModeController's per-block resolution, and the octave threshold IS the
+    //   degree threshold — the two decisions are the same comparison on the same draw, so any
+    //   rack-free engine (every existing test, hand-set qmixLevel marches included) stays
+    //   bit-identical. A mirrored-float default (0.0) instead would create silent MIXED cases
+    //   in every test that sets qmixLevel != 0 under a quantiser mode. ModeController is the
+    //   sole writer that flips it (Stage 2), from the Straits qmix-octave bank through
+    //   QmixOctave::resolve: own-subpanel claim > {global | follow-degree}, the follow tier
+    //   reading the voice's own qmixLevel — the default follow reproduces today's behaviour.
+    float qmixOctLevel = 0.0f;
+    bool  qmixOctLive  = false;
+    float qmixOctResolved() const { return qmixOctLive ? qmixOctLevel : qmixLevel; }
+    // STEP-ADVANCE VALUE PAIR (CC_PROMPT_STEP_ADVANCE_CONSUMPTION Stage 2 — the
+    // bipolar sourcing). One knob+modulation sum, TWO clamps, written as a pair by
+    // ModeController (the sole writer, mirroring restProb/accentProb):
+    //   variationProb     = clamp(sum, -1, +1) — the GATE-MODE STEP-ADVANCE value:
+    //                       BIPOLAR (negative = p(step BACKWARD), the probabilistic
+    //                       retrograde; positive = p(forward); 0 = always hold). The
+    //                       advance decision (decideStepAdvance_) and the follow-main
+    //                       ADVANCE tier (subgateMainThreshold) read THIS field.
+    //                       (CC_PROMPT_STEP_ADVANCE_FIX_DRAW_SOURCE: the former
+    //                       rectified twin variationRateProb is RETIRED — its only
+    //                       consumer was the ghost-candidacy gate, which the
+    //                       companion change deleted; candidacy is the subgate REST
+    //                       decision now. The advance value is the single field.)
+    float variationProb = 0.5f;     // bipolar gate-mode step-advance value [-1,+1]
     float legatoProb = 0.0f;    // per-voice LEGATO probability — mirrors restProb/accentProb.
+    // SUBGATE TIER (CC_PROMPT_STRAITS_SUBGATE_KNOBS_SPEC): the RESOLVED per-voice
+    // subgate thresholds [SubgateKnobs::LEVELS][SubgateKnobs::DECS] — levels
+    // RATCHET/GHOST, decs REST/LEGATO/ADVANCE/ACCENT. Written per block by
+    // ModeController (the sole subgate writer, mirroring the main probs above)
+    // from the Straits subgate bank through SK::resolve: own-subpanel claim >
+    // {global | follow-main} by the per-decision switch, mod deltas added
+    // post-resolution. BYTE-IDENTITY DEFAULT: with nothing authored, follow-main
+    // resolves to the main values EXACTLY, so the subgate-edge reads below are
+    // bit-identical to the pre-subgate behaviour (the spec's degenerate case).
+    // The ADVANCE columns ARE consumed as of the step-advance Stage 1/3 build: the
+    // MONO playhead's advance decision (decideStepAdvance_, at the rise sites) reads
+    // THIS slot's subRes[level][ADVANCE] — V1's row is the mono subgate row. The
+    // playhead is SINGULAR (ONE PLAYHEAD, the spec's law), so the poly voices'
+    // ADVANCE columns (rows 1..15) stay resolved + stored with no per-voice consumer
+    // (documented scope line at decideStepAdvance_ — they exist for a per-voice
+    // playhead if one ever lands; graceful, never uncontrolled).
+    float subRes[dotModular::SubgateKnobs::LEVELS][dotModular::SubgateKnobs::DECS];
+    // The live gate for the reads above: subRes has no struct-level default that
+    // could equal the DYNAMIC main values, so an engine that has never been
+    // through ModeController's per-block write (the rack-free tests construct
+    // engines directly) must keep reading the main thresholds verbatim. The
+    // controller flips this once it owns the writes (first prime); from then on
+    // the subgate-edge reads use subRes. Default false ⟹ byte-identity for any
+    // engine nobody resolved.
+    bool subResLive = false;
     bool  accented = false;    // result of this voice's own accent draw this step
     // Rule 2 (EAST_EXTRA_LANES §4d): latched at the mono chain onset — true if this voice
     // PLAYED (vs rested) when mono started the gate, and held for the chain's life. It, not
@@ -58,6 +118,25 @@ struct PolyVoice {
     // per-voice VAR/LEG draw is now unconditional — SANDS CONSOLIDATION Step 2). Reset at each
     // new onset and when mono rests.
     bool  participating = false;
+};
+
+// (CC_PROMPT_16_TRIAGE bucket 3) the voice capacity (mono + 15 poly) at NAMESPACE
+// scope so VoiceBank (below, pre-class) sizes its slots with it — 16 = the VOICE
+// COUNT, never a step/length bound. VoiceResolver's static_assert holds the equality
+// (VoiceResolver.hpp includes this file, so the canonical constant cannot be reached
+// from here).
+static constexpr int kVoiceSlots = 16;
+
+// ── VoiceBank — per-voice storage, VoiceSlot-indexed (CC_PROMPT_STRONG_TYPES) ──
+// voices[] takes a MINTED VoiceSlot (VoiceResolver::mono() / slot(V) / allSlots());
+// the 16-wide storage convention (0 = V1 … 15 = V16) made STRUCTURAL. TIGHTEN: the
+// int operator[] MIGRATION SHIM is DELETED — a bare voices[0] does not compile and
+// the mono role must be spelled mono(). Layout- and behaviour-identical to the raw
+// PolyVoice[16] it wraps (same cells, typed addressing).
+struct VoiceBank {
+    std::array<PolyVoice, kVoiceSlots> slots{};
+    PolyVoice&       operator[](dotModular::VoiceSlot s)       { return slots[s.v]; }
+    const PolyVoice& operator[](dotModular::VoiceSlot s) const { return slots[s.v]; }
 };
 
 // ── SequencerEngine ────────────────────────────────────────────────────────────
@@ -128,21 +207,35 @@ struct SequencerEngine {
     GateState gs;
     GateState gsStep;   // STEP mirror of gs (mono) — see STEP_GATE_IMPLEMENTATION.md
 
-    // ── Poly voices ───────────────────────────────────────────────────────────
-    // voices[0] = voice 2, voices[6] = voice 8.
+    // ── Poly voices (VoiceSlot-indexed — see VoiceBank above) ──────────────────
+    // voices[VoiceResolver::mono()] = V1 (voice 0 of the unified per-voice system);
+    // slots 1..15 = V2..V16 (was a 15-wide V2..V16 bank pre-COLLAPSE; widened to 16
+    // with V1 at 0). The stale pre-COLLAPSE comment that claimed slot 0 was V2 —
+    // the polyBank-era lie the seam plan flagged — is deleted with the typed bank.
     // numPolyVoices is set from the context-menu user preference (0 = mono only).
-    // It is intentionally NOT cleared by reset() so it survives patch reload.
-    PolyVoice voices[15];
+    VoiceBank voices;
     int       numPolyVoices = 0;
+    // Phase B: track the poly count used last step. When numPolyVoices increases,
+    // newly-activated voices have stale gs state (gateHeld/holdRemain from when
+    // they were last active). resetActivatedPolyVoices_() clears their state so
+    // they fresh-trigger instead of legato-ing from a stale held gate.
+    int       prevNumPolyVoices_ = 0;
 
     // Most recent mono decision — written by executeStep, read by executePolyVoices.
     StepResult lastStepResult;
 
-    // Most recent mono legato probability — written by executeStep, read by executePolyVoice
-    // for the Rule 2 per-voice slur roll (the legato THRESHOLD stays global/mono; only each
-    // voice's reading CELL differs, via getLegatoStepForVoice). Same write-once/read-by-poly
-    // pattern as lastStepResult above.
-    float lastLegatoProb_ = 0.f;
+    // F-1 (RHYTHM_DECISION_MANAGER_PLAN §3.1): the RDM instance — source = GRAPH, reading
+    // the staged containment graph (pe.containmentParents, wired AT CONSTRUCTION via the
+    // NSDMI — pe is declared before rdm, so the array address is stable; reset() re-wires
+    // the same address as the documented seam). D2: graph truth everywhere — no engine
+    // legacy mode; the all-follow-V1 star is an AUTHORED graph (the Cantonment preset /
+    // the test seam), not a source the production engine switches to. Star graphs are
+    // byte-identity-gated on the differential marches; the empty graph is free voices (the
+    // self-rooted tuple); poly-container graphs are spec'd in test_forest_rhythm.
+    RhythmDecisionCore rdm = RhythmDecisionCore(pe.containmentParents.data());
+
+    // (lastLegatoProb_ REMOVED — Phase A: V1 legato lives on the mono slot's legatoProb, read
+    // directly by executeStep, legatoCheckpointOnFall, and the debug print in executePolyVoice.)
 
     // Leading-edge legato is now the ONLY legato model: the connection is governed by the
     // PREVIOUS note's onset commitment (gs.slurForward), captured before this note's cascade
@@ -192,15 +285,47 @@ struct SequencerEngine {
     bool advanceOnTieIntoRest = false;
     // Latch set by legatoCheckpointOnFall (the fall advanced one step); the next executeModeB rise
     // consumes it and SKIPS its own advancePlayhead (plays the already-stepped-to step). One-shot.
-    bool pendingCheckpointArrival = false;
+// P-B (ARRAY_CONTAINER_AUDIT): 2-D member alias — std::array<std::array<T, Cols>, Rows>,
+// byte-identical to T[Rows][Cols] (Finding D keeps every sizeof-memcpy compiling),
+// readable call sites.
+template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::array<T, Cols>, Rows>;
+
+    // P-A (ARRAY_CONTAINER_AUDIT Finding A): the voice capacity (mono + 15 poly) — the
+    // ONE spelling now lives at NAMESPACE scope above VoiceBank (CC_PROMPT_16_TRIAGE
+    // bucket 3: VoiceBank's slots array sizes with it); this member ALIASES it so
+    // SequencerEngine::kVoiceSlots (the tests' spelling) keeps resolving.
+    // VoiceResolver's static_assert holds the equality (VoiceResolver.hpp includes
+    // this file, so the canonical constant cannot be reached from here).
+    static constexpr int kVoiceSlots = ::kVoiceSlots;
+
+    // PER-VOICE STEP-ADVANCE Stage 2 (CC_PER_VOICE_ADVANCE_SIGNOFF decision 2): ARRAY-IFIED —
+    // [0] is the MONO latch (every pre-existing reader, incl. Monsoon.cpp's fall guard);
+    // [1..] are the per-voice "one advance, one arrival" latches — a Local-East voice that
+    // moved on its OWN fall decision latches, and its next rise is a no-decision arrival
+    // for IT (foldPerVoiceAdvance_ clears it and rides 0). reset() zeroes all 16.
+    std::array<bool, kVoiceSlots> pendingCheckpointArrivalV_ = {};
 
     // "Boundary interrupt" — at the phrase boundary (wrap): FALSE (default) = CONTINUE, gate/
     // state carries across the loop (lap 2 can differ from lap 1). TRUE = INTERRUPT, force a
     // fresh start at the boundary (reset the held gate) so every lap is identical.
     bool boundaryInterrupt = false;
 
-    int stepIndex = -1;
     int lastPlayDir = +1;   // +1 forward, -1 reverse (Mode E); for UI direction cues
+    // (DESIGN_POSITION_UNIFICATION) the ONE position authority — slices 2-5 migrated the
+    // derive, the consumers, the advance and the phase clock onto it; the
+    // golden-identity harness (test_position_resolver_identity) proves the mirror.
+    // Slice 2 migrates the derive to its phrasePos; slices 3-4 the stepIndex consumers.
+    PositionResolver pos_;
+    // (STEP 3b + 4-final) the PUBLIC position accessors: every read goes through
+    // these. The stepIndex FIELD is RETIRED — pos_ is the sole position authority
+    // and playedColumn() IS the played column (-1 = not started).
+    int  playedColumn() const { return pos_.playedColumn(); }
+    bool started()      const { return pos_.playedColumn() >= 0; }
+    // (SLICE 2b — the phase-sweep history) the previous snap's UNWRAPPED absStep: the
+    // phase direction is known only between two consecutive PPQN quantisations (per
+    // snap, as the sign of the change). Cleared in reset(); NOT touched by gate/clock.
+    long prevPhaseAbsStep_ = 0;
+    bool hasPhaseAbsStep_  = false;
 
     // ── Per-lane direction (reverse a lane's read independently) ──────────────────
     // 4-state direction per strand: Forward, Reverse, Pendulum (bounce, no endpoint repeat),
@@ -214,31 +339,116 @@ struct SequencerEngine {
     // brace on a 7-element array (the accent anti-pattern, QMIX_LANE_PARITY_CHECKLIST.md) value-inited
     // strand 6 (LEGATO) to 0 until the first reset(). Braces now list all 7 so adding an 8th strand can't
     // silently drop it (and mismatches the count visibly if not updated).
-    int laneTick_[dotModular::NUM_STRANDS]        = {0,0,0,0,0,0,0};
-    int laneSign_[dotModular::NUM_STRANDS]        = {1,1,1,1,1,1,1};   // derived from laneDir_ (+1/-1)
-    int laneSignPending_[dotModular::NUM_STRANDS] = {1,1,1,1,1,1,1};
-    LaneDir laneDir_[dotModular::NUM_STRANDS]        = {};   // default Forward
-    LaneDir laneDirPending_[dotModular::NUM_STRANDS] = {};
-    bool lanePendulum_[dotModular::NUM_STRANDS]   = {false,false,false,false,false,false}; // derived: Pendulum/PingPong
+    std::array<int, dotModular::NUM_STRANDS> laneTick_ = {0,0,0,0,0,0,0};
+    std::array<int, dotModular::NUM_STRANDS> laneSign_ = {1,1,1,1,1,1,1};   // derived from laneDir_ (+1/-1)
+    std::array<int, dotModular::NUM_STRANDS> laneSignPending_ = {1,1,1,1,1,1,1};
+    std::array<LaneDir, dotModular::NUM_STRANDS> laneDir_ = {};   // default Forward
+    std::array<LaneDir, dotModular::NUM_STRANDS> laneDirPending_ = {};
+    std::array<bool, dotModular::NUM_STRANDS> lanePendulum_ = {false,false,false,false,false,false}; // derived: Pendulum/PingPong
     // PingPong endpoint-repeat: when true, the tick stays at the endpoint for one extra step
     // (the endpoint step repeats) before the direction flips. Per-strand hold flag.
-    bool lanePingPongHold_[dotModular::NUM_STRANDS] = {};
-    // Closed-form window position for a lane at global tick t (STATELESS model). Position is
-    // f(totalStepsElapsed, len, dir) — no accumulator — so lanes cannot drift out of phase with
-    // the DNA clock or each other, whenever their direction was flipped. laneTick_* below are
-    // now a CACHE of this, recomputed each step in advancePlayhead, kept only so existing
-    // readers (displays, prob-outs) need no change. Implemented in the .cpp.
-    static long laneTickFor(LaneDir d, long t, int len);
-
-    // Clear per-lane walk state on hard restart. Under the fully-stateless model this is
-    // REDUNDANT — every lane is a pure function of totalStepsElapsed, so zeroing that at
-    // handleRestart() already syncs all of them to Beat 1 (the next advancePlayhead recomputes
-    // these fields from t regardless). Kept because it is free, self-documenting, and correct
-    // again the moment any walker is reintroduced.
+    std::array<bool, dotModular::NUM_STRANDS> lanePingPongHold_ = {};
+    // Closed-form window position for a lane at global tick t — the walk-SHAPE function.
+    // POSITION_HOLDER_MODEL: the walks no longer evaluate this per step against the one
+    // global counter — each holder carries its own PHASE (a bounded int congruent to its
+    // driver's t0 modulo the walk's OWN period) and this function is evaluated AT THE
+    // PHASE (tick = phase + 1) to derive the read position, at anchor time to seed the
+    // phases, and in the sign law (the walk value one musical step back). Reproduces the
+    // accumulator's sequences exactly (verified in test_lane_direction):
+    //   Forward   t            -> 0,1,2,3,0,1,..
+    //   Reverse  -t            -> 0,3,2,1,0,3,..            (opposite-to-global; composes with Mode E)
+    //   Pendulum  triangle     -> 0,1,2,3,2,1,0,1,2,3       (bounce at the LOR endpoint, no repeat)
+    //   PingPong  triangle+hold-> 0,1,2,3,3,2,1,0,0,1       (endpoint repeats, then bounces)
+    // The caller feeds the result to getStrandIdx, which applies rot/off — matching the old code,
+    // where the bounce ran on the raw tick and rot was applied on read.
     //
-    // It is NOT redundant historically: with per-lane ACCUMULATORS, handleRestart() zeroed the
-    // master clock but nothing cleared these, so RESET silently stopped syncing polymeters —
-    // lanes had forked off the shared clock and the reset path was never updated to follow.
+    // CONTINUITY: the argument may be any integer (negative-safe double-mods); the walks
+    // are periodic in it with the lane's OWN period, so a phase congruent to t0 gives the
+    // identical value for ANY representative — the property that makes the local holder
+    // equal the old f(global counter) walk bit-for-bit. Forward/Reverse return the raw
+    // (t-1) / -t values; their consumers mod by the lane length locally.
+    static int64_t laneTickFor(LaneDir d, int64_t t, int len);
+    // (CC_PROMPT_REVERSE_ANCHOR_OFFBYONE) THE ANCHOR BIAS — the rotation-anchored
+    // reads' REVERSE-ONLY correction: laneTickFor(Reverse, 1, L) = −1 ≡ L−1, so a
+    // reversed row anchored at the parent's first step sat ONE CELL LEFT of R
+    // (walking R−1, R−2, …). The bias starts the reverse walk at 0 — matching
+    // Forward, Pendulum and PingPong, which already anchor at R — so the anchor
+    // lands at R in EVERY direction. A CONSTANT per direction: every sign law
+    // differences two biased reads, so the cues are unchanged exactly.
+    // laneTickFor itself is UNTOUCHED (the time-symmetric primitive the bounce
+    // walks and the STEPS_32 goldens depend on); the correction lives where
+    // rotation is applied — uniformly, via this ONE helper (CA5-adjacent: the
+    // same law lives in several read sites; a single helper keeps them from
+    // drifting).
+    static inline int64_t anchorBias(LaneDir d) { return (d == LaneDir::Reverse) ? 1 : 0; }
+
+    // ── POSITION RESOLVER CONSOLIDATION (POSITION_RESOLVER_CONSOLIDATION.md) ─────
+    // The four WALK POLICIES — the SandsModifierPolicy pattern's transfer onto the
+    // direction axis (the doc's ruling on WHERE the concept pattern pays). Each
+    // declares { tick (via laneTickFor, UNCHANGED — the time-symmetric primitive the
+    // bounce walks and the STEPS_32 goldens depend on), anchorBias (the read anchor's
+    // reverse-only constant, 7aae5ee9), entryEdge (the direction-entry box-offset) };
+    // PositionResolver::WalkResolver<Policy> folds rotation / offset / box-offset /
+    // content↔slot ONCE over the WalkPolicy concept. The policies live HERE (they
+    // name LaneDir + laneTickFor, which the resolver cannot — the engine includes the
+    // resolver). anchorBias(d) above stays the runtime constant (the sites' bias
+    // supply); the per-policy declarations are its pinned twins (the bridge test
+    // asserts the equality across all four).
+    struct WalkFwd {
+        static int64_t tick(int64_t t, int len) { return laneTickFor(LaneDir::Forward, t, len); }
+        static constexpr int64_t anchorBias() { return 0; }
+        static constexpr int64_t entryEdge(int) { return 0; }             // the LEFT slot
+    };
+    struct WalkRev {
+        static int64_t tick(int64_t t, int len) { return laneTickFor(LaneDir::Reverse, t, len); }
+        static constexpr int64_t anchorBias() { return 1; }               // 7aae5ee9's read anchor
+        static constexpr int64_t entryEdge(int len) { return len - 1; }   // the RIGHT slot
+    };
+    struct WalkPend {
+        static int64_t tick(int64_t t, int len) { return laneTickFor(LaneDir::Pendulum, t, len); }
+        static constexpr int64_t anchorBias() { return 0; }
+        static constexpr int64_t entryEdge(int) { return 0; }
+    };
+    struct WalkPP {
+        static int64_t tick(int64_t t, int len) { return laneTickFor(LaneDir::PingPong, t, len); }
+        static constexpr int64_t anchorBias() { return 0; }
+        static constexpr int64_t entryEdge(int) { return 0; }
+    };
+    // The RUNTIME dispatcher — the ONE fold the read sites call (byte-identical to
+    // the shipped inline laneTickFor(d,t,len) + anchorBias(d); the bridge test sweeps
+    // the full grid). The commit edge's wEdge rides the same table (walkEdge — the
+    // shipped law keys Reverse vs everything else, so Pend/PingPong land Forward's
+    // entry edge exactly as they did).
+    static int64_t walkFold(LaneDir d, int64_t t, int len) {
+        switch (d) {
+            case LaneDir::Reverse:  return PositionResolver::WalkResolver<WalkRev>::frameValue(t, len);
+            case LaneDir::Pendulum: return PositionResolver::WalkResolver<WalkPend>::frameValue(t, len);
+            case LaneDir::PingPong: return PositionResolver::WalkResolver<WalkPP>::frameValue(t, len);
+            default:                return PositionResolver::WalkResolver<WalkFwd>::frameValue(t, len);
+        }
+    }
+    static int64_t walkEdge(LaneDir d, int len) {
+        switch (d) {
+            case LaneDir::Reverse:  return PositionResolver::WalkResolver<WalkRev>::entryEdge(len);
+            default:                return PositionResolver::WalkResolver<WalkFwd>::entryEdge(len);
+        }
+    }
+
+    // ── UNIFIED ADDRESSING Stage 1 (CC_PROMPT_UNIFIED_ADDRESSING_SPEC.md) ──────────
+    // The GLOBAL-level LOR map — the top of the nested global->voice->lane chain. Under the
+    // POSITION-HOLDER MODEL the lane walks no longer call this per step against the one
+    // global counter; it survives as (a) the ANCHOR math (reset / snapToPhaseStep seed the
+    // holders from an absolute tick through this map) and (b) the bounded frame
+    // reconstruction in deriveHolders. Both are pure functions of their arguments (the
+    // LANE_POSITION_MODEL law); implemented in the .cpp.
+    static int64_t driverTickAt(int64_t t, int len, int off);
+    static int64_t driverTickBefore(int64_t tNow, int64_t tRawPrev, int dir, int len, int off);
+
+    // Clear per-lane walk state on hard restart. Under the POSITION-HOLDER MODEL this
+    // ANCHORS the holders to Beat 1 (the t=0 congruence — every walk back at its own
+    // start) and zeroes the derived read caches; the next advancePlayhead walks from
+    // there. Kept as one named entry point because Monsoon's hard reset calls it
+    // directly.
     // Direction scope (LOCK_SCOPE_MENU): may this STRAND's pending direction promote right now?
     // Unlocked => always. Locked => only if the strand's Sands scope bit is set in scopeLiveMask
     // (direction opted out of the freeze for that axis). MELODY/OCTAVE strands are the melody axis,
@@ -256,23 +466,33 @@ struct SequencerEngine {
     }
 
     void resetLaneWalk() {
+        // THE ANCHOR first (the holders to the Beat-1 congruence — see reset()), then
+        // the derived read caches zero exactly as they always did; the first
+        // advancePlayhead re-derives them from the phases.
+        anchorTransport(0);
         for (int s = 0; s < dotModular::NUM_STRANDS; ++s) {
             laneTick_[s] = 0; laneSign_[s] = 1; lanePingPongHold_[s] = false;
-            macroLaneTick_[s] = 0; macroLaneSign_[s] = 1; macroPingPongHold_[s] = false;
-            for (int v = 0; v < 15; ++v) {
+            for (int v = 0; v < kVoiceSlots; ++v) {
                 laneTickV_[v][s] = 0; laneSignV_[v][s] = 1; lanePingPongHoldV_[v][s] = false;
             }
         }
     }
-    // Macro's own per-lane tick — always follows Macro's direction, independent of
-    // who owns the lane. Same bounce logic as laneTick_. Advanced in advancePlayhead.
-    // Macro's widget reads this for its playhead, so Macro's display always reflects
-    // Macro's DirCell, even when Mono owns the lane (engine's laneTick_ follows Mono).
-    int macroLaneTick_[dotModular::NUM_STRANDS] = {};
-    int macroLaneSign_[dotModular::NUM_STRANDS] = {1,1,1,1,1,1,1};   // NUM_STRANDS-sized (was 6-elem → LEGATO=0 pre-reset)
-    LaneDir macroLaneDir_[dotModular::NUM_STRANDS] = {};
-    bool macroPingPongHold_[dotModular::NUM_STRANDS] = {};
-    int macroLOR_[7] = {16,16,16,16,16,16,16};  // Macro's own LOR lengths (7 poly lanes: REST/MEL/OCT/ACC/QMIX/VAR/LEG)
+    // (CC_PROMPT_RETIRE_MACRO_LANE_HOLDER) the MACRO-TIER LANE HOLDER IS GONE —
+    // macroLaneTick_/macroLaneSign_/macroLaneDir_/macroPingPongHold_/macroLOR_ (and
+    // the parallel macroLanePhase_/macroLaneKey_ phase machine) were a display-only
+    // second position tracker, O/R-blind and LEN-divergent from the per-voice latched
+    // truth (test_macro_lane_holder_retire P2). The Macro strip's playhead + direction
+    // cue now read macroLaneDisplay() — the DERIVED VIEW over the macro ROW's frame
+    // authority (macroFrameT0_, the same frame value the lanes always seeded off)
+    // mapped through the lane's FULL latched LOR from the per-voice path
+    // (effectiveLaneLor). No audio path ever consumed the holder — the battery's
+    // byte-identity is the proof the deletion is audio-safe.
+    // (CC_PROMPT_16_TRIAGE bucket 2, option C's STAY-16 group) the macro ROW's frame
+    // VALUE (the mapped arm's wnow) — the container the Macro lanes + the Macro strip
+    // hang under. Cached by the derive (the frame authority's own value, alongside
+    // macroFrameRead_/macroFrameSign_ — NOT a lane position tracker); the view below
+    // seeds the lanes' walk off it exactly as laneSeed's Macro arm did.
+    int64_t macroFrameT0_ = 0;
     // Per-voice per-strand accumulated tick (poly analogue of laneTick_). Advanced in advancePlayhead
     // by dir * polyLaneSign(v, s) — the effective sign is the voice's OWN, i.e. ABSOLUTE, not
     // relative to mono. laneSignV_ = +1 (default) = Forward; -1 = Reverse. A voice therefore does
@@ -282,20 +502,22 @@ struct SequencerEngine {
     // mono's lane are both Forward → no-op until something is reversed.
     // laneSignVPending_ is promoted to laneSignV_ at the same boundary as mono's (laneFlipQuant),
     // so a per-voice flip also takes effect musically (no jump).
-    int laneTickV_[15][dotModular::NUM_STRANDS]        = {};
-    int laneSignV_[15][dotModular::NUM_STRANDS]        = {};   // default 0 → treated as +1 (see polyLaneSign)
-    int laneSignVPending_[15][dotModular::NUM_STRANDS] = {};
-    LaneDir laneDirV_[15][dotModular::NUM_STRANDS]        = {};   // per-voice direction (default Forward)
-    LaneDir laneDirVPending_[15][dotModular::NUM_STRANDS] = {};
-    bool lanePingPongHoldV_[15][dotModular::NUM_STRANDS] = {};   // per-voice ping-pong hold flag
+    std::array<std::array<int, dotModular::NUM_STRANDS>, kVoiceSlots> laneTickV_ = {};
+    std::array<std::array<int, dotModular::NUM_STRANDS>, kVoiceSlots> laneSignV_ = {};   // default 0 → treated as +1 (see polyLaneSign)
+    std::array<std::array<int, dotModular::NUM_STRANDS>, kVoiceSlots> laneSignVPending_ = {};
+    std::array<std::array<LaneDir, dotModular::NUM_STRANDS>, kVoiceSlots> laneDirV_ = {};   // per-voice direction (default Forward)
+    std::array<std::array<LaneDir, dotModular::NUM_STRANDS>, kVoiceSlots> laneDirVPending_ = {};
+    std::array<std::array<bool, dotModular::NUM_STRANDS>, kVoiceSlots> lanePingPongHoldV_ = {};   // per-voice ping-pong hold flag
+    // (voiceDriverPrev_ is DELETED — POSITION_HOLDER_MODEL: the lane walks read their own
+    // phases; the normalized predecessor lives only inside the sign law's expression.)
     // Effective per-voice sign for a strand: +1 if laneSignV_ is 0 (default/unset → follow mono) or
     // positive, -1 if negative. Multiplied with mono's laneSign_ in advancePlayhead.
     int polyLaneSign(int bank, int strand) const {
-        if (bank < 0 || bank >= 15) return 1;
+        if (bank < 0 || bank >= kVoiceSlots) return 1;
         return (laneSignV_[bank][strand] < 0) ? -1 : +1;
     }
     int polyLaneSignPending(int bank, int strand) const {
-        if (bank < 0 || bank >= 15) return 1;
+        if (bank < 0 || bank >= kVoiceSlots) return 1;
         return (laneSignVPending_[bank][strand] < 0) ? -1 : +1;
     }
     // Derive sign (+1/-1) from a LaneDir state.
@@ -303,24 +525,225 @@ struct SequencerEngine {
     // Is this state an auto-flip (pendulum/ping-pong)?
     static bool laneDirAutoFlip(LaneDir d) { return d == LaneDir::Pendulum || d == LaneDir::PingPong; }
     LaneFlipQuant laneFlipQuant = LaneFlipQuant::Phrase;   // musical default; StepEdge = live turns
-    int lastStepIndex = -1;
+    // (STEP 4-final) lastStepIndex is DELETED with the field — the vestigial
+    // mode-switch cache was its only reader.
     int startStep = 0;
-    int endStep = 15;
-    int cachedLength = 16;
+    // (CC_PROMPT_16_TRIAGE bucket 2, option C's DO-NOW group) the transport defaults =
+    // the full ring (reset() re-seeds the same; the construction default matches it).
+    int endStep = kPatternLengthCap - 1;
+    int cachedLength = kPatternLengthCap;
     int cachedOffset = 0;
-    int totalStepsElapsed = 0; // Running counter for drifting polymetric DNA alignment
+    // ── THE POSITION-HOLDER MODEL (POSITION_HOLDER_MODEL.md) ────────────────────────
+    // The global counter totalStepsElapsed is DELETED: position-being-a-function-of-one-
+    // global-counter was the smell, however tidy the function. Position is OWNED per
+    // holder — each walk keeps a PHASE, a bounded int congruent to its driver's t0 (the
+    // 0-based walk coordinate) modulo the walk's OWN period, advanced LOCALLY on each
+    // advance event by the driver's raw tick delta (a window wrap or an offset seed is a
+    // JUMP the phase absorbs mod the period). NO per-lane elapsed counters exist or are
+    // wanted — a phase is a position in the walk's own cycle, not a step history.
+    //
+    // The phase clock (pos_.phaseClock — the retired globalWalk_) is the TOP holder: the
+    // global window walk itself, ≡ (t−1) mod cachedLength. The voice lanes hang under their voice frames (which carry the
+    // advanceOffset_ divergence — the shipped poly-advance bridge, whose offsets stay
+    // live); the mono lanes hang under V1's frame; the macro lanes under the global walk.
+    // laneTick_/laneTickV_/voiceRead_/voiceDriver_ remain the DERIVED
+    // read positions every existing reader consumes — same values, same times.
+    // Bit-identity: with unchanged parameters the phase walks reproduce the old
+    // f(counter) closed forms EXACTLY (the walks are periodic in t0; the phase IS t0
+    // mod the period), including transport reversals and per-voice divergence. Mid-run
+    // (the holder law — the RE-AUTHOR note): a mid-run window/LOR re-author re-bounds
+    // the reads; the pinned contract is the BOUNDS (test_unified_addressing block 7),
+    // and the global walk holder re-anchors to (transportTick_−1) mod the new length
+    // so an authored window walks from Beat 1 exactly as the old f(counter) did.
+    // Philox untouched (already counter-decoupled — this touched POSITION, not randomness).
+    // THE TRANSPORT'S OWN POSITION (the spec's WRITE-SITE law: "they STAY — as the
+    // single current-position value, advanced on the clock event; they are NOT the
+    // redundancy — the redundancy was the RECOMPUTE-FROM-IT"). totalStepsElapsed is
+    // dead as the master timeline: NO walk, read, cache or sign derives from this
+    // value any more. It survives ONLY as the anchor seed the irreducible write sites
+    // maintain (reset → 0, the advance event ±1, the Mode E phase snap, the Beat-1
+    // hard reset) and that anchorTransport consumes transiently to seed the holder
+    // congruences — needed because a mid-run window/LOR re-author re-bounds the
+    // phase clock to (tick−1) mod newLen, a congruence no bounded phase carries.
+    // (SLICE 5) globalWalk_ is DELETED — pos_.phaseClock(transportTick_) is its closed
+    // form (a view; the identity harness proved the equality before the deletion).
+    int64_t transportTick_ = 0;
+    // ≡ the RAW transport t0 (mod the walk's period) — the pass-through-config read
+    // path; the phases advance by the RAW clock deltas every event so the congruence
+    // survives any window/LOR config round-trip (the WARM-PHASE law).
+    std::array<int, dotModular::NUM_STRANDS> lanePhase_ = {};
+    std::array<std::array<int, dotModular::NUM_STRANDS>, kVoiceSlots> lanePhaseV_ = {};   // per-voice: ≡ the RAW effective clock's t0 (mod the walk's period)
+    std::array<int, kVoiceSlots> voiceFramePhase_ = {};   // mapped voice rows: ≡ the RAW effective clock's t0 (mod the row walk's period)
+    // (CC_FIX_GLOBAL_BELOW_VOICE_PHASE_DESYNC) the BUG-2 edge snapshot is RETIRED:
+    // the lane-edge commit now keys off the LIVE rotation anchor
+    // (voiceFrameEdgeLive_ — a pure function of the transport's phrase position +
+    // the voice's advance offset), so the head and the derive agree within an
+    // event with nothing latched — a latched phase reference is exactly what a
+    // live global-length change would strand (the voice-wrap +1's cousin).
+    // (CC_FIX_MACRO_LANE_SEED Part 2) the MACRO ROW's frame phase — the mapped macro
+    // row's walk congruence, the container the Macro lanes hang under. Mirrors
+    // voiceFramePhase_ for the one shared row (the follower voices' rows resolve to
+    // it; the Macro lanes' seed needs it independently of any voice being live).
+    int macroFramePhase_ = 0;
+    int globalT0Phase_                             = 0;    // ≡ the RAW transport t0 (mod the RHYTHM lane's length) — the step-light's DNA-content congruence under the pass-through window (the one read no mod-16 walk carries)
+    std::array<int64_t, kVoiceSlots> advOffSeen_ = {};   // the transport's last-seen advanceOffset_ — the per-event diff IS the offset's contribution to k_v
+    // THE WALK-KEY SHADOWS (the re-anchor law): a holder's phase is congruent to its raw
+    // t0 mod the walk's period — but the period is (dir, len)-dependent and the lens/dirs
+    // are LIVE parameters (knobs, CV, the DirCells). When a holder's walk key changes,
+    // the old congruence is meaningless for the new period, so the holder RE-ANCHORS
+    // from the transport's own position (the closed form's exact value at the change —
+    // f(t, newParams) — and continues locally from there, bit-identical to the old
+    // recompute-through-a-parameter-change in every case).
+    std::array<int, dotModular::NUM_STRANDS> laneKey_ = {};
+    std::array<std::array<int, dotModular::NUM_STRANDS>, kVoiceSlots> laneKeyV_ = {};
+    std::array<int, kVoiceSlots> frameKey_ = {};
+    int macroFrameKey_ = 0;   // (CC_FIX_MACRO_LANE_SEED) the macro row's walk key
+    int globalT0Key_                               = 0;
+    static int walkKeyOf(LaneDir d, int len) { return (int)d * 64 + std::max(1, len); }
+
+    // Negative-safe mod (the phases and the bounded representatives all live in [0, m)).
+    static int wrapMod(int64_t v, int m);
+    // The walk's own period for a direction at a length (the phase's modulus).
+    static int walkPeriod(LaneDir d, int len);
 
     bool hadMonoTail = false;
     bool wasHeldMono = false; // Capture mono state before tick() for start-detection
-    bool hadPolyTail[15] = {};
+    std::array<bool, kVoiceSlots> hadPolyTail = {};
+    // F-1 per-container reads (RHYTHM_DECISION_MANAGER_PLAN §3.1): each poly voice's rhythm
+    // VERDICT + drawn note length, captured by executePolyVoice at its decision points and
+    // read back through containerView(u) when a CHILD folds its containers — under the
+    // forest a poly voice is a real parent, and its child needs the same four scalars V1
+    // exposes through monoParentView(). Indexed by STORAGE slot (0 = V1, unused — the mono
+    // verdict lives in lastStepResult). Default Rest = a voice that has not executed offers
+    // no onset and closes its children (fail-closed); reset() restores it.
+    std::array<MonoDecision, kVoiceSlots> polyVerdict_ = {};   // zero-init = MidNote; reset() fills Rest
+    std::array<int, kVoiceSlots> polyNv_ = {};                 // the voice's drawn window this edge (the C3 ceiling
+                                          // a child clamps against); 0 = no clamp contribution
+    // SUBGATE TIER: the edge level for the poly cascade this block (−1 = main, else
+    // SubgateKnobs::RATCHET/GHOST). Set by executeModeBSubdivided (which knows the
+    // edge stream), consumed + cleared by executePolyVoices at entry (the controller
+    // calls it exactly once per block, right after the mode exec — deterministic).
+    // Main paths never touch it; it stays −1.
+    int polySubLevel_ = -1;
+    // (The step-advance rise counter is DELETED — CC_PROMPT_STEP_ADVANCE_FIX_DRAW_
+    // SOURCE: the advance reads the VARIATION LANE's step-addressed draw, not a
+    // per-rise uniform, so there is no counter and NO new draw consumption.)
+    // THE FREEZE FIX (CC_PROMPT_STEP_ADVANCE_FREEZE_AND_BIPOLAR): scanOfsV_[0] — the
+    // MONO/LOCKED scan: the local variation-window SCAN, "how far the held step has
+    // scanned the window looking for an escape value". GATE MODE ONLY (mode A never
+    // reads it — its advancePlayhead calls reset it harmlessly). +1 on each HELD
+    // rise, bounded by the variation lane's length; RESET to 0 in advancePlayhead
+    // (each arrived step is judged on its own value first, scan 0). A LOCAL scan
+    // index into the variation window — NEVER a pattern position or a transport state
+    // (the HOLDER law: a held-rise count is not a position;
+    // global-modulus-agnostic by construction). To stay frozen EVERY value in the
+    // window must fail < |p| (prob ~(1-|p|)^varLen ≈ 0) — escapes within ~1/|p|
+    // held rises; p=0 = HOLD by design. Zero new draws (the scan reads existing
+    // ring values).
+    // PER-VOICE STEP-ADVANCE Stage 1 (plans/per_voice_step_advance_build_plan.md):
+    // array-ified — [0] is THE mono/locked scan (every pre-existing reader; the
+    // scanHold_() below is its increment). The per-voice slots [1..] stay 0/unread
+    // in the locked build; Stage 2's divergence gates them on the VAR-lane
+    // delegation (varlegDelegated) and resets them at the decision sites.
+    std::array<int, kVoiceSlots> scanOfsV_ = {};
+    // (CC_PROMPT_VARIATION_CENTRE) THE CENTRE GATE: at the neutral centre (|p| <= eps)
+    // the ESCAPE PROBABILITY is zero — the advance threshold is 0, so the draw can never
+    // cross it and NO scanned cell is ever an escape; the hunt can never terminate
+    // (horizon = 1/escape-prob = infinite), so the scan could only creep forever. It
+    // must not run — the lane repeats the current step in place and the chevron sits
+    // still (was: the unconditional increment, the arbitrary-forward creep). eps =
+    // 1e-3f: knob 0.5 maps to EXACTLY 0 (the clean case); CV2/Junction noise up to
+    // ~10mV (1e-3 in p units, 10V <-> +/-1) holds cleanly instead of creeping over a
+    // ~1000-rise horizon; an intentional small p (1% knob = 0.01, escape ~100 rises)
+    // still scans. p is the RESOLVED mono variationProb, threaded in by the callers
+    // (the same value decideStepAdvance_ reads).
+    static constexpr float kVariationCentreEps = 1e-3f;
+    // (SLICE X — the ODR/DRY consolidation, CC_PROMPT_POSITION_RESOLVER_SLICE3_CONSUMERS:
+    // scanHold_ (mono, scanOfsV_[0], mono LOR) and scanHoldV_ (per-voice, scanOfsV_[bank.v],
+    // polyLOR) were the SAME law written twice — the "mono is special" split that let the
+    // variation-centre POLY creep slip through the first pass (the centre-gate reached
+    // mono but not the twin). ONE law, one gate, no second place to forget.)
+    // THE LAW: a held gate-advance (the playhead does not move) scans the variation window
+    // one cell deeper — gated at the voice's OWN neutral centre (|p_v| <= eps), where the
+    // escape probability is zero (the threshold is 0, no scanned cell is ever an escape,
+    // the hunt never terminates), so the scan must not run: the VARIATION lane repeats in
+    // place and its chevron sits still. p is the voice's OWN variationProb — the same
+    // value decideStepAdvance_ resolves for the main path (subLevel < 0 / !subResLive).
+    // Only Local-East VAR voices ever accumulate their own scan (foldPerVoiceAdvance_);
+    // delegated voices ride [0]. (Subgate-ADVANCE holds, where p resolves to
+    // subRes[subLevel][ADVANCE], are the narrower case not yet covered; the reported bug
+    // is the main-path centre.)
+    void scanHoldFor_(dotModular::VoiceSlot bank) {   // spelled out: the VoiceSlot alias is declared further below
+        const float p = voices[bank].variationProb;
+        if (p < kVariationCentreEps && p > -kVariationCentreEps) return;   // the centre: HOLD with NO scan
+        // The window bound is selected BY BANK — the two stores are NOT interchangeable:
+        // mono reads the STRAND store (lor), a poly voice its OWN lorStore_ row (polyLOR).
+        // A swap here would silently change the mono vs poly window bound.
+        // (C0 FAMILY 2) the bound reads through the lane chokepoints — the same
+        // values the raw lor()/polyLOR() reads returned, the same bank split.
+        int vl, vo, vrr; LaneDir vd;
+        if (bank.v == dotModular::kMonoVoiceSlot.v)
+            effectiveMonoLaneLor(dotModular::STRAND_VARIATION, vl, vo, vrr, vd);
+        else
+            effectiveLaneLor(bank, LaneId{EDITOR_LANE_VARIATION}, vl, vo, vrr, vd);
+        const int varLen = vl;
+        // (CC_FIX_GLOBAL_BELOW_VOICE_PHASE_DESYNC) the scan bound follows the
+        // window's DECLARED geometry — the driver row's authored window (ABS1's
+        // ring = the current global phrase), never a cached min — and
+        // deliberately NOT the live global length: the scan is a LOCAL window
+        // search over authored geometry, so its bound is a pure function of the
+        // authored rows and the static-no-modulation dip differential stays
+        // byte-identical BY CONSTRUCTION (Rodney's regression floor). Where the
+        // rotation anchor re-enters is TIMING — the commit edge's live law —
+        // not the scan's modulus. (Was the raw varLen with no row bound at
+        // all: today's :629 bug.)
+        int bound = varLen;
+        {
+            int fL, fO, fR; LaneDir fD;
+            effectiveVoiceLor(bank.v, fL, fO, fR, fD);
+            if (fL < 1) fL = 1;
+            if (voiceFrameReadsFullPhrase(bank.v)) fL = std::max(1, cachedLength);   // (DESYNC abs1) ABS1's ring = the current global phrase
+            bound = std::min(bound, fL);
+        }
+        if (bound < 1) bound = 1;
+        scanOfsV_[bank.v] = (scanOfsV_[bank.v] + 1) % bound;
+    }
+    // PER-VOICE STEP-ADVANCE (PER_VOICE_STEP_ADVANCE_PLAN.md §59-99, ruled by
+    // CC_PER_VOICE_ADVANCE_SIGNOFF.md): the SECOND per-voice offset on top of LOR —
+    // ENGINE-computed (never user-set), accumulating each voice's own step-advance
+    // decisions (Stage 2: += d_v − d_main at the advance sites, so a voice's net
+    // position change is its OWN decision). The ONE clock is untouched: the offset
+    // enters ONLY recomputeVoiceDrivers_ as the voice's EFFECTIVE CLOCK
+    // (the voice's own motion, carried by the holders through advanceOffset_[v]) — a true
+    // per-voice step shift of the voice's whole read chain (global window → voice
+    // window → every laneTickV_[v]/voiceRead_[v]). [0] ≡ 0 ALWAYS (the mono slot IS
+    // the transport — the invariant; the decision loops run v = 1..numPolyVoices).
+    // int64 UNBOUNDED net-step counts (the signoff's decision 1 — the KILL_DNA_LCM
+    // model): no offset wrap exists or is needed; every READ mods locally at its
+    // own length, so "wraps at the phrase" holds at the read level. Stage 1 ships
+    // the plumbing LOCKED (all offsets stay 0 — the goldens are the degeneration
+    // proof). Zeroed by reset() and on voice activation (a re-activated voice
+    // re-enters at the macro position).
+    std::array<int64_t, kVoiceSlots> advanceOffset_ = {};
+    // F-4 (D5 — RHYTHM_DECISION_MANAGER_PLAN §3.3): each poly voice's THIS-EDGE GHOST EVENT —
+    // the voice PLAYED an onset at a permission point that was a ghost cell of ITS containers
+    // (rd.ghostCell). Captured by executePolyVoice at the play verdict (the polyVerdict_
+    // discipline: written on EVERY executed edge, true only on the ghost-placed play path), and
+    // read back through containerView(u) as ParentView::ghostEvent when a CHILD folds its
+    // containers — the recursion that lets ghost events propagate DOWN the forest (a child
+    // ghosts inside its containers' ghost notes, one level per edge). Indexed by STORAGE slot
+    // (0 = V1, unused — the mono's ghost event is its own stream latch, engine.ghostActive,
+    // carried by monoParentView()). Default false = no ghost event (fail-closed, same as the
+    // Rest verdict); reset() restores it.
+    std::array<bool, kVoiceSlots> polyGhostOnset_ = {};
     // Ghost (subGate_ghost): true while a ghost note is sustaining — set when a ghost candidate
     // (variation-gated) plays, cleared when it rests/fails or a main/ratchet onset takes over.
     // The module-layer IMPL 2b reads this (&& ghostHigh) so the gate only opens for a ghost that
     // actually fired, not merely because Gate 3 is high (variation=0 -> no ghost).
     bool ghostActive = false;
-    bool wasHeldPolyPrev[15] = {}; // Capture poly state before tick()
+    std::array<bool, kVoiceSlots> wasHeldPolyPrev = {}; // Capture poly state before tick()
 
-    // ── Mono (V1) strand windowing: Length (1..16), Offset (0..15), Rotation ──
+    // ── Mono (V1) strand windowing: Length (1..kLaneLengthMax), Offset (0..kLaneOffsetMax), Rotation (0..L-1) ──
     // Step 1 of the probability-modifier unification (docs/design/PROBABILITY_MODIFIER_MODEL.md):
     // the 18 named fields (rhythmLen…octaveRot) + their 6 hand-written switch(strand) accessors are
     // now ONE array indexed by strand (== editor lane, already the identity) × item {LEN,OFF,ROT}.
@@ -338,15 +761,558 @@ struct SequencerEngine {
     // editor-order polyLOR() and the engine-order polyLenE() family (which now converts engine→editor
     // here, at the single storage boundary). Seeded in ctor/reset.
     enum MonoItem { LOR_LEN = 0, LOR_OFF = 1, LOR_ROT = 2, LOR_ITEMS = 3 };
-    static constexpr int kVoiceSlots = 16;
-    int lorStore_[kVoiceSlots][dotModular::NUM_STRANDS][LOR_ITEMS] = {};   // [slot][editorLane][item]
+    std::array<std::array<std::array<int, LOR_ITEMS>, dotModular::NUM_STRANDS>, kVoiceSlots> lorStore_ = {};   // [slot][editorLane][item]
 
     // Mono (V1 = slot 0): editor lane == strand index (the identity), so strand IS the lane column.
     int&       lorRef(int strand, int item)       { return lorStore_[0][strandClamp(strand)][item]; }
     int        lor   (int strand, int item) const { return lorStore_[0][strandClamp(strand)][item]; }
     static int strandClamp(int s) { return (s >= 0 && s < dotModular::NUM_STRANDS) ? s : dotModular::STRAND_RHYTHM; }
 
-    enum PolyLane { PL_REST = 0, PL_MELODY = 1, PL_OCTAVE = 2, PL_ACCENT = 3, PL_QMIX = 4, PL_VARIATION = 5, PL_LEGATO = 6, PL_LANES = 7 };   // SANDS CONSOLIDATION Step 2
+    // ── UNIFIED ADDRESSING Stage 2 (CC_PROMPT_UNIFIED_ADDRESSING_SPEC.md) ──────────
+    // The VOICE-level LOR — the global->voice map, "lane is the probability half of voice".
+    // The voice's L/O/R+direction is its READ FRAME (not a probability lane): the frame its
+    // LANES nest within. R is the ANCHOR form (where the voice reads when the parent is at
+    // step 1). CC_FIX_VOICE_WINDOW_CYCLE_AND_ROTATION: for CYCLE rows the mechanical phase
+    // is rho = R — the WINDOW-RELATIVE phase into the window at global step 1 (UAS lines
+    // 13-20/22-37), clamped to 0..L-1 at every authoring path (the lanes' own convention
+    // clamp(R, 0, max(0, L-1))); the window's PLACEMENT is offG + O (the parent frame
+    // carries the global offset). ABS1 rows keep the landed (R-O) anchor fold over the
+    // global ring. Indexed [bank.v] — slot 0 =
+    // V1 (mono, drives laneTick_), 1..15 = V2..V16 (drive laneTickV_) — the same indexing
+    // as lorStore_/laneTickV_. Macro tier = the GLOBAL voice range (all voices); the
+    // per-voice rows are the East tier; delegation per voice: follow-Macro (default) or
+    // local-East. Identity defaults (16/0/0/Forward) take the PASS-THROUGH branch — the
+    // raw parent driver verbatim — so the Stage-1 goldens hold until a voice LOR carries
+    // a setting. Seeded in reset().
+    std::array<std::array<int, LOR_ITEMS>, kVoiceSlots> voiceLorStore_ = {};   // {L,O,R} per voice
+    std::array<LaneDir, kVoiceSlots> voiceLorDir_ = {};   // per-voice direction
+    int     macroVoiceLor_[LOR_ITEMS]               = {};   // the Macro (global) voice range
+    LaneDir macroVoiceLorDir_                       = LaneDir::Forward;
+    std::array<bool, kVoiceSlots> voiceLorLocalEast_ = {};   // false = follow Macro (default)
+    // The per-voice map's output caches, re-derived with the lane walks each event (the
+    // HOLDER law): voiceDriver_ = the 1-based frame tick the voice's LANES hang under —
+    // the BOUNDED window-walk representative now (pass-through config: ((t+offset−1) mod
+    // 16) + 1; the raw unbounded tick died with the counter, and nothing but the deleted
+    // lane recompute ever consumed its unbounded congruence), voiceRead_ = the buffer
+    // cell the voice's frame reads (the Stage-3 range lane + tests; CYCLE rows place the
+    // window at offG + O — the parent frame's position plus the row's offset — while
+    // ABS1 keeps wnow + O). voiceSign_ = the
+    // voice FRAME's instantaneous walk sign (+1/-1, 0 = not yet moved) — the Stage-3
+    // range strip's direction cue, derived by the SAME rule as the lane signs: the sign
+    // of the window-walk delta, with a wrap/jump substituted by ONE musical step along
+    // the current motion (a window wrap is a BEAT, not a bounce — it must not flip the
+    // cue) and an endpoint repeat (delta 0) keeping the previous sign. UI cue only:
+    // nothing reads it to decide position (the laneSign_ discipline).
+    std::array<int64_t, kVoiceSlots> voiceDriver_ = {};   // the bounded frame-tick representative (the PLUMB pins read it)
+    std::array<int, kVoiceSlots> voiceRead_ = {};
+    std::array<int, kVoiceSlots> voiceSign_ = {};
+    // The MACRO frame's read cell + walk sign — the global window walk itself (the
+    // Macro tier has no voice map, it IS the frame). The Macro panel's range strip
+    // animates this; the expression is the identity-voice branch's, computed once.
+    int     macroFrameRead_                         = 0;
+    int     macroFrameSign_                         = 0;
+
+    // ── UNIFIED ADDRESSING Stage 4: the OUTPUT MASK (the ONE output layer) ─────────
+    // A per-step play/mute mask per voice + a rotation-source flag for the painted
+    // kind (the doc's containment hierarchy: cycle ⊂ abs1 ⊂ abs2 ⊂ abs3 are
+    // CONFIGURATIONS of one mechanism, not code paths):
+    //   MASK_CYCLE    the all-on degenerate mask — today's behaviour, the default;
+    //   MASK_DYNAMIC  dynamically-sized: the range-as-mask, derived from the row's
+    //                 O/L each evaluation (extent tracks the range) = absolute-1;
+    //   MASK_PAINTED  the fixed-rotatable painted pattern = absolute-2 (rotation
+    //                 STATIC, fixed to absolute phrase steps) or absolute-3 (the
+    //                 rotation SOURCE is the row's R — the mask travels with the
+    //                 content).
+    // Delegation: the MACRO tier is the GLOBAL mask (all voices), the EAST rows are
+    // per-voice; maskLocalEast_[v] picks (false = follow Macro, the default). The
+    // gate is OUTPUT-GATE-ONLY (MonsoonOutputGenerator zeroes the voice's GATE + CV
+    // OUT where the mask mutes the CURRENT PHRASE STEP): NOT the modulation CV
+    // inputs, NOT generation, NOT correlation — marginals untouched. The phrase-wrap
+    // cut rule falls out of the per-step evaluation: a wrap INSIDE the mask carries
+    // the gate across; only the mask's real end cuts; step 1 outside = cut at 16.
+    // THE ANCHOR LAW (mask <-> rotation, the doc's per-step rule): mask-step-1 is
+    // pinned to the BASE (unmodulated) rotation; the pinned copy re-rotates ONLY
+    // when the base changes (per-push change detection — the push is the per-block
+    // "per step" check), then the rotation MODULATION offsets relative to the
+    // anchor (none on the voice rows yet — the hook is the evaluation). Content
+    // direction, derived: R+1 moves the read +1, so the same window content arrives
+    // one phrase step SOONER — the re-pin rotates the pattern one step EARLIER per
+    // +1 R (the rhythm slides WITH the content either way).
+    enum MaskKind { MASK_CYCLE = 0, MASK_DYNAMIC = 1, MASK_PAINTED = 2 };
+    // ── STEPS_32 Stage 2a (docs/design/STEPS_32_PLAN.md DECIDED block): the mask plane is
+    // uint64_t, LENGTH-MASKED on the frame RING. The constants' AUTHORITY lives in
+    // dotModular (PatternEngine.hpp, beside the length domain); these aliases keep the
+    // class body's bare names. The ring derives from kPatternLengthCap — 16 until Stage
+    // 2b flips it, so every ≤16 configuration is bit-identical; the flip widens the ring,
+    // lenMask and the all-on sentinel in ONE move (uint64 covers the 64-step ceiling, no
+    // second widening). lenMask = (1<<ring)-1 replaces the 65535 clamp, the c<16 checks
+    // and the 1<<c magic; the all-on default is the RING's all-on (0xFFFF at the 16 bound).
+    static constexpr int      kMaskRing   = dotModular::kMaskRing;
+    static constexpr uint64_t kMaskLenMask = dotModular::kMaskLenMask;
+    // (CC_PROMPT_16_TRIAGE bucket 3-adjacent) the panel's physical RING-LAMP count —
+    // the D10/D15 twice-around law's constant (the lamps STAY 16 when the ring went to
+    // 32; lamp k carries masters k and k+16). A DISPLAY quantity, not a step/length/
+    // voice bound — named so it can never be read as one.
+    static constexpr int      kRingLamps  = 16;
+    static constexpr std::array<uint64_t, kVoiceSlots> maskAllOnArr() {
+        std::array<uint64_t, kVoiceSlots> a{}; a.fill(kMaskLenMask); return a;
+    }
+    std::array<int, kVoiceSlots> maskKind_ = {};      // per-voice (East tier) kind
+    std::array<bool, kVoiceSlots> maskFollowR_ = {};      // the painted kind's rotation source
+    std::array<bool, kVoiceSlots> maskLocalEast_ = {};      // false = follow the MACRO mask
+    std::array<uint64_t, kVoiceSlots> maskAnchored_            = maskAllOnArr();
+    std::array<int, kVoiceSlots> maskAnchorR_ = {};      // the base R the copy is pinned to
+    std::array<uint64_t, kVoiceSlots> maskLastPushed_          = maskAllOnArr();
+    int      maskMacroKind_                        = MASK_CYCLE;
+    bool     maskMacroFollowR_                     = false;
+    uint64_t maskMacroAnchored_                    = kMaskLenMask;
+    int      maskMacroAnchorR_                     = 0;
+    uint64_t maskMacroLastPushed_                  = kMaskLenMask;
+    // The played steps move delta phrase steps EARLIER (the content direction — see
+    // the anchor note): new bit j = old bit (j + delta). Rotation rides the ring.
+    // (UAS ABS1+MASK) the ring is a PARAMETER: the EVALUATION ring is the current
+    // global phrase G — the low G bits rotate cyclically among themselves and the
+    // bits beyond G stay DORMANT (preserved on the 32-wide storage; they reappear
+    // when G grows back). The 32-wide default keeps the authoring/re-pin callers.
+    static uint64_t rotMaskRing(uint64_t m, int delta, int ring = kMaskRing) {
+        if (ring < 1) ring = 1;
+        if (ring > kMaskRing) ring = kMaskRing;
+        delta = ((delta % ring) + ring) % ring;
+        if (!delta) return m;
+        const uint64_t loMask = kMaskLenMask >> (kMaskRing - ring);   // the low ring bits
+        const uint64_t lo = m & loMask;
+        const uint64_t rot = ((lo >> delta) | (lo << (ring - delta))) & loMask;
+        return (m & ~loMask) | rot;   // the dormant high bits ride through untouched
+    }
+    // (DESYNC abs1 ruling) the RING is a parameter: the output gate passes the CURRENT
+    // GLOBAL PHRASE length (absolute = absolute-WITHIN-PHRASE — the global-phrase ring
+    // bounds what sounds; a declared L ≥ the phrase sounds the whole phrase, the
+    // declared L stays as authored — no cached min); the ring-wide default keeps the
+    // static callers (the presets, the tests) unchanged.
+    static bool maskWindowContains(int O, int L, int phraseStep, int ring = kMaskRing) {
+        if (ring < 1) ring = 1;
+        if (L >= ring) return true;
+        const int s = ((phraseStep - O) % ring + ring) % ring;
+        return s < L;
+    }
+    // The window as a play mask over the ring (bit c = phrase step c in [O, O+L)) — the
+    // "mask from range" preset and the tests.
+    static uint64_t windowMaskBits(int L, int O, int ring = kMaskRing) {
+        if (ring < 1) ring = 1;
+        L = std::max(1, std::min(L, ring));
+        O = ((O % ring) + ring) % ring;
+        uint64_t m = 0;
+        for (int c = 0; c < ring; ++c) if (maskWindowContains(O, L, c, ring)) m |= (uint64_t(1) << c);
+        return m;
+    }
+    // The per-block authoring push (Monsoon's float mask rows -> this store), the
+    // pushVoiceLorEditor discipline: pure + rack-free (plain floats), clamps mirror
+    // the store frame (kind 0..2, cells != 0 -> play bit, followR/local != 0), the
+    // ALL-CYCLE default lands byte-identically on the reset() seed (no gating — the
+    // goldens' precondition on the module path). Runs AFTER pushVoiceLorEditor in
+    // Monsoon::process so the base rotation it re-pins against is the current one.
+    // Repaint detection: a pushed pattern that differs from the last pushed pattern
+    // re-anchors the working copy at the pushed base R (a paint or a load — the
+    // anchor law's "the paint was made at the painted R"); an unchanged pattern with
+    // a moved base R re-pins (rotates) the working copy — the base knob moves the
+    // mask. Abs2 rows (followR off) never re-pin (fixed to absolute phrase steps).
+    void pushMaskEditor(const uint64_t* macroPatternBits, float macroKind, float macroFollowR,
+                        const uint64_t* eastPatternBits, const float* eastKind,
+                        const float* eastFollowR, const float* localEast);
+    // (A4) THE BASE-MODE READ LAW: ABS1's read runs the FULL PHRASE (the corrected
+    // model — "read runs full phrase, output silenced outside the LOR"): the voice
+    // frame behaves as IDENTITY for the READ (recomputeVoiceDrivers_ takes the
+    // pass-through branch — the playhead marches all 16, the lanes read as-if-no-
+    // voice-LOR), and the OUTPUT gate below does the windowing against the GLOBAL
+    // step. CYCLE (and the painted overlay, which composes on either base) keeps
+    // the confined window walk. Read-side only: the gate, the strip's window and
+    // the chevron still read effectiveVoiceLor unchanged.
+    // (RETIRED 2026-11-21 — "[RESOLVED] CYCLE-CONSISTENT ABSOLUTE MODE", UAS doc) the range
+    // base (MASK_DYNAMIC) no longer reads the full phrase: content is ALWAYS the cycle read
+    // (the voice's own L, R window-relative) and the base only MUTES outside [O,O+L) at the
+    // output gate. The switch is kept (false) so the retired full-phrase branches stay
+    // reviewable and revertible until the Rack feel-test passes; a follow-up deletes them.
+    static constexpr bool kRangeBaseReadsFullPhrase = false;
+    bool voiceFrameReadsFullPhrase(int v) const {
+        if (!kRangeBaseReadsFullPhrase) return false;
+        if (v < 0 || v >= kVoiceSlots) return false;
+        return (maskLocalEast_[v] ? maskKind_[v] : maskMacroKind_) == MASK_DYNAMIC;
+    }
+    // The range BASE is active for this voice (the output gate mutes outside [O,O+L)).
+    bool voiceBaseIsRange(int v) const {
+        if (v < 0 || v >= kVoiceSlots) return false;
+        return (maskLocalEast_[v] ? maskKind_[v] : maskMacroKind_) == MASK_DYNAMIC;
+    }
+    // (A4) THE FOLLOW-R EVALUATION HOOK (the doc's "the rotation MODULATION offsets
+    // relative to the anchor" — implemented): the anchored copy is pinned to the BASE
+    // rotation at push; at evaluation the (possibly CV-folded) EFFECTIVE R offsets it
+    // by (R − anchorR) — the SAME rotMask16(+Δ) the re-pin applies on a base change,
+    // so a modulated R slides the pattern exactly as turning the base R does, while a
+    // real base edit re-pins (Δ resets to 0 — no double rotation). Without follow-R
+    // the anchored copy stands (static, fixed to absolute phrase steps).
+    uint64_t effectiveOverlayPattern(int v) const {
+        if (v < 0 || v >= kVoiceSlots) return kMaskLenMask;
+        const bool local = maskLocalEast_[v];
+        const uint64_t anchored = local ? maskAnchored_[v] : maskMacroAnchored_;
+        if (anchored == kMaskLenMask) return kMaskLenMask;
+        if (!(local ? maskFollowR_[v] : maskMacroFollowR_)) return anchored;
+        // The rotation source is the row the OVERLAY belongs to (the MASK's own
+        // delegation — voiceLorStore_ vs macroVoiceLor_), NOT effectiveVoiceLor's
+        // LOR delegation (a separate switch); this matches the anchor capture at
+        // push exactly, so both sides of Δ read the same row.
+        const int rowR    = local ? voiceLorStore_[v][LOR_ROT] : macroVoiceLor_[LOR_ROT];
+        const int anchorR = local ? maskAnchorR_[v] : maskMacroAnchorR_;
+        // (UAS ABS1+MASK) the follow-R rotation rides the CURRENT GLOBAL PHRASE ring:
+        // a painted mute at step k lands at (k − Δ) mod G — the mute travels with the
+        // content's rotation and composes with the re-anchor. The anchor/re-pin law
+        // is unchanged (the authoring plane stays on the 32-wide storage).
+        return rotMaskRing(anchored, rowR - anchorR, std::max(1, cachedLength));
+    }
+    // THE ONE GATE: does this voice's output pass at phrase step s (0..15)? The
+    // OutputGenerator multiplies the voice's GATE + CV OUT by this every sample.
+    // s < 0 (transport stopped) passes — the run gate already silences everything.
+    bool outputMaskPasses(dotModular::VoiceSlot bank, int phraseStep) const {
+        // (UAS ABS1+MASK) the overlay indexes the CURRENT GLOBAL PHRASE ring: the
+        // phrase step is G-relative, and the (pat >> phraseStep) apply below reads
+        // exactly the mask's low-G bits — the bits beyond G are dormant.
+        if (phraseStep < 0 || phraseStep >= std::max(1, cachedLength)) return true;
+        const int v = bank.v;
+        const bool local = maskLocalEast_[v];
+        const int  kind  = local ? maskKind_[v] : maskMacroKind_;
+        // THE COMPOSED MODEL (CC_DIRECTIVE_MASK_AND_VOICELOR, the corrected ruling):
+        // ONE range — the voice LOR. The BASE mode is how the voice relates to it:
+        // CYCLE (the default, as-if-no-mask — no base gate; the retired kind 2 behaves
+        // as cycle: the PATTERN carries the overlay) or ABS1 (the output silenced when
+        // the GLOBAL step is outside the voice LOR [O, O+L) — sound regions; the region
+        // IS effectiveVoiceLor). The PAINTED OVERLAY composes ON TOP — an extra mute
+        // ANDed with the base (paint + cycle, or paint + abs1), active whenever the
+        // pattern is not all-on; follow-R rotates it (the anchor). All output-only
+        // gating against the global step; the READ is the base-mode law above (abs1
+        // full phrase, cycle confined).
+        if (kind == MASK_DYNAMIC) {   // abs1: the region IS the voice LOR
+            int L, O, R; LaneDir d; effectiveVoiceLor(v, L, O, R, d);
+            // (DESYNC abs1) the gate's ring = the CURRENT GLOBAL PHRASE — the sounding
+            // set is a pure function of (step mod G, O, L): drift-free by construction,
+            // immediate on a global change.
+            if (!maskWindowContains(O, L, phraseStep, std::max(1, cachedLength))) return false;
+        }
+        const uint64_t pat = effectiveOverlayPattern(v);   // the overlay ANDs (follow-R evaluates the mod)
+        if (pat != kMaskLenMask) return (pat >> phraseStep) & 1u;
+        return true;
+    }
+    // UAS Stage-4 UI completion (CC_PROMPT_UAS_MASK_UI_INCOMPLETE) — the DISPLAY's
+    // pattern read: the voice's EFFECTIVE mask as a 16-bit play set, the same
+    // delegation + kind resolution outputMaskPasses applies per step, so the range
+    // strip's paint surface shows EXACTLY what the output layer gates: CYCLE →
+    // all-on; RANGE (dynamic) → the window bits (the extent tracks the range);
+    // PAINTED → the ANCHORED working copy (the rotation-resolved pattern — the
+    // follow-R re-pin is VISIBLE: turning R rotates the returned bits, abs2 does
+    // not). Display-reads-engine: the strip never re-derives the mask.
+    uint64_t effectiveOutputMask(dotModular::VoiceSlot bank) const {
+        // The COMPOSED gate as a 16-bit play set (the display's read — exactly what
+        // outputMaskPasses evaluates per step): the base (cycle = all-on | abs1 = the
+        // voice LOR window) AND the painted overlay (the anchored copy).
+        const int v = bank.v;
+        if (v < 0 || v >= kVoiceSlots) return kMaskLenMask;
+        const bool local = maskLocalEast_[v];
+        const int  kind  = local ? maskKind_[v] : maskMacroKind_;
+        uint64_t m = kMaskLenMask;
+        if (kind == MASK_DYNAMIC) {   // abs1: the voice LOR window
+            int L, O, R; LaneDir d; effectiveVoiceLor(v, L, O, R, d);
+            m = windowMaskBits(L, O, std::max(1, cachedLength));   // (DESYNC abs1) the display tracks the gate's global-phrase ring
+        }
+        const uint64_t pat = effectiveOverlayPattern(v);   // the overlay ANDs (follow-R evaluates the mod)
+        return (pat == kMaskLenMask) ? m : (m & pat);
+    }
+    // The MACRO tier's own pattern (the global strip's read — no voice delegation).
+    uint64_t effectiveOutputMaskMacro() const {
+        // (UAS ABS1+MASK) the same G-ring as the per-voice tier: the window bits and
+        // the follow-R rotation both ride the current global phrase.
+        const int G = std::max(1, cachedLength);
+        uint64_t m = kMaskLenMask;
+        if (maskMacroKind_ == MASK_DYNAMIC)
+            m = windowMaskBits(macroVoiceLor_[LOR_LEN], macroVoiceLor_[LOR_OFF], G);
+        uint64_t pat = maskMacroAnchored_;
+        if (pat != kMaskLenMask && maskMacroFollowR_)     // the follow-R evaluation hook
+            pat = rotMaskRing(pat, macroVoiceLor_[LOR_ROT] - maskMacroAnchorR_, G);
+        return (pat == kMaskLenMask) ? m : (m & pat);
+    }
+
+    // ── (CC_PROMPT_CADENCE_C1) THE LATCHED EFFECTIVE LOR ────────────────────────
+    // The derive reads the LATCH; the live store is sampled into it ONLY at the
+    // level's ADDRESSED-AGAINST frame edge (DESIGN_POSITION_UNIFICATION.md, the
+    // CADENCE addendum's C1 refinement): the voice family (the effectiveVoiceLor
+    // rows + the Macro row) at the GLOBAL phrase edge (pos_.phrasePos()==0,
+    // re-read LIVE each advance — the 8→6 trace: the boundary moves with the
+    // parent's length), the lane family (the effectiveLaneLor rows) at the
+    // VOICE-FRAME edge (a mapped row's holder phase AT its entry; an IDENTITY
+    // row's pass-through cycle IS the global phrase, so its lanes latch with the
+    // phrase edge). Global length/offset stay STEP-rate (the MeloDicer-native
+    // class); direction stays LIVE (C3's slice). The Macro tier's own LANE store
+    // (The retired macro lane holder) was NOT latched — C1's mechanism list
+    // names the voice rows + the probability lanes; its cadence is Rodney's call
+    // (flagged in the C1 commit message).
+    // (CC_PROMPT_CADENCE_C1B STAGE B) THE BASE/CV SPLIT — the C1 combined latch is
+    // GONE. The effective row = the BASE (the live store rows, the pre-C1 delegation,
+    // a knob/drag edits it IMMEDIATELY while unlocked) + the COMMITTED CV DELTA
+    // (sampled at the Stage A commit gates — CV wiggles move the window only at the
+    // boundary). The manager writes base_only to the stores (the same fold law with
+    // the CV terms zeroed, the same rounding) and pushes delta = combined − base_only;
+    // the engine never sees a pre-combined value. With no CV patched the deltas are
+    // zero and every effective value is byte-identical to the no-CV world.
+    // PENDING: the manager's last push (overwritten per control block; under lock it
+    // may churn). COMMITTED: what the effective reads see — the Stage A pend, CV-ward.
+    std::array<int, LOR_ITEMS> voiceLorCvPendMacro_ = {0, 0, 0};
+    std::array<std::array<int, LOR_ITEMS>, kVoiceSlots> voiceLorCvPend_ = {};
+    std::array<int, LOR_ITEMS> voiceLorCvMacro_ = {0, 0, 0};
+    std::array<std::array<int, LOR_ITEMS>, kVoiceSlots> voiceLorCv_ = {};
+    // The lane deltas: slot 0 IS the mono strands' row (the F2 unified-store law —
+    // one storage, no mono twin).
+    std::array<std::array<std::array<int, LOR_ITEMS>, dotModular::NUM_STRANDS>, kVoiceSlots> laneLorCvPend_ = {};
+    std::array<std::array<std::array<int, LOR_ITEMS>, dotModular::NUM_STRANDS>, kVoiceSlots> laneLorCv_ = {};
+    // The row invariants (the authoring clamps, re-applied to the composed row):
+    // L >= 1; O in [0, kMaskRing); R in [0, L-1] (the lanes' convention).
+    static inline void lorRowClamp_(int& L, int& O, int& R) {
+        if (L < 1) L = 1;
+        if (O < 0) O = 0; else if (O > kMaskRing - 1) O = kMaskRing - 1;
+        if (R < 0) R = 0; else if (R > L - 1) R = L - 1;
+    }
+    // The refreshes — the ONLY writers of the latches, called at the gated commit
+    // edges (C1b Stage A: (phrase edge OR unlock flush) AND the axis live — the
+    // advance head + the derive head + the anchor + reset). Defined in the .cpp
+    // (they mint VoiceSlots through the resolver, which is forward-declared here).
+    // The defaulted args are the CONFIG-SIMULATION form (always commit) the
+    // configuration tests use to accept an authored row at the edge; the engine's
+    // advance paths pass the real edge flags.
+    void refreshVoiceLorLatches();
+    void refreshLaneLatchesForVoice(int v, bool atPhraseEdge = true, bool unlockNow = true);
+    // (C1b Stage B) the CV-delta pushes — the PENDING modulation. The manager pushes
+    // per control block (overwriting); the commit into the effective reads happens
+    // at the Stage A gates. Deltas are ROW deltas (combined − base_only, integer).
+    void pushVoiceLorCv(const int* macroDelta3, const int* eastDelta);   // macro [3]; east [kVoiceSlots*3] slot-major
+    void pushLaneLorCvPoly(dotModular::VoiceSlot bank, int lane, const int* delta3);   // slot 0 = the mono strands (the F2 law)
+    // ── (CC_PROMPT_CADENCE_C1B STAGE C) THE EDIT-SUSPEND ────────────────────────
+    // While an LOR gesture is active, the CV commit for the EDITED SCOPE is
+    // suspended: the pending churns (the jacks keep feeding it), the committed
+    // HOLDS the pre-gesture sample — the window tracks only the live base ("a
+    // stable target, miles better than a constantly moving one"). On release the
+    // suspend clears and the CV resumes at the NEXT boundary (the ordinary commit
+    // gate). The manager pushes the per-block snapshot from the visual modules'
+    // widget-written gesture fields; the scope rides the existing row/lane
+    // vocabulary — NOT a new scope concept. voiceIdx/laneIdx < 0 = absent.
+    std::array<bool, LOR_ITEMS> lorCvSuspendMacro_ = {};
+    int lorCvSuspendVoice_ = -1;
+    std::array<bool, LOR_ITEMS> lorCvSuspendVoiceItems_ = {};
+    int lorCvSuspendLane_ = -1;
+    std::array<bool, LOR_ITEMS> lorCvSuspendLaneItems_ = {};
+    void setLorCvSuspend(const bool* macro3, int voiceIdx, const bool* voice3, int laneIdx, const bool* lane3);
+    // ── (CC_PROMPT_LANE_RANGE_DISPLAY_UNIFY REMAINING BUGS 5) THE STICKY SUSPEND ──
+    // The suspend above is tied to the drag: on mouse-up it lifts at once and the
+    // modulation lands straight back on the just-made edit — the display jumps by
+    // the held sample the frame the drag guard lifts. MODEL B1 (Rodney, confirmed
+    // 2026-11-17): the drop IS the new base. setLorCvSuspend ZEROES each released
+    // item's committed CV sample on the active→cleared transition (the edit takes
+    // effect at once — the effective reads the hand) and ONLY the CV waits,
+    // disconnected, until the scope's own boundary, where the pend commits and the
+    // window re-resolves from the new base (the modulation lands on the downbeat).
+    // Human edit = live; machine modulation = latched. THE LANE SCOPES latch this
+    // sticky overlay (the members below): every commit path — the release-path
+    // immediate accept included — is gated until the voice's next frame edge
+    // (voiceFramePhase_[v]==0), where the edge sites clear it on the same pass the
+    // commit runs. The macro/row scopes need no overlay: refreshVoiceLorLatches
+    // only ever runs at their boundaries (the phrase edge / the unlock flush), so
+    // the zero alone holds them to the reconnect. One sticky lane scope, mirroring
+    // the suspend's own single-scope vocabulary; reset clears it.
+    int lorCvStickyVoice_ = -1;
+    int lorCvStickyLane_ = -1;
+    std::array<bool, LOR_ITEMS> lorCvStickyLaneItems_ = {};
+    // The lane sticky's reconnect point — called ONLY at the engine's TRUE
+    // frame-edge commit sites (the advance head + the derive re-check), never
+    // inside refreshLaneLatchesForVoice itself: the defaulted-args call (the
+    // release-path immediate accept) must NOT clear it.
+    void clearLorCvStickyLaneFor_(int v) {
+        if (lorCvStickyLane_ >= 0 && lorCvStickyVoice_ == v) {
+            lorCvStickyLane_ = -1;
+            lorCvStickyLaneItems_.fill(false);
+        }
+    }
+
+    // The EFFECTIVE voice LOR row (delegation + Macro tier) — the one resolution authority.
+    // (C1b Stage B) the L/O/R = the BASE rows (LIVE — the pre-C1 delegation; a knob
+    // edit lands immediately while unlocked) + the COMMITTED CV delta (the boundary
+    // sample); the row invariants re-applied; the direction stays live (C3's slice).
+    // effectiveVoiceLorLive is the BASE-only read (what the managers write).
+    void effectiveVoiceLor(int v, int& L, int& O, int& R, LaneDir& d) const {
+        if (v < 0 || v >= kVoiceSlots) { L = kPatternLengthCap; O = 0; R = 0; d = LaneDir::Forward; return; }   // (bucket 2) the out-of-range fallback = the identity values (the cap — was the literal 16, which read as a MAPPED row)
+        if (voiceLorLocalEast_[v]) {
+            L = voiceLorStore_[v][LOR_LEN] + voiceLorCv_[v][LOR_LEN];
+            O = voiceLorStore_[v][LOR_OFF] + voiceLorCv_[v][LOR_OFF];
+            R = voiceLorStore_[v][LOR_ROT] + voiceLorCv_[v][LOR_ROT];
+            d = voiceLorDir_[v];
+        } else {
+            L = macroVoiceLor_[LOR_LEN] + voiceLorCvMacro_[LOR_LEN];
+            O = macroVoiceLor_[LOR_OFF] + voiceLorCvMacro_[LOR_OFF];
+            R = macroVoiceLor_[LOR_ROT] + voiceLorCvMacro_[LOR_ROT];
+            d = macroVoiceLorDir_;
+        }
+        lorRowClamp_(L, O, R);
+    }
+    void effectiveVoiceLorLive(int v, int& L, int& O, int& R, LaneDir& d) const {
+        if (v < 0 || v >= kVoiceSlots) { L = kPatternLengthCap; O = 0; R = 0; d = LaneDir::Forward; return; }   // (bucket 2) the out-of-range fallback = the identity values (the cap — was the literal 16, which read as a MAPPED row)
+        if (voiceLorLocalEast_[v]) {
+            L = voiceLorStore_[v][LOR_LEN]; O = voiceLorStore_[v][LOR_OFF];
+            R = voiceLorStore_[v][LOR_ROT]; d = voiceLorDir_[v];
+        } else {
+            L = macroVoiceLor_[LOR_LEN]; O = macroVoiceLor_[LOR_OFF];
+            R = macroVoiceLor_[LOR_ROT]; d = macroVoiceLorDir_;
+        }
+    }
+    // (CC_PROMPT_CADENCE_C0 FAMILY 1) the MACRO ROW's own effective read — the thin
+    // macro-row form of effectiveVoiceLor (the macro frame machinery hangs under the
+    // ROW itself, not under any voice's delegation switch — macroRowIdentity's law).
+    // (C1b Stage B) the L/O/R = the Macro row's BASE (live) + the committed CV delta.
+    void effectiveMacroRowLor(int& L, int& O, int& R, LaneDir& d) const {
+        L = macroVoiceLor_[LOR_LEN] + voiceLorCvMacro_[LOR_LEN];
+        O = macroVoiceLor_[LOR_OFF] + voiceLorCvMacro_[LOR_OFF];
+        R = macroVoiceLor_[LOR_ROT] + voiceLorCvMacro_[LOR_ROT];
+        lorRowClamp_(L, O, R);
+        d = macroVoiceLorDir_;
+    }
+    void effectiveMacroRowLorLive(int& L, int& O, int& R, LaneDir& d) const {
+        L = macroVoiceLor_[LOR_LEN]; O = macroVoiceLor_[LOR_OFF];
+        R = macroVoiceLor_[LOR_ROT]; d = macroVoiceLorDir_;
+    }
+    // Identity VALUES (cap/0/0/Forward) mean PASS-THROUGH — deliberately NOT the
+    // mapped (L=cap) form, whose mod-cap bounding would move non-divisive lane
+    // lengths (the UA_NONDIV goldens pin the distinction). (bug 23,
+    // CC_PROMPT_MACRO_RESOLVER_AND_IDENTITY): the identity sentinel is
+    // kPatternLengthCap — the FULL voice window, independent of the global
+    // pattern length (was the literal 16, the 16→32 migration leftover).
+    bool voiceLorIdentity(int v) const {
+        int L, O, R; LaneDir d; effectiveVoiceLor(v, L, O, R, d);
+        return L == kPatternLengthCap && O == 0 && R == 0 && d == LaneDir::Forward;
+    }
+    // (CC_FIX_MACRO_LANE_SEED Part 2) the MACRO ROW's own identity test —
+    // voiceLorIdentity's twin reading the shared row DIRECTLY (the Macro lanes and
+    // the macro frame hang under the ROW itself, not under any voice's delegation
+    // switch, so a localEast voice's row must not leak into the Macro tier's branch).
+    // (C0) now reads through effectiveMacroRowLor — the same four compares on the
+    // accessor's outputs, bit-identical.
+    bool macroRowIdentity() const {
+        int L, O, R; LaneDir d; effectiveMacroRowLor(L, O, R, d);
+        return L == kPatternLengthCap && O == 0 && R == 0 && d == LaneDir::Forward;
+    }
+    // Store accessors (the manager/UI author these; tests author them rack-free).
+    // dotModular::VoiceSlot spelled out: the VoiceSlot alias is declared further below.
+    int&    voiceLorRef(dotModular::VoiceSlot bank, int item)    { return voiceLorStore_[bank.v][item]; }
+    int     voiceLor(dotModular::VoiceSlot bank, int item) const { return voiceLorStore_[bank.v][item]; }
+    LaneDir& voiceLorDirRef(dotModular::VoiceSlot bank)          { return voiceLorDir_[bank.v]; }
+    void    setVoiceLorLocalEast(dotModular::VoiceSlot bank, bool local) { voiceLorLocalEast_[bank.v] = local; }
+    bool    voiceLorFollowsMacro(dotModular::VoiceSlot bank) const { return !voiceLorLocalEast_[bank.v]; }
+    int&    macroVoiceLorRef(int item)               { return macroVoiceLor_[item]; }
+    LaneDir& macroVoiceLorDirRef()                   { return macroVoiceLorDir_; }
+    // Stage 2b — the AUTHORING PUSH (Monsoon's float editor rows -> this store). The
+    // EditorState rows (editor.voiceLorMacro / voiceLorEast[16x3] / ·Dir / ·LocalEast)
+    // are the single authoring authority; ONE push per control block copies them in as
+    // the int rows the map walks (the same discipline as the lane LOR push). Pure and
+    // rack-free (plain floats) so the unit tests author it directly. Clamps: L 1..kLaneLengthMax,
+    // O 0..kLaneOffsetMax, R 0..L-1 (the LEN clamped just above), dir 0..3 (the LaneDir
+    // order), localEast != 0 -> the voice's own East
+    // row. Identity floats (16/0/0, dir 0, follow) land byte-identically on the store —
+    // the pass-through branch reads the same values the Stage-1 goldens pinned, so the
+    // push is byte-neutral at defaults.
+    void    pushVoiceLorEditor(const float* macroLor, float macroDir,
+                               const float* eastLor, const float* eastDir,
+                               const float* localEast);
+    // The voice frame's read position (the buffer cell, 0..15) — the Stage-3 range lane
+    // and the tests. Cached by the same recompute that fills voiceDriver_.
+    int     voiceReadPosition(dotModular::VoiceSlot bank) const  { return voiceRead_[bank.v]; }
+    // The voice frame's instantaneous walk sign (+1/-1, 0 = not yet moved) — the Stage-3
+    // range strip's direction cue (the laneSign_ discipline: derived for display only).
+    int     voiceReadSign(dotModular::VoiceSlot bank) const      { return voiceSign_[bank.v]; }
+    // The MACRO frame (the global window walk): read cell + walk sign, for the Macro
+    // panel's range strip (the tier with no voice map — the frame itself).
+    int     macroFrameRead() const  { return macroFrameRead_; }
+    int     macroFrameSign() const  { return macroFrameSign_; }
+    // ── THE HOLDER MACHINERY (POSITION_HOLDER_MODEL.md, implemented .cpp) ──────────
+    // tickHolders: THE advance event. Advances every holder LOCALLY — the global walk by
+    // transportMotion, each voice's frame by its effective-clock delta k_v (its own motion
+    // + its advanceOffset_ diff vs advOffSeen_ — the offset bridge rides unchanged, and a
+    // hand-seeded/activated offset jump is absorbed exactly as the old f(t+offset) read
+    // it) — then derives every read cache. transportMotion is the transport's own motion
+    // this event (+1/−1 for advancePlayhead, 0 for the offsets-only refresh);
+    // signMotion is the motion the SIGN cues read (dir in advancePlayhead, lastPlayDir in
+    // the refresh — the same values the old recompute used). voiceMotion (optional): the
+    // per-voice motions from the fold; nullptr = uniform transportMotion.
+    void    tickHolders(int transportMotion, int signMotion, const int8_t* voiceMotion);
+    // deriveHolders: re-derive ALL read caches from the CURRENT phases (no phase
+    // advance) — the frame caches (voiceDriver_/voiceRead_/voiceSign_, macroFrameRead_/
+    // macroFrameSign_) and the lane positions + signs. The sign law is the old recomp's
+    // verbatim, evaluated on the phases: delta = the walk value at the phase minus the
+    // walk value one NORMALIZED musical step back (a driver wrap is a BEAT, not a
+    // bounce; a 0 delta — the PingPong endpoint repeat — keeps the previous sign).
+    void    deriveHolders(int signMotion, const int8_t* voiceMotion);
+    // anchorTransport: THE ANCHOR LAW. Seeds every holder's congruence from an absolute
+    // 1-based tick (through driverTickAt/laneTickFor — the only legitimate use of the
+    // closed forms against an absolute step). Called by reset() (tick 0),
+    // snapToPhaseStep (the phase-derived tick) and Monsoon's Beat-1 hard reset. No
+    // timeline is stored — the tick is transient, the congruences are the state.
+    void    anchorTransport(int64_t tick1based);
+    // The voice-frame walk evaluated at an effective tick — the A6 row law (identity
+    // pass-through, or the row's own walk with the R anchor), used by both the anchor
+    // and the per-event derivation. effTick1based may be any value congruent to the
+    // true 1-based effective clock (the walk formulas mod locally). Returns the 1-based
+    // frame tick the voice's LANES hang under; framePhaseOut receives the frame's phase
+    // congruence when non-null.
+    int64_t voiceFrameTickAt(int v, int64_t effTick1based,
+                             int64_t* framePhaseOut = nullptr) const;
+    // (CC_FIX_GLOBAL_BELOW_VOICE_PHASE_DESYNC) THE LIVE ROTATION ANCHOR — the
+    // voice-frame edge, ONE law for the advance head + the derive's re-check
+    // (BUG 6's landed-phase test, re-based): the frame re-anchors to the global's
+    // first step, evaluated LIVE each step against the CURRENT global length —
+    // never a precomputed period or a latched snapshot. The identity row rides
+    // the global phrase edge (its pass-through cycle IS the phrase); ABS1 walks
+    // the full ring on the raw congruence (transport-synced by design); CYCLE
+    // keys off the SAME transport-signed phrase coordinate the read folds
+    // (wrapMod(sPosV + advanceOffset_[v], lenG) — the derive's law, verbatim),
+    // so the commit lands exactly where the read wraps. Consequences that fall
+    // out (nothing stored): a global shorter than the voice hands it only
+    // min(global, voice) steps of its own window before the re-anchor; a
+    // non-dividing global re-anchors at every live phrasePos==0; a global dip
+    // moves the boundary immediately (STEP-rate) and leaves no residue.
+    bool voiceFrameEdgeLive_(int v) const;
+    // THIS voice's LOR length for a strand (the walk's wrap point) — the shared table
+    // (was a lambda duplicated in the two old recompute blocks).
+    int     polyStrandLenOf(int v, int strand) const;
+    // (CC_FIX_MACRO_LANE_SEED Part 1) THE ONE SEED LAW — the single place the
+    // window→seed map lives for all three lane loops (East mono, East poly, Macro),
+    // so the three can never drift again (the doc's located cause: Macro's inline t0
+    // was the raw global walk in BOTH branches, folding the lane over the global
+    // pattern). Returns the lane's OWN length + the driver's t0 representative for
+    // laneRecomp; the identity/mapped branch is INSIDE and identical for all three:
+    // an identity driver row passes through (the lane's raw congruence under the
+    // pass-through global, the bounded GLOBAL window walk + the driver's advance
+    // offset under a mapped global); a mapped driver row hangs the lane off the row's
+    // FRAME VALUE (frameT0[v] — the bounded walk under the voice's own window; the
+    // macro row's frame value for Macro). East's two loops are BIT-IDENTICAL through
+    // here (the same expressions the inline seeds computed); laneRecomp is unchanged.
+    struct LaneSeed { int len = 1; int64_t t0 = 0; };
+    enum class LaneWin { Mono, Poly };   // the two seed sites (the Macro arm retired with the holder)
+    LaneSeed laneSeed(LaneWin win, int l, int v, bool passG, int wG, int offG, int lenG,
+                      const int* frameT0, int64_t macroFrameT0) const;
+
+    // Lane-index unification: PL_* now matches the VISUAL/EDITOR/STRAND order
+    // (MEL=0,OCT=1,QMIX=2,REST=3,ACC=4,VAR=5,LEG=6). Editor==engine==strand —
+    // the old EDITOR_TO_ENGINE_LANE_QMIX table is deleted (Phase 3b, identity).
+    // Streams: MELODY=0..1, QMIX=2, RHYTHM=3..6 (stream-contiguous).
+    enum PolyLane { PL_MELODY = 0, PL_OCTAVE = 1, PL_QMIX = 2, PL_REST = 3, PL_ACCENT = 4, PL_VARIATION = 5, PL_LEGATO = 6, PL_LANES = 7 };
+
+    // STRONG typed indices (CC_PROMPT_STRONG_TYPES): the typed per-voice/lane accessors
+    // take MINTED VoiceSlot (VoiceResolver::mono()/slot(V)/allSlots()) and explicit
+    // LaneId (e.g. LaneId{PL_MELODY}). The bare-int overloads are MIGRATION shims.
+    using VoiceSlot = dotModular::VoiceSlot;
+    using LaneId    = dotModular::LaneId;
+    static_assert((int)PL_LANES == dotModular::kLaneIdCount, "LaneId covers exactly the PL_* lanes");
 
     // ── EAST_EXTRA_LANES stage 2: per-voice ARTICULATION (clamped) ─────────────────────────────
     // VARIATION/LEGATO are mono STRANDS, not poly lanes, so they have no PL_ id and CANNOT be
@@ -366,57 +1332,182 @@ struct SequencerEngine {
     // bank 0..14 = V2..V16, lane 0 = VAR, 1 = LEG. Zero-init = all-delegate = follow mono,
     // which is also the correct fallback when East is absent (nothing sets Local East).
     // Pushed each cycle by MonsoonExpanderManager from the East delegation params.
-    bool varlegLocalEast_[15][2] = {};
-    void setVarlegLocalEast(int bank, int lane, bool localEast) {
-        if (bank >= 0 && bank < 15 && lane >= 0 && lane < 2) varlegLocalEast_[bank][lane] = localEast;
+    std::array<std::array<bool, 2>, kVoiceSlots> varlegLocalEast_ = {};
+    // TIGHTEN (CC_PROMPT_STRONG_TYPES): VoiceSlot-only. (lane stays int: 0=VAR/1=LEG is
+    // the 2-wide varleg axis, NOT a PL_ LaneId.)
+    void setVarlegLocalEast(VoiceSlot bank, int lane, bool localEast) {
+        if (bank.v >= 0 && bank.v < kVoiceSlots && lane >= 0 && lane < 2) varlegLocalEast_[bank.v][lane] = localEast;
     }
     // VAR = lane 0, LEG = lane 1.
-    bool varlegDelegated(int bank, int lane) const {
-        return !(bank >= 0 && bank < 15 && lane >= 0 && lane < 2 && varlegLocalEast_[bank][lane]);
+    bool varlegDelegated(VoiceSlot bank, int lane) const {
+        return !(bank.v >= 0 && bank.v < kVoiceSlots && lane >= 0 && lane < 2 && varlegLocalEast_[bank.v][lane]);
     }
 
     // Per-voice VARIATION step — mono's getStrandIdx transform, driven by THIS voice's LOR window.
     // Delegated voices (default) return mono's variation step, so they mirror mono.
-    int getVariationStepForVoice(int bank) const;
+    int getVariationStepForVoice(VoiceSlot bank) const;
 
     // Per-voice LEGATO step — same, for Rule 2's per-voice slur roll. Delegated voices (default)
     // return mono's legato step. Present now (Step 1) so Rule 2 consumes it without re-plumbing.
-    int getLegatoStepForVoice(int bank) const;
+    int getLegatoStepForVoice(VoiceSlot bank) const;
 
     // This voice's note-length index, CLAMPED so its hold can never exceed mono's.
-    // NOTE_VALUES is documented "ordered slowest -> fastest", so a HIGHER index is a SHORTER note;
-    // std::max(nv, mono) therefore guarantees duration <= mono's. Articulation is thus SUBTRACTIVE,
-    // exactly like rest and accent: voices may release early, never hold past mono's next event.
-    int nvIdxForVoice(int bank, const PatternInput& input) const;
+    // DOTTED BUILD: the table is no longer index-monotone — the clamp (lengthCeiling /
+    // noteShorterOf) compares FRACTIONS, guaranteeing duration <= mono's. Articulation
+    // is thus SUBTRACTIVE, exactly like rest and accent: voices may release early,
+    // never hold past mono's next event.
+    int nvIdxForVoice(VoiceSlot bank, const PatternInput& input) const;
 
     // The single engine→editor lane conversion. The modifier stores (lorStore_, spread) are editor-
     // ordered; every accessor that takes an engine PL_ lane converts through HERE — one definition.
-    // engLane is a POLY lane: PL_REST/PL_MELODY/PL_OCTAVE/PL_ACCENT/PL_QMIX = 0..4 (PL_LANES == 5).
-    // Uses the QMIX-aware table so PL_QMIX(4) → editor 2 explicitly (the old `& 3` formula aliased
-    // 4→0 and only landed on editor 2 by coincidence). VARIATION/LEGATO are mono strands, NOT poly
-    // lanes, so they have no engine-order id; for their per-voice LOR use the EDITOR-order accessors
-    // polyLOR/polyLORRef (they mask & 7 and index lorStore_ directly). See EAST_EXTRA_LANES.md.
+    // engLane is a POLY lane 0..6 (PL_LANES == 7).
+    // Lane-index unification: editor == engine (PL_* reordered to visual/strand order).
+    // editorLane() is now IDENTITY — kept for call-site readability, no longer permutes.
+    // (Historically the two orders differed and the old & 3 formula aliased PL_QMIX 4→0; the
+    // conversion tables were deleted in Phase 3b. For per-voice LOR the EDITOR-order accessors
+    // polyLOR/polyLORRef mask & 7 and index lorStore_ directly.) See EAST_EXTRA_LANES.md.
     static int editorLane(int engLane) {
-        // 7 = PL_LANES (poly lanes incl QMIX/VAR/LEG; SANDS CONSOLIDATION Step 2). Literal, not
-        // SandsGrid::POLY_LANES, to keep this header free of the UI SandsGrid include.
-        return (engLane >= 0 && engLane < 7)
-                   ? dotModular::ENGINE_LANE_TO_EDITOR_QMIX[engLane]
-                   : dotModular::ENGINE_LANE_TO_EDITOR_QMIX[0];   // fallback → REST's editor lane
+        return (engLane >= 0 && engLane < 7) ? engLane : 0;
     }
 
-    // Editor-order poly accessors: bank b → slot b+1, editorLane indexes the unified array directly
-    // (storage IS editor order now — no permutation).
-    int& polyLORRef(int bank, int editorLane, int item) { return lorStore_[bank + 1][editorLane & 7][item]; }
-    int  polyLOR   (int bank, int editorLane, int item) const { return lorStore_[bank + 1][editorLane & 7][item]; }
+    // Editor-order poly accessors: minted VoiceSlot + explicit LaneId; the lane indexes the
+    // unified array directly (storage IS editor order now — no permutation).
+    // TIGHTEN (CC_PROMPT_STRONG_TYPES): the bare-int twins are DELETED.
+    int& polyLORRef(VoiceSlot bank, LaneId lane, int item) { return lorStore_[bank.v][lane.l & 7][item]; }
+    int  polyLOR   (VoiceSlot bank, LaneId lane, int item) const { return lorStore_[bank.v][lane.l & 7][item]; }
 
-    // Engine-order poly accessors: bank b → slot b+1; the engine PL_ lane converts to editor lane
-    // via ENGINE_LANE_TO_EDITOR HERE — the single storage boundary that absorbs the permutation.
-    int& polyLenERef(int bank, int engLane) { return lorStore_[bank + 1][editorLane(engLane)][LOR_LEN]; }
-    int& polyOffERef(int bank, int engLane) { return lorStore_[bank + 1][editorLane(engLane)][LOR_OFF]; }
-    int& polyRotERef(int bank, int engLane) { return lorStore_[bank + 1][editorLane(engLane)][LOR_ROT]; }
-    int  polyLenE(int bank, int engLane) const { return lorStore_[bank + 1][editorLane(engLane)][LOR_LEN]; }
-    int  polyOffE(int bank, int engLane) const { return lorStore_[bank + 1][editorLane(engLane)][LOR_OFF]; }
-    int  polyRotE(int bank, int engLane) const { return lorStore_[bank + 1][editorLane(engLane)][LOR_ROT]; }
+    // Engine-order poly accessors: minted VoiceSlot + LaneId; the engine PL_ lane converts to
+    // editor lane via editorLane() HERE — the single storage boundary (identity since the
+    // lane-index unification). TIGHTEN: the bare-int twins are DELETED.
+    int& polyLenERef(VoiceSlot bank, LaneId lane) { return lorStore_[bank.v][editorLane(lane.l)][LOR_LEN]; }
+    int& polyOffERef(VoiceSlot bank, LaneId lane) { return lorStore_[bank.v][editorLane(lane.l)][LOR_OFF]; }
+    int& polyRotERef(VoiceSlot bank, LaneId lane) { return lorStore_[bank.v][editorLane(lane.l)][LOR_ROT]; }
+    int  polyLenE(VoiceSlot bank, LaneId lane) const { return lorStore_[bank.v][editorLane(lane.l)][LOR_LEN]; }
+    int  polyOffE(VoiceSlot bank, LaneId lane) const { return lorStore_[bank.v][editorLane(lane.l)][LOR_OFF]; }
+    int  polyRotE(VoiceSlot bank, LaneId lane) const { return lorStore_[bank.v][editorLane(lane.l)][LOR_ROT]; }
+
+    // ── (CC_PROMPT_CADENCE_C0 FAMILY 2) THE LANE-FAMILY CHOKEPOINTS ────────────
+    // ONE read point per store for the derive/holder-path lane LOR + dir; each
+    // returns EXACTLY what the raw reads return today (same stores, same clamps,
+    // same fallbacks). The existing delegation stays WITH ITS CALLERS
+    // (varlegDelegated's early returns, the mono-slot special forms — the D6
+    // SWEEP boundary) — this is the READ unification only, so C1's latch inside
+    // these catches every derive read by construction. Direction rides the same
+    // accessors (C3's benefit).
+    // The MONO form (V1 = slot 0): the STRAND store row + the mono lane dir.
+    // (C1b Stage B) the L/O/R = the BASE row (live) + the committed lane CV delta
+    // (slot 0's rows — the unified store).
+    void effectiveMonoLaneLor(int strand, int& L, int& O, int& R, LaneDir& d) const {
+        const int s = strandClamp(strand);
+        L = lor(s, LOR_LEN) + laneLorCv_[0][s][LOR_LEN];
+        O = lor(s, LOR_OFF) + laneLorCv_[0][s][LOR_OFF];
+        R = lor(s, LOR_ROT) + laneLorCv_[0][s][LOR_ROT];
+        lorRowClamp_(L, O, R);
+        d = (strand >= 0 && strand < dotModular::NUM_STRANDS) ? laneDir_[strand] : LaneDir::Forward;
+    }
+    void effectiveMonoLaneLorLive(int strand, int& L, int& O, int& R, LaneDir& d) const {
+        L = lor(strand, LOR_LEN); O = lor(strand, LOR_OFF); R = lor(strand, LOR_ROT);
+        d = (strand >= 0 && strand < dotModular::NUM_STRANDS) ? laneDir_[strand] : LaneDir::Forward;
+    }
+    // The POLY form: THIS voice's lorStore_ row (the editorLane conversion at the
+    // single storage boundary) + the voice's own lane dir row. Slot 0 reads the
+    // SAME row the mono form does (the unified store) but its OWN dir row
+    // (laneDirV_[0], maintained for store consistency) — exactly what
+    // polyStrandLenOf and the lane advance loops read today.
+    // (C1b Stage B) the L/O/R = the BASE row (live) + the committed lane CV delta;
+    // the dir stays live.
+    void effectiveLaneLor(dotModular::VoiceSlot bank, LaneId lane, int& L, int& O, int& R, LaneDir& d) const {
+        const int el = editorLane(lane.l);
+        const int vv = (bank.v >= 0 && bank.v < kVoiceSlots) ? bank.v : 0;
+        L = polyLOR(bank, LaneId{el}, LOR_LEN) + laneLorCv_[vv][el][LOR_LEN];
+        O = polyLOR(bank, LaneId{el}, LOR_OFF) + laneLorCv_[vv][el][LOR_OFF];
+        R = polyLOR(bank, LaneId{el}, LOR_ROT) + laneLorCv_[vv][el][LOR_ROT];
+        lorRowClamp_(L, O, R);
+        d = (bank.v >= 0 && bank.v < kVoiceSlots && el >= 0 && el < dotModular::NUM_STRANDS)
+            ? laneDirV_[bank.v][el] : LaneDir::Forward;
+    }
+    void effectiveLaneLorLive(dotModular::VoiceSlot bank, LaneId lane, int& L, int& O, int& R, LaneDir& d) const {
+        const int el = editorLane(lane.l);
+        L = polyLOR(bank, LaneId{el}, LOR_LEN); O = polyLOR(bank, LaneId{el}, LOR_OFF);
+        R = polyLOR(bank, LaneId{el}, LOR_ROT);
+        d = (bank.v >= 0 && bank.v < kVoiceSlots && el >= 0 && el < dotModular::NUM_STRANDS)
+            ? laneDirV_[bank.v][el] : LaneDir::Forward;
+    }
+    // ── (CC_PROMPT_LANE_RANGE_DISPLAY_UNIFY Stage B) the PENDING-PREVIEW twins ──
+    // The wireframe's authority: base + PENDING (the live-modulated window exactly —
+    // the manager pushes pending = round(knob+CV) − base every control block), vs the
+    // effective reads' base + COMMITTED (what plays, latched at the C1b commit gates).
+    // The FINAL MODEL draws committed as THE SOLID window and pending as the wireframe;
+    // NO audio path ever reads these (read-only display authorities — the battery stays
+    // byte-identical). Same row invariants: lorRowClamp_ re-applied; the dir has no
+    // pending (C3's slice — live, same as the effective reads).
+    void effectiveLanePreview(dotModular::VoiceSlot bank, LaneId lane, int& L, int& O, int& R, LaneDir& d) const {
+        const int el = editorLane(lane.l);
+        const int vv = (bank.v >= 0 && bank.v < kVoiceSlots) ? bank.v : 0;
+        L = polyLOR(bank, LaneId{el}, LOR_LEN) + laneLorCvPend_[vv][el][LOR_LEN];
+        O = polyLOR(bank, LaneId{el}, LOR_OFF) + laneLorCvPend_[vv][el][LOR_OFF];
+        R = polyLOR(bank, LaneId{el}, LOR_ROT) + laneLorCvPend_[vv][el][LOR_ROT];
+        lorRowClamp_(L, O, R);
+        d = (bank.v >= 0 && bank.v < kVoiceSlots && el >= 0 && el < dotModular::NUM_STRANDS)
+            ? laneDirV_[bank.v][el] : LaneDir::Forward;
+    }
+    void effectiveMonoLanePreview(int strand, int& L, int& O, int& R, LaneDir& d) const {
+        const int s = strandClamp(strand);
+        L = lor(s, LOR_LEN) + laneLorCvPend_[0][s][LOR_LEN];
+        O = lor(s, LOR_OFF) + laneLorCvPend_[0][s][LOR_OFF];
+        R = lor(s, LOR_ROT) + laneLorCvPend_[0][s][LOR_ROT];
+        lorRowClamp_(L, O, R);
+        d = (strand >= 0 && strand < dotModular::NUM_STRANDS) ? laneDir_[strand] : LaneDir::Forward;
+    }
+    void effectiveVoicePreview(int v, int& L, int& O, int& R, LaneDir& d) const {
+        if (v < 0 || v >= kVoiceSlots) { L = kPatternLengthCap; O = 0; R = 0; d = LaneDir::Forward; return; }
+        if (voiceLorLocalEast_[v]) {
+            L = voiceLorStore_[v][LOR_LEN] + voiceLorCvPend_[v][LOR_LEN];
+            O = voiceLorStore_[v][LOR_OFF] + voiceLorCvPend_[v][LOR_OFF];
+            R = voiceLorStore_[v][LOR_ROT] + voiceLorCvPend_[v][LOR_ROT];
+            d = voiceLorDir_[v];
+        } else {
+            L = macroVoiceLor_[LOR_LEN] + voiceLorCvPendMacro_[LOR_LEN];
+            O = macroVoiceLor_[LOR_OFF] + voiceLorCvPendMacro_[LOR_OFF];
+            R = macroVoiceLor_[LOR_ROT] + voiceLorCvPendMacro_[LOR_ROT];
+            d = macroVoiceLorDir_;
+        }
+        lorRowClamp_(L, O, R);
+    }
+    void effectiveMacroRowPreview(int& L, int& O, int& R, LaneDir& d) const {
+        L = macroVoiceLor_[LOR_LEN] + voiceLorCvPendMacro_[LOR_LEN];
+        O = macroVoiceLor_[LOR_OFF] + voiceLorCvPendMacro_[LOR_OFF];
+        R = macroVoiceLor_[LOR_ROT] + voiceLorCvPendMacro_[LOR_ROT];
+        lorRowClamp_(L, O, R);
+        d = macroVoiceLorDir_;
+    }
+    // (CC_PROMPT_RETIRE_MACRO_LANE_HOLDER) the Macro strip's lane playhead + direction
+    // cue — the DERIVED VIEW (the doc's option (a), confirmed): the macro ROW's frame
+    // authority (macroFrameT0_ — the mapped arm's frame value; the identity row's raw
+    // transport congruence) mapped through the lane's FULL latched LOR read from the
+    // per-voice path (effectiveLaneLor — the latched L/O/R the audio walks; all
+    // macro-following voices share the authored base, so the lowest-indexed follower
+    // is the LOR representative — the POSITION is the macro tier's own frame, no
+    // per-voice pick). The walk law is laneSeed's Macro arm + laneRecomp verbatim;
+    // the raw-congruence phase (the old macroLanePhase_, ≡ the transport mod the
+    // walk period by construction) is re-derived on demand, not stored.
+    void macroLaneDisplay(int lane, int& tick, int& sign) const;
+    // The ONE macro-row LOR-representative voice: the lowest macro-following voice
+    // (the row delegation), falling back to V2. macroLaneDisplay reads its latched
+    // lane LOR through it; the lane-RANGE display reads (CC_PROMPT_LANE_RANGE_DISPLAY_
+    // UNIFY Stage A) reuse this exact choice so the range and the playhead agree.
+    int macroLaneRepVoice() const {
+        for (int v = 1; v < kVoiceSlots; ++v)
+            if (!voiceLorLocalEast_[v]) return v;
+        return 1;
+    }
+    // (C0 FAMILY 2) the mono strand step — the accessor feeds getStrandIdx (the ONE
+    // read point for the mono strand windows; the transform itself unchanged).
+    int monoLaneStep(int strand, int tick) const {
+        int L, O, R; LaneDir d;
+        effectiveMonoLaneLor(strand, L, O, R, d);
+        return getStrandIdx(tick, L, O, R);
+    }
 
     // ── Spread: the 4th probability modifier, now ENGINE STATE (MVC: was on the Mono visual, which the
     // engine reached into for the draws — model reading from view. Now the model owns it). Stored in the
@@ -426,23 +1517,23 @@ struct SequencerEngine {
     // share one modifier accessor). Written by the manager via SpreadResolver; read by the engine draws
     // and (for its own display) the Mono visual — both through spreadE(slot, engineLane), which absorbs
     // the engine→editor permutation at this single boundary (same trick as polyLenE).
-    float spread[kVoiceSlots][dotModular::NUM_STRANDS] = {};   // [slot][editorLane]; spread lanes 0..3 used
+    std::array<std::array<float, dotModular::NUM_STRANDS>, kVoiceSlots> spread = {};   // [slot][editorLane]; spread lanes 0..3 used
 
     float& spreadERef(int slot, int engLane) { return spread[slot][editorLane(engLane)]; }
     float  spreadE   (int slot, int engLane) const { return spread[slot][editorLane(engLane)]; }
 
 
     // Indexable strand accessors keyed by dotModular::EngineStrand order
-    // (0 rhythm, 1 variation, 2 legato, 3 accent, 4 melody, 5 octave). These let
-    // callers go editor-lane → strand (via MONO_LANE_TO_STRAND) → value without
-    // hardcoding the permutation. Single source of truth for strand indexing.
+    // (0 MEL, 1 OCT, 2 QMIX, 3 RHYTHM/REST, 4 ACC, 5 VAR, 6 LEG — editor-aligned).
+    // Editor lane == strand index (identity), so callers pass the lane directly.
+    // Single source of truth for strand indexing.
     // Strand LOR readers/writers, now backed by monoLOR[strand][item] (one array, no switches).
     // Out-of-range semantics preserved EXACTLY from the previous 6 switches:
     //   readers  → literal fallback (LEN 16, OFF 0, ROT 0) for an invalid strand;
     //   writers  → the rhythm cell (strandClamp maps invalid → STRAND_RHYTHM), so an out-of-range
-    //              write lands on rhythm just as the old `default: return rhythmLen/Off/Rot` did.
+    //              write lands on rhythm just as the old default: return rhythmLen/Off/Rot did.
     int strandLen(int strand) const {
-        return (strand >= 0 && strand < dotModular::NUM_STRANDS) ? lor(strand, LOR_LEN) : 16;
+        return (strand >= 0 && strand < dotModular::NUM_STRANDS) ? lor(strand, LOR_LEN) : kPatternLengthCap;   // (bucket 2) the invalid-strand fallback = the full phrase (was the literal 16)
     }
     int strandOff(int strand) const {
         return (strand >= 0 && strand < dotModular::NUM_STRANDS) ? lor(strand, LOR_OFF) : 0;
@@ -459,7 +1550,7 @@ struct SequencerEngine {
     // top of each process block via beginStrandWriteBlock(). setStrand() records the
     // writer and, in debug, asserts no second role writes the same strand in one block.
     // Strand index domain is dotModular::STRAND_* (0..5). NONE means "not yet written".
-    StrandWriter strandWriter[dotModular::NUM_STRANDS] = { StrandWriter::NONE };   // 7 strands incl QMIX
+    std::array<StrandWriter, dotModular::NUM_STRANDS> strandWriter = { StrandWriter::NONE };   // 7 strands incl QMIX
 
     // Generalised single-writer detector for non-strand shared fields (debug-only). Reset with the
     // strand ledger at the top of each process block.
@@ -472,7 +1563,10 @@ struct SequencerEngine {
 
     // The ONLY sanctioned way to write a mono strand's LOR. Records the writer role,
     // asserts single-writer-per-block in debug, then assigns via the ref accessors.
-    // (len clamped 1..16; off/rot wrapped 0..15 — same normalisation the call sites did.)
+    // (len clamped 1..kLaneLengthMax — STEPS_32 Stage 1: was literal 16, the storage-bound
+    // cap; off/rot wrapped to the RING (kMaskRing) — the widest lane domain, the same
+    // normalisation the manager base wraps use; the call sites clamp R to its lane's
+    // length-1 before it arrives, so the store never holds an out-of-window R.)
     void setStrand(StrandWriter role, int strand, int len, int off, int rot) {
 #ifndef NDEBUG
         if (strand >= 0 && strand < dotModular::NUM_STRANDS) {
@@ -506,37 +1600,83 @@ struct SequencerEngine {
         }
 #endif
         if (strand >= 0 && strand < dotModular::NUM_STRANDS) {
-            strandLenRef(strand) = rack::math::clamp(len, 1, 16);
-            strandOffRef(strand) = ((off % 16) + 16) % 16;
-            strandRotRef(strand) = ((rot % 16) + 16) % 16;
+            // STEPS_32 Stage 1: the lane-length cap derives from kPatternLengthCap (was literal
+            // 16) — identical at the storage bound; Stage 2 flips the cap and the lanes follow.
+            strandLenRef(strand) = rack::math::clamp(len, 1, dotModular::kPatternLengthCap);
+            strandOffRef(strand) = ((off % kMaskRing) + kMaskRing) % kMaskRing;
+            strandRotRef(strand) = ((rot % kMaskRing) + kMaskRing) % kMaskRing;
         }
     }
 
-    int dnaLength = 16; // Legacy/Global fallback
+    int dnaLength = kPatternLengthCap; // (CC_PROMPT_16_TRIAGE bucket 2, ruling A) the Legacy/Global DNA fallback = the full phrase (was the literal 16)
     int dnaOffset = 0;
 
-    uint16_t windowMask = 0xFFFF;
+    uint64_t windowMask = kMaskLenMask;   // Stage 2a: the ring-wide play mask (was uint16 0xFFFF)
 
     bool locked = false;
     // Lock SCOPE bitmask (LOCK_SCOPE_MENU.md). Set bit = that generative group is kept LIVE under
     // lock (opted out of the freeze). 0 = whole-module lock (every LATCH frozen) = pre-menu default.
-    // Lives beside `locked` because the static LockManager::liveNow call sites already read
+    // Lives beside locked because the static LockManager::liveNow call sites already read
     // engine.locked; they pass engine.scopeLiveMask alongside. Persisted by PersistenceManager.
     uint32_t scopeLiveMask = 0;
+
+    // ── (CC_PROMPT_CADENCE_C1B STAGE A) the LOR latch commit's lock plumbing ────
+    // The C1 phrase-latch becomes the SHARED boundary-commit: it commits at the
+    // phrase edge (or flushes at the unlock edge — the engine-side twin of
+    // LockManager::queueFires()'s unlockNow) and is gated by the axis's ScopeBit —
+    // the engine-side twin of liveNow(Control::Lor, ...) — kept inline here (NOT
+    // routed through the manager) per dirLive_'s include-free audio-thread law.
+    // Under lock the store may churn (the managers keep writing it); the LATCH is
+    // the pending mechanism — it holds the committed values until the gate opens.
+    bool lorPrevLocked_ = false;   // the unlock-edge tracker (the direction template's shadow, LOR-ward)
+    inline bool lorLive_(bool melodyAxis) const {
+        if (!locked) return true;
+        constexpr uint32_t kSandsR = 1u << 2;   // == dotModular::SB_SANDS_R (dirLive_'s law)
+        constexpr uint32_t kSandsM = 1u << 3;   // == dotModular::SB_SANDS_M
+        return (scopeLiveMask & (melodyAxis ? kSandsM : kSandsR)) != 0;
+    }
+    // The commit gate: (phrase edge OR unlock flush) AND the axis live. The VOICE
+    // family (the voice rows + the Macro row — the play-window over the phrase)
+    // gates on the RHYTHM axis; the LANE family gates PER LANE through
+    // lorLaneCommitGate_ below.
+    inline bool lorCommitGate_(bool melodyAxis, bool atPhraseEdge, bool unlockNow) const {
+        return (atPhraseEdge || unlockNow) && lorLive_(melodyAxis);
+    }
+    // (C1b) the PER-LANE scope bit — the MANAGER's own lane law mirrored (the mono
+    // readStrand's gate): QMIX is its OWN Sands axis (SB_SANDS_Q, 1u<<13 — the
+    // split-brain fix), MEL/OCT the melody bit, the rest the rhythm bit.
+    static inline uint32_t lorLaneScopeBit_(int editorLane) {
+        if (editorLane == 2) return 1u << 13;   // editor lane 2 = QMIX -> dotModular::SB_SANDS_Q
+        return (editorLane == 0 || editorLane == 1) ? (1u << 3)   // MEL/OCT -> SB_SANDS_M
+                                                    : (1u << 2);  // the rest -> SB_SANDS_R
+    }
+    // The per-lane commit gate: unlocked or the unlock flush => commit (queueFires's
+    // law — the flush fires everything); locked => only at the phrase edge AND only
+    // if the lane's axis opted out of the freeze.
+    inline bool lorLaneCommitGate_(int editorLane, bool atPhraseEdge, bool unlockNow) const {
+        if (!locked || unlockNow) return true;
+        return atPhraseEdge && (scopeLiveMask & lorLaneScopeBit_(editorLane)) != 0;
+    }
 
     // ── Change Alley pin-matrix (CHANGE_ALLEY_DESIGN.md §3-REVISED) ──────────
     // The pin remap now lives UPSTREAM in the slewed buffers (pe.remapSlewedByPins,
     // pre-spread), so every read here is a PLAIN own-bank read — a pinned voice's
     // borrowed draw already carries the consumer's own spread. No read-time indirection.
-    inline const float (&polyRandomSrc(int voiceIdx, int polyLane) const)[16] {
-        return pe.polyRandom(voiceIdx, polyLane);
-    }
+    // Warp mirror (CC_PROMPT_05 — UNIFORM): EVERY lane's uniform — what genPitchLive
+    // consumes for pitch (mono + poly landings), what the threshold consumers roll
+    // against, and what the poly prob CV outs read — comes from the ONE accessor
+    // pe.warpRow (the mirror when a bank is wired, the raw row otherwise, so
+    // bank-less hosts stay byte-identical). The old per-lane gated seam (MEL/OCT →
+    // mirror, boolean/qmix → raw) is DELETED: there is no second path to drift, so
+    // "lane is special / voice is special" divergence is impossible by construction.
+    // pe.polyRandom survives ONLY as the WRITE target (the spread passes and
+    // refreshPolyRandomCell write random_; the mirror rebuilds from it).
     // Stage 2a: refresh ONE cell of polyRandom at step advance, using the cached spread
     // value from the last control-rate sync(). Checks the lane's lock axis; if not live,
     // returns without writing (frozen value persists). Called from executePolyVoice before
-    // each polyRandomSrc read — replaces the old full-field (15 voices x 7 lanes x 16 steps)
+    // each warpRow read — replaces the old full-field (15 voices x 7 lanes x 16 steps)
     // control-rate rebuild.
-    void refreshPolyRandomCell(int voice, int engLane, int step);
+    void refreshPolyRandomCell(VoiceSlot voice, LaneId engLane, int step);
     static inline int polyLaneToStrand(int polyLane) {
         return (polyLane == PL_REST)   ? dotModular::STRAND_RHYTHM
              : (polyLane == PL_MELODY) ? dotModular::STRAND_MELODY
@@ -545,11 +1685,7 @@ struct SequencerEngine {
              : (polyLane == PL_QMIX)   ? dotModular::STRAND_QMIX
                                        : dotModular::STRAND_RHYTHM;  // fallback
     }
-    // Mono reads by STRAND — plain own bank (random_[0][strand]); remap is upstream.
-    inline const float (&monoStrand(int strand) const)[16] {
-        const int s = (strand >= 0 && strand < dotModular::NUM_STRANDS) ? strand : dotModular::STRAND_RHYTHM;
-        return pe.random_[0][s];
-    }
+    // (monoStrand deleted — V1 reads via pe.warpRow(mono, PL_*) now, same path as V2+)
     bool muted = false;
     bool runGateActive = false;
     bool resetArmed = false;
@@ -582,10 +1718,10 @@ struct SequencerEngine {
     // FALSE (default) → the exact legacy internal-draw path (A/B/E byte-identical). Set per-block by the
     // module layer from the mode. quantiserCV[v] = the incoming poly CV per voice (index 0 = mono/voice0).
     bool  quantiserPitchSource = false;
-    float quantiserCV[16] = {};
+    std::array<float, kVoiceSlots> quantiserCV = {};
 
     // The sounding pitch for a voice at its onset: quantised external CV in quantiser mode, else the
-    // internal draw via genPitchLive. `voiceIdx` 0..15 (0 = mono/voice-0). outSem = the sounding degree
+    // internal draw via genPitchLive. voiceIdx 0..15 (0 = mono/voice-0). outSem = the sounding degree
     // (for flash LEDs). r_semi/r_oct = the voice's melody/octave draws (used only in the internal path).
     //
     // QMIX per-step source-select (mono/voice-0 only): when quantiserPitchSource is set AND
@@ -596,17 +1732,44 @@ struct SequencerEngine {
     // and always for poly voices) behaviour is byte-identical to the legacy path. The generated
     // branch flows through genPitchLive, which writes outSem the same way mode A does, so
     // lastSemitone/LED/degree naming stay correct for generated notes.
-    float voicePitch(int voiceIdx, int& outSem, const PatternInput& input, float r_semi, float r_oct,
-                     bool forceGenerated = false) {
-        if (quantiserPitchSource && !forceGenerated) {
-            const int vi = (voiceIdx < 0) ? 0 : (voiceIdx > 15 ? 15 : voiceIdx);
+    //
+    // QMIX_OCTAVE Stage 1 (CC_PROMPT_QMIX_OCTAVE + QMIX_OCTAVE_PLAN.md): the split into TWO
+    // independent reads of the SAME r_qmix draw — forceGenerated is the DEGREE axis's decision,
+    // octForceGenerated the OCTAVE axis's (r_qmix >= qmixOctResolved(), computed at the callers
+    // from the same draw — the subgate pattern: multiple reads of one stream, different
+    // thresholds). NO DEFAULTS: both callers pass both, so a future caller cannot silently get
+    // one axis's default wrong. Truth table (quantiserPitchSource gates ALL of it — outside a
+    // quantiser mode every path falls through to genPitchLive unchanged):
+    //   deg ext + oct ext (neither set)  — today's external branch VERBATIM (bit-identical);
+    //   deg gen + oct gen (both set)     — today's generated branch VERBATIM (genPitchLive);
+    //   MIXED                            — the composition, each source's contribution computed
+    //       by ITS OWN formula's grouping (adjudication 2): the generated split comes from
+    //       pe.genPitchSplit (12-TET: transpose rides the DEGREE term; Micro: the octaves-only
+    //       transpose rides the OCTAVE term), the external operand is the SAME CA-routed
+    //       quantised voltage the both-external row uses:
+    //         deg gen, oct ext: v = floor(vExt) + DEG_GEN   (the generated degree, seated in the
+    //                           external CV's octave) — a failed degree pick returns 0.f (the
+    //                           genPitchLive failed-pick result, mirrored);
+    //         deg ext, oct gen: v = OCT_GEN + frac(vExt)    (THE MUSICAL CASE: the external
+    //                           theme's degree rides the voice's OWN generated octave — bass
+    //                           pinned low, lead high, pad mid, all tracking the one melody);
+    //       outSem names the DEGREE source (the markSemi law: what we picked and what CA/Lantern
+    //       see never drift) — gen: split.sem; ext: the both-external row's expression;
+    //       MIXED rows clamp [-5,+5] (new paths; the both-equal rows keep their exact returns).
+    //   Stage 1 reaches the MIXED rows only through qmixOctLive=true engines (tests); with the
+    //   qmixOctLive gate closed (every existing caller/engine) octForceGenerated == the degree
+    //   decision and only the verbatim rows fire — bit-identical, the split itself is the proof.
+    float voicePitch(VoiceSlot voiceIdx, int& outSem, const PatternInput& input, float r_semi, float r_oct,
+                     bool forceGenerated, bool octForceGenerated) {
+        if (quantiserPitchSource && !forceGenerated && !octForceGenerated) {
+            const int vi = (voiceIdx.v < 0) ? 0 : (voiceIdx.v >= kVoiceSlots ? kVoiceSlots - 1 : voiceIdx.v);
             // CA-routed input CV (QMIX_LANE_PARITY §"The blend" step 2): the external input CV rides
             // CA's MELODY source plane, so a voice can quantise ANOTHER voice's input line. voiceIdx is
             // the ENGINE voice (0=mono/V1, k=poly V(k+1)) — the SAME indexing as the CA pin rows — so
             // caInputCvSrcRow(vi) maps directly. Identity default = each voice reads its own CV (the
             // exact legacy quantiserCV[vi]); byte-identical when caMelodySrc is identity.
             const int srcVi = pe.caInputCvSrcRow(vi);
-            const int rvi = (srcVi < 0) ? 0 : (srcVi > 15 ? 15 : srcVi);
+            const int rvi = (srcVi < 0) ? 0 : (srcVi >= kVoiceSlots ? kVoiceSlots - 1 : srcVi);
             float v = quantize(quantiserCV[rvi]);
             float frac = v - std::floor(v);
             // markSemi correctness (QMIX_LANE_PARITY §"one correctness rule"): the QUANTISED branch
@@ -617,27 +1780,98 @@ struct SequencerEngine {
                                               : pe.tuning.nearestDegree(frac);
             return v;
         }
+        if (quantiserPitchSource && (forceGenerated != octForceGenerated)) {
+            // THE QMIX_OCTAVE MIXED ROWS — one axis generated, one external (see the truth
+            // table above). The external operand: the SAME CA-routed voltage the both-external
+            // row quantises; the generated components: genPitchSplit's formula-grouped terms.
+            const int vi = (voiceIdx.v < 0) ? 0 : (voiceIdx.v >= kVoiceSlots ? kVoiceSlots - 1 : voiceIdx.v);
+            const int srcVi = pe.caInputCvSrcRow(vi);
+            const int rvi = (srcVi < 0) ? 0 : (srcVi >= kVoiceSlots ? kVoiceSlots - 1 : srcVi);
+            const float vExt = quantize(quantiserCV[rvi]);
+            const PatternEngine::PitchSplit split = pe.genPitchSplit(input, r_semi, r_oct);
+            if (forceGenerated) {
+                // Generated DEGREE rides the external CV's octave (floor = the whole-volt
+                // position the external pitch sits in). Failed pick -> genPitchLive's 0.f.
+                if (!split.picked) { outSem = 0; return 0.f; }
+                outSem = split.sem;
+                return pe_clamp(std::floor(vExt) + split.degTerm, -5.f, 5.f);
+            }
+            // External DEGREE rides the generated OCTAVE — the musical case. outSem from the
+            // external fraction (the both-external row's expression verbatim).
+            const float frac = vExt - std::floor(vExt);
+            outSem = pe.tuning.isDefault12TET ? (int(std::round(frac * 12.f)) % 12)
+                                              : pe.tuning.nearestDegree(frac);
+            return pe_clamp((split.octTerm + split.shiftTerm) + frac, -5.f, 5.f);
+        }
         return pe.genPitchLive(outSem, input, r_semi, r_oct);
     }
 
     void reset();
     bool isStepInWindow(int idx) const;
     void setWindow(int length, int offset);
-    bool advancePlayhead(int dir = +1);   // dir<0 = reverse traversal (within-draw)
-    // Recompute all laneTick_/laneTickV_/macroLaneTick_ caches from totalStepsElapsed.
-    // Called after snapping totalStepsElapsed externally (e.g. Mode E phase jump snap)
-    // so the lane position caches match the new transport position without a full
-    // advancePlayhead (which would also increment stepIndex/totalStepsElapsed).
-    void recomputeLaneTicks();
-    // Snap the transport (stepIndex + totalStepsElapsed) to the phase-derived pulse
-    // position, then recompute lane ticks. Used after a Mode E phase jump to eliminate
-    // the rounding drift from jumpSixteenths. p16 = pulsesPer16th (ppqn/4).
-    void snapToPhaseStep(long pulsePos, int p16);
+    // voiceMotion (PER-VOICE STEP-ADVANCE Stage 2, optional): the per-voice motion for
+    // the per-voice prev pairs (exact walk-sign cues when voices diverged); nullptr =
+    // uniform dir (every pre-existing caller). Positions are pure functions of the
+    // effective clocks — the motion only sharpens the UI cues.
+    bool advancePlayhead(int dir = +1, const int8_t* voiceMotion = nullptr);   // dir<0 = reverse traversal (within-draw)
+    // STEP-ADVANCE (CC_PROMPT_GATE_STEP_ADVANCE_SPEC Stages 1-3): the gate-mode advance
+    // DECISION for one rise — consumes the step-rate uniform (per-rise fresh, the rhythm
+    // Philox stream's reserved chunk), picks the level's resolved threshold (subLevel −1 =
+    // the MAIN gate: voices[mono].variationProb, the resolved Variation path; otherwise a
+    // SubgateKnobs level: voices[mono].subRes[subLevel][ADVANCE], the three-way-resolved
+    // Straits consumer-group column — the SOLE consumer of the ADVANCE store), and returns
+    // the pure StepAdvance::decide verdict. The caller moves the playhead on FORWARD and
+    // does NOTHING on REPEAT (the corrected held semantics — not moving the playhead IS
+    // the repeat; the step-addressed data re-outputs itself by construction). SCOPE: the
+    // TRANSPORT is singular — the mono decision moves the ONE clock (V1's row).
+    // PER-VOICE STEP-ADVANCE Stage 2 (CC_PER_VOICE_ADVANCE_SIGNOFF): the poly ADVANCE
+    // columns now have their consumer — the per-voice fold (foldPerVoiceAdvance_, below)
+    // calling THIS function at each voice's slot; the divergence lands in advanceOffset_,
+    // never in a second playhead. ONE decision function, N voices (the *ForVoice twin is
+    // DELETED — CC_FIX_PER_VOICE_ADVANCE_WANDER's DRY audit): the transport sites pass
+    // mono(), the fold passes the voice. targetTickDelta: the
+    // draw addressing offset — 0 = the current step (the rise's read,
+    // bit-identical to getVariationStep()); +1 = the incoming-rest step (the
+    // fall-advance's read — CC_PROMPT_TIE_INTO_REST_PROBABILISTIC_ADVANCE: "the
+    // step being advanced into"). ONE mechanism, both edges. The delta is SIGNED
+    // INSIDE by p (p's sign = the travel direction): backward travel reads the
+    // mirror direction — the scan and the fall target both look where the playhead
+    // is going (the backward fix).
+    dotModular::StepAdvance::Decision decideStepAdvance_(VoiceSlot vs, int subLevel, int targetTickDelta = 0);
+    // The per-voice fold of ONE advance event (both rise executors + the fall): fills
+    // motionV[16] (the per-voice motion the recompute's prev pairs consume), accumulates
+    // advanceOffset_ (d_v − dMain), re-anchors/holds the per-voice scans, and clears the
+    // per-voice arrival latches (a latched voice rides 0 — its position already moved at
+    // the fall). EVERY voice decides on its own draw (the every-lane principle —
+    // CC_FIX_PER_VOICE_ADVANCE_WANDER); returns whether any offset moved (the caller's
+    // offsets-only recompute trigger).
+    bool foldPerVoiceAdvance_(int subLevel, bool perVoiceScan,
+                              dotModular::StepAdvance::Decision dMain, int8_t* motionV);
+    // Refresh the lane read caches WITHOUT advancing the transport (the offsets-only
+    // path): the holders tick by the per-voice offset diffs alone (transportMotion 0 —
+    // a voice moved while the clock held). The post-snap variant is anchorTransport +
+    // deriveHolders inside snapToPhaseStep (no phase advance beyond the anchor).
+    // voiceMotion (optional): the fold's motion array; nullptr = uniform lastPlayDir.
+    void recomputeLaneTicks(const int8_t* voiceMotion = nullptr);
+    // Snap the transport (stepIndex + the holder congruences) to the phase-derived pulse
+    // position, then re-derive the lane caches from the anchor. Used after a Mode E
+    // phase jump to eliminate the rounding drift from jumpSteps. pps = PULSES_PER_STEP.
+    void snapToPhaseStep(long pulsePos, int pps);   // pps = PULSES_PER_STEP (the step grid, CC_PROMPT_PPQN_48)
+    // PHASE TIER Stage 1 — THE PHASE-STEP RULE (one rule, both sites): the phase-derived
+    // landing step for an UNWRAPPED absolute step (pulsePos/p16). Reduces mod the ACTIVE
+    // length (the musical cycle the transport walk itself cycles) and seats it in the
+    // window at startStep — always in-window by construction. snapToPhaseStep lands
+    // through this; Monsoon's Mode E drift check compares stepIndex against it, so the
+    // two sites can never disagree (the pre-Stage-1 pair — snap mod kMaskRing, drift
+    // mod 16 — strobe-re-snapped every sample after a bar-2+ jump). See
+    // SequencerEngine.cpp above phaseStepFor for the full derivation.
+    int phaseStepFor(long absStep) const;
     // advanceOnTieIntoRest checkpoint (LEGATO_GATE_GAP_BUG.md §345). Called from the module layer on
     // a Gate-1 FALL while a slur is pending. Advances the playhead ONE step into the incoming-rest
     // position and re-evaluates the slur candidacy (legato draw at that step). Sets
-    // pendingCheckpointArrival so the next rise skips its own advance (one advance, one arrival).
-    void legatoCheckpointOnFall(float legatoProb);
+    // pendingCheckpointArrivalV_[0] so the next rise skips its own advance (one advance,
+    // one arrival); the per-voice latches ([1..]) ride the same fold.
+    void legatoCheckpointOnFall();
     void updateWindow(float lenParam, float lenCv, bool lenPatched, float offParam, float offCv, bool offPatched);
     int computeNoteLengthIdx(int requestedIdx, int ppqnMask) const;
     int getNoteLenIdx(float baseNoteParam, const PatternInput& input, float r);
@@ -646,6 +1880,14 @@ struct SequencerEngine {
     // custom tuning → nearest table degree. See the .cpp.
     int degreeOf(float pitchV) const;
     float getStepLightBrightness(int lightIdx) const;
+    float getBarLightBrightness(int bar) const;
+    // ── STEPS_32 Stage 3 display levels (D10 as amended by D15) ────────────────
+    // The ring's standing hierarchy: playhead 1.0 > comet trail 0.5 > in-window note
+    // 0.35 > in-window rest 0.07 (values VERBATIM, the D10 law), and the ghost arc pins
+    // STRICTLY BELOW the in-window rest so a ghost can never read as a rest. The exact
+    // ghost/dim values are P5 panel-calibration levers; the HIERARCHY is the law.
+    static constexpr float kStepGhostBrightness       = 0.04f;  // < the 0.07 rest level
+    static constexpr float kBarIndicatorDimBrightness = 0.15f;  // the inactive bar's LED (the disc's "every other segment dims")
     int getOffsetStep() const;
     int getStrandIdx(int tickCount, int len, int off, int mutation) const;
     float lastNoteVal_ = 4.f;   // mono NOTE_VALUE param of the current step (poly reads it)
@@ -654,33 +1896,38 @@ struct SequencerEngine {
     // Per-voice final probability (post A/B mix + spread + LOR) for a poly lane
     // (0=REST→rhythm, 1=MEL→melody, 2=OCT→octave), at that voice's own LOR step.
     // 0..1. Used to assemble the poly probability cables (channels 2..1+nVoices).
-    inline float polyLaneProbability(int polyLane, int voice) const {
-        if (voice < 0 || voice >= 15 || polyLane < 0 || polyLane >= PL_LANES) return 0.f;
+    inline float polyLaneProbability(LaneId polyLane, VoiceSlot voice) const {
+        if (voice.v < 0 || voice.v >= kVoiceSlots || polyLane.l < 0 || polyLane.l >= PL_LANES) return 0.f;
         // Follow this voice's own lane position, not the raw global tick: a reversed lane's
         // notes come from polyLaneTick, so its probability CV must too or the CV reports a
         // different cell than the one being played (they silently disagreed before).
-        int idx = getStrandIdx(polyLaneTick(voice, polyLane), polyLenE(voice, polyLane),
-                               polyOffE(voice, polyLane), polyRotE(voice, polyLane));
-        idx &= 0x0F;
-        // Through the Change Alley remap: the CV out reports what the voice will CONSUME.
-        if (polyLane < 0 || polyLane >= PL_LANES) return 0.f;
-        return polyRandomSrc(voice, polyLane)[idx];
+        // (C0 FAMILY 2) the L/O/R feeds come from the lane chokepoint — the same
+        // values the raw polyLenE/polyOffE/polyRotE reads returned.
+        int pl, po, pr; LaneDir pd;
+        effectiveLaneLor(voice, polyLane, pl, po, pr, pd);
+        int idx = getStrandIdx(polyLaneTick(voice, polyLane), pl, po, pr);
+        idx &= kMaskRing - 1;
+        // Through the Change Alley remap + the ONE uniform source (CC_PROMPT_05):
+        // the CV out reports what the voice will CONSUME — warpRow, every lane.
+        return pe.warpRow(voice, polyLane)[idx];
     }
     // Per-voice draw value for a poly lane at an EXPLICIT step (caller supplies the
     // step from its own LOR view). Used by Macro's prob-out, which samples each voice's
     // draw at MACRO's own global LOR step — independent of East/ownership. East instead
     // uses polyLaneProbability (resolved per-voice step). 0..1.
-    inline float polyLaneProbabilityAtStep(int polyLane, int voice, int step) const {
-        if (voice < 0 || voice >= 15 || polyLane < 0 || polyLane >= PL_LANES) return 0.f;
-        step &= 0x0F;
-        return polyRandomSrc(voice, polyLane)[step];   // through the Change Alley remap
+    inline float polyLaneProbabilityAtStep(LaneId polyLane, VoiceSlot voice, int step) const {
+        if (voice.v < 0 || voice.v >= kVoiceSlots || polyLane.l < 0 || polyLane.l >= PL_LANES) return 0.f;
+        step &= kMaskRing - 1;
+        return pe.warpRow(voice, polyLane)[step];   // the ONE uniform source (warp mirror)
     }
 
     // Step indices (for S&H edge detection) matching the probability accessors above.
-    inline int polyLaneStep(int polyLane, int voice) const {
-        if (voice < 0 || voice >= 15 || polyLane < 0 || polyLane >= PL_LANES) return -1;
-        return getStrandIdx(polyLaneTick(voice, polyLane), polyLenE(voice, polyLane),
-                            polyOffE(voice, polyLane), polyRotE(voice, polyLane)) & 0x0F;
+    inline int polyLaneStep(LaneId polyLane, VoiceSlot voice) const {
+        if (voice.v < 0 || voice.v >= kVoiceSlots || polyLane.l < 0 || polyLane.l >= PL_LANES) return -1;
+        // (C0 FAMILY 2) the L/O/R feeds come from the lane chokepoint (as polyLaneProbability).
+        int pl, po, pr; LaneDir pd;
+        effectiveLaneLor(voice, polyLane, pl, po, pr, pd);
+        return getStrandIdx(polyLaneTick(voice, polyLane), pl, po, pr) & (kMaskRing - 1);
     }
     // Engine poly lane (PL_REST..PL_LEGATO) → strand index. Single mapping (was inlined in
     // masterLaneStep and polyLaneTick). SANDS CONSOLIDATION: VAR/LEG are now full poly lanes
@@ -695,12 +1942,28 @@ struct SequencerEngine {
              : (polyLane == PL_LEGATO)    ? dotModular::STRAND_LEGATO
                                           : dotModular::STRAND_RHYTHM;  // fallback
     }
+    // (C0 FAMILY 2) the strand→LaneId map — polyStrandLenOf's switch, factored: the
+    // ONE mapping the strand-indexed callers use to reach the poly accessor. The
+    // invalid fallback mirrors polyLaneStrand's (rhythm; polyStrandLenOf keeps its
+    // own cap fallback before the accessor call).
+    static LaneId strandLaneId(int strand) {
+        switch (strand) {
+            case dotModular::STRAND_MELODY:    return LaneId{PL_MELODY};
+            case dotModular::STRAND_OCTAVE:    return LaneId{PL_OCTAVE};
+            case dotModular::STRAND_QMIX:      return LaneId{PL_QMIX};
+            case dotModular::STRAND_RHYTHM:    return LaneId{PL_REST};
+            case dotModular::STRAND_ACCENT:    return LaneId{PL_ACCENT};
+            case dotModular::STRAND_VARIATION: return LaneId{EDITOR_LANE_VARIATION};
+            case dotModular::STRAND_LEGATO:    return LaneId{EDITOR_LANE_LEGATO};
+        }
+        return LaneId{PL_REST};
+    }
     // Per-voice tick for an engine poly lane. The voice's direction is ABSOLUTE (its own DirCell),
     // so this tracks mono's laneTick_[strand] only while both the voice and mono's lane are
     // Forward — a voice does NOT inherit mono's reversal. Out-of-range bank falls back to mono's tick.
-    int polyLaneTick(int bank, int polyLane) const {
-        int strand = polyLaneStrand(polyLane);
-        return (bank >= 0 && bank < 15) ? laneTickV_[bank][strand] : laneTick_[strand];
+    int polyLaneTick(VoiceSlot bank, LaneId polyLane) const {
+        int strand = polyLaneStrand(polyLane.l);
+        return (bank.v >= 0 && bank.v < kVoiceSlots) ? laneTickV_[bank.v][strand] : laneTick_[strand];
     }
     // Per-voice effective sign for an engine poly lane — ABSOLUTE (the voice's own sign,
     // not relative to mono). +1 = forward (default); -1 = reversed. Used by the visual
@@ -713,32 +1976,205 @@ struct SequencerEngine {
         int strand = polyLaneStrand(polyLane);
         // Mono lane position, direction-aware (was the raw global tick, so the master
         // prob-out ignored per-lane direction while the notes followed it).
-        return getStrandIdx(laneTick_[strand], strandLen(strand),
-                            strandOff(strand), strandRot(strand)) & 0x0F;
+        // (C0 FAMILY 2) the L/O/R feeds come from the mono lane chokepoint — for a
+        // valid strand the same values strandLen/strandOff/strandRot returned.
+        int ml, mo, mr; LaneDir md;
+        effectiveMonoLaneLor(strand, ml, mo, mr, md);
+        return getStrandIdx(laneTick_[strand], ml, mo, mr) & (kMaskRing - 1);
     }
     inline float masterLaneProbability(int polyLane) const {
-        // SANDS CONSOLIDATION: use polyLaneStrand (now handles all 7 lanes incl. VAR/LEG).
-        // Previously this duplicated the switch WITHOUT the VAR/LEG cases, so voice 1's
-        // VAR/LEG display fell back to STRAND_RHYTHM (showing rhythm values — a bug).
-        int strand = polyLaneStrand(polyLane);
-        return pe.finalRandomByStrand(strand, masterLaneStep(polyLane));
+        // UI-to-resolver FINISH (CC_PROMPT_UI_TO_RESOLVER_FINISH_START): the MASTER
+        // prob-out entry (VoiceResolver::laneProbability's V1 branch — East's ch0 out
+        // channel) reads the ONE accessor: effectiveProbability at the EXPLICIT V1
+        // voiceSlot (0), MacroOwn lens, at the master's own LOR step. The OLD path
+        // (finalRandomByStrand with a bare 0 — the hardcoded voice-0 residue) read the
+        // SHARED mono row, which the owner's spread pass WRITES, so East's spread
+        // modulated this out (the leak Rodney scoped). The MacroOwn lens reads the
+        // published base + macroOwnSpread only — one-way borrowing by construction —
+        // and the value is bit-identical to VoiceResolver::laneProbabilityAtStep(1, ·)
+        // at the same step: the ONE V1 out value (bars and out read the same voice by
+        // construction). masterLaneStep keeps the direction-aware mono lane position
+        // (SANDS CONSOLIDATION: polyLaneStrand handles all 7 lanes incl. VAR/LEG —
+        // previously this switch lacked the VAR/LEG cases, so voice 1's VAR/LEG
+        // display fell back to STRAND_RHYTHM — a bug).
+        // STRONG types: the mono ROLE, typed (kMonoVoiceSlot == VoiceResolver::mono()).
+        return effectiveProbability(dotModular::kMonoVoiceSlot, LaneId{polyLane},
+                                    masterLaneStep(polyLane), ProbLens::MacroOwn);
     }
+
+    // ── THE ONE effective-probability accessor (CC_PROMPT_UI_TO_RESOLVER_SPEC step 1) ──
+    // ONE call produces the effective (voice, lane, step) probability = the published
+    // base draw + the RESOLVER-resolved spread + the warp mix. It SUBSUMES the
+    // a2ccb842 one-accessor design (CC_PROMPT_macro_output_east_leak — deleted by
+    // UI_TO_RESOLVER step 2) — the same value, produced through the one authority
+    // instead of a third hand-rolled resolution.
+    // The engine draw, the bars, and the prob-outs ALL read THIS function; there is
+    // no second computation of the quantity anywhere (the spec's one-producer law).
+    //
+    //   voice = voiceSlot (0=V1/mono ... 15=V16) — EXPLICIT, never hardcoded: the bars
+    //           pass the DISPLAYED voice, the prob-outs pass the CHANNEL's voice
+    //           (ch0=V1, ch v = voice v+1), so bars and out read the same voice by
+    //           construction (CC_PROMPT_warp_display_scope's voice-0 residue dies).
+    //   lane  = PL_* engine lane (0..6).  step = 0..15.
+    //   lens  = the delegation LENS (the one-way borrowing rule, pinned by
+    //           test_macro_own_output):
+    //             MacroOwn — Macro's OWN resolved amount (macroOwnSpread[lane], the
+    //                        delegated branch of the ONE algebra — the manager's
+    //                        publishGlobal resolver output). Macro's bars + prob-outs
+    //                        read this lens. Macro NEVER borrows East: the amount
+    //                        never reads East's spread, so on an East-owned lane East's
+    //                        edit cannot reach Macro's bars/out (the leak dies by
+    //                        construction). Owner-INDEPENDENT: Macro's own value exists
+    //                        whether or not Macro owns the lane.
+    //             Owner    — the OWNER's resolved amount (spread[0][lane] for V1,
+    //                        pe.cachedPolySpread[voice][lane] for V2+) — the same
+    //                        SpreadPolicy::effective outputs the manager writes for
+    //                        the ENGINE's audio spread pass, so the engine draw and
+    //                        East's bars read the value the audio consumes (East MAY
+    //                        borrow Macro: a Macro-owned lane reads Macro's amount).
+    //
+    // THE SPREAD TERM comes through SandsModifierResolver<SpreadPolicy>::effective —
+    // the ONE delegation algebra (ownerEast/macroBase/tap decided ONCE, manager-side,
+    // store-mediated; every store this accessor reads is that resolver's output).
+    // SpreadInterp is the underlying interpolation math the term wraps — the DISPLAY
+    // entry points only (published snapshots + the anchor-V1 target): torn-read safe,
+    // never the live slewed* the audio path reads (the V16-flicker law).
+    // THE WARP TERM is the ONE composition per LENS: Owner → warpDisplayMix (the
+    // engine draw's twin — warpDisplayMix → WarpBank::warpedValue → resolveWarpCell,
+    // the SAME path the warp mirror consumes, tilt+atom feel-test stages included);
+    // MacroOwn → warpDisplayMixMacroOwn (Macro's GLOBAL cell — see below). No second
+    // warp path exists per lens.
+    // V1/mono is the spread anchor: interpolate(base, base, sp) — self-target no-op,
+    // so V1's value is spread-invariant at positive spread (matches East's V1 display).
+    //
+    // ── THE MACRO-OWN TRACE (CC_PROMPT_UI_TO_RESOLVER_FINISH2 BUG 1): which arrays
+    // the MacroOwn lens reads, and why NO East path can write them ──────────────────
+    //   base   = pe.pubSlewedPoly*[voice][step] (via polySlewedPub) — the PUBLISHED
+    //            pre-spread slew. Writers: publishSlewedRhythm/Melody/Qmix ONLY,
+    //            copying the authored A/B blend in slewed* (recomputeEffective*, the
+    //            Change-Alley pin remap, reset). East's spread passes write random_
+    //            (the post-spread finals: applyMono → rhythmRandom/melodyRandom/…,
+    //            cachedPolySpread + refreshPolyRandomCell → polyRandom) — NEVER
+    //            slewed* or pubSlewedPoly*. (Verified mechanically: the pubs' only
+    //            writers are the publish* twins; pinned by test_ui_to_resolver T8,
+    //            which clobbers every East-written array and asserts the lens is
+    //            bit-unchanged.)
+    //   amount = macroOwnSpread[lane] — published ONLY by MonsoonSandsManager's
+    //            publishGlobal (Macro's knob + Macro's own CV; no East term).
+    //   target = monoSlewedPub → pubSlewedPoly*[0][step] (the V2+ anchor) — the same
+    //            East-unwritable store as the base.
+    //   warp   = Macro's GLOBAL bank cell via warpDisplayMixMacroOwn (delegated=TRUE):
+    //            globalWarp{W,F,Tilt,AtomLevel,AtomMass}[lane], authored ONLY by
+    //            Macro's panel. The per-(voice,lane) OWN-SLOT pair
+    //            (warpW/warpF/warpTilt/warpAtom*[v*7+lane]) is EAST-authorable
+    //            (East's V1/poly tabs author those slots) and is what warpDisplayMix
+    //            selects through warpDelegated_ on East-owned lanes — the lens must
+    //            NOT read it. That was the one-layer-down leak ("East STILL modulates
+    //            Macro warp"): pre-FINISH2 the lens composed with the own-slot pair,
+    //            so East's curve/w edits moved Macro's bars + prob-outs on East-owned
+    //            lanes while every spread-layer test stayed green (pinned by T7).
+    // Macro-own ALL THE WAY DOWN: base + amount + target + warp.
+    enum class ProbLens { Owner, MacroOwn };
+    float effectiveProbability(VoiceSlot voice, LaneId lane, int step, ProbLens lens) const {
+#ifdef MONSOON_PROFILE
+        // FAST-PATH Suspect A (CC_PROMPT_cpu_section_profile): count EVERY call — the
+        // consumers landing here: the Macro prob-CV sweep (engine thread — STEP-cached
+        // by the module's step-3 cache), the bars' refresh (UI thread), and the master
+        // prob-out entry (East's ch0 out channel, engine thread — control-rate-throttled
+        // by East's own out sweep; hence the relaxed atomic). Macro's process() logs
+        // calls at ~50k cadence: the fix for a per-sample count is THIS spec (the step
+        // cache), not a point-patch.
+        monsoonProfile::effProbCalls.fetch_add(1, std::memory_order_relaxed);
+#endif
+        const int l = (lane.l >= 0 && lane.l < PL_LANES) ? lane.l : PL_REST;
+        const int v = (voice.v >= 0 && voice.v < kVoiceSlots) ? voice.v : 0;   // voiceSlot (V2+=1..15)
+        const float sp = (lens == ProbLens::MacroOwn)
+            ? macroOwnSpread[l]
+            : ((v == 0) ? spreadE(0, l) : pe.cachedPolySpread[v][l]);
+        // FOLLOW-CA (CC_PROMPT_east_spread_followCA_display_bug_START, Rodney's final
+        // architecture): the DISPLAY view of the ONE decision — the SAME resolver
+        // entry the audio path reads (redDot::resolveFollowCaSpread), with the
+        // endpoints from the PUB snapshots (the V16-flicker rule — the UI never reads
+        // the live slewed*) + the pin-gated live preRemap (the approved µs,
+        // self-healing window; no new pub arrays). The old unconditional
+        // applyAnchorV1Only was the bug: follow-CA bars anchored to V1 (not the CA
+        // source) and showed the CA-remapped base as the spread-0 "own".
+        const float monoPub = redDot::SpreadInterp::monoSlewedPub(pe, l, step & (kMaskRing - 1));
+        const float base = redDot::SpreadInterp::polySlewedPub(pe, l, v, step & (kMaskRing - 1));
+        const float disp = redDot::resolveFollowCaSpread({
+            .mode = pe.spreadTargetMode[l],
+            .ownAnchor = (v == 0) ? monoPub : base,
+            .ownPreRemap = (v == 0) ? redDot::SpreadInterp::monoPreRemap(pe, l, step & (kMaskRing - 1))
+                                    : redDot::SpreadInterp::polyPreRemap(pe, l, v, step & (kMaskRing - 1)),
+            .targetV1 = monoPub,
+            .targetPostRemap = (v == 0) ? monoPub : base,
+            .amount = sp });
+        // Warp display composition (CC_PROMPT_05 uniform): the same per-(voice,lane)
+        // mixture the engine consumes, keyed to the sampled voice. MacroOwn composes
+        // with Macro's GLOBAL cell (the Macro-own trace above) — never the
+        // East-authorable own-slot pair warpDisplayMix selects on East-owned lanes.
+        return (lens == ProbLens::MacroOwn)
+            ? pe.warpDisplayMixMacroOwn(v, l, (double)disp)
+            : pe.warpDisplayMix(v, l, (double)disp);
+    }
+
+    // Macro's own effective spread per PL lane — the MacroOwn lens's amount. The ONE
+    // delegated-branch output of the spread resolver (publishGlobal's
+    // SpreadResolver::effective call: clamp(macroBase[l][3] + macroPostDelta[l][3])),
+    // published by the manager at control rate. Read ONLY by effectiveProbability
+    // (MacroOwn); written ONLY by MonsoonSandsManager::publishGlobal.
+    std::array<float, PL_LANES> macroOwnSpread{};
+
+    // (The a2ccb842 third-computation accessor is DELETED — CC_PROMPT_UI_TO_RESOLVER_SPEC
+    //  step 2. Both former callers — the Macro bars and VoiceResolver::
+    //  laneProbabilityAtStep, the prob-out seam — now call effectiveProbability(voice,
+    //  lane, step, ProbLens::MacroOwn) directly; the shim was a one-commit bridge while
+    //  the accessor landed.)
 
 
     // Independent lookup indices for each "DNA strand"
     int getRhythmStep() const;
     int getVariationStep() const;
     int getLegatoStep() const;
+    // TEST-VISIBLE (the RULE mirror in test_step_advance): the variation draw the
+    // step-advance decision reads at the given tick delta — the SAME expression
+    // decideStepAdvance_ uses (0 = the current step's own value; the fall passes
+    // +1, the incoming-rest step; the rise passes the accumulated scan). ONE
+    // function, N voices (the *ForVoice twins are DELETED — the WANDER fix's DRY
+    // audit): the mono slot reads the mono window, a poly voice its own. Pure:
+    // reading never mutates the ring (zero new draws).
+    float stepAdvanceDrawAt(VoiceSlot bank, int drawTickDelta) const;
+    // CC_PROMPT_VARIATION_SCAN_DISPLAY — the scanned POSITION factored out of
+    // stepAdvanceDrawAt: ONE expression, TWO reader kinds (the draw + the display
+    // chevron), so the chevron lands on EXACTLY the index the engine read.
+    // Gate-mode holds scan the variation window; delta 0 = the current step.
+    int stepAdvanceStrandIdx(VoiceSlot bank, int drawTickDelta) const;
+    // The held-rise scan as a SIGNED delta — the display's read. The escape search
+    // looks in the TRAVEL direction (decideStepAdvance_ signs its draw delta by p):
+    // negative travel (variationProb < 0) scans BACKWARD. The sign is read LIVE
+    // from the slot's variationProb — the same p that slot's decision signs by, so
+    // there is no cached sign member to desync. The scan magnitude stays
+    // 0..varLen-1 (0 = not holding / non-gate modes).
+    int stepAdvanceScanDelta(VoiceSlot bank) const;
     int getAccentStep() const;  // NEW: accent strand DNA index
     int getMelodyStep() const;
     int getOctaveStep() const;
     int getQmixStep() const;    // Task 4: q-mix strand DNA index (mono)
 
     bool shouldTriggerStep(int ppqn) const;
-    StepResult executeStep(float restProb, float legatoProb, int nvIdx, float r_rest, float r_legato_tie, float r_accent, float accentProb, float r_qmix, const PatternInput& input, bool wasHeld, bool hadTail);
+    // Phase B: called at the top of each mode executor. When numPolyVoices increases,
+    // newly-activated voices have stale gs state (gateHeld/holdRemain/slurForward from
+    // when they were last active). Reset them so they fresh-trigger instead of legato-ing
+    // from a stale held gate. Also latches the count for this step (prevNumPolyVoices_).
+    // (Definition in the .cpp — the loop MINTS VoiceSlots, which needs VoiceResolver.)
+    void resetActivatedPolyVoices_();
+    StepResult executeStep(int nvIdx, float r_rest, float r_legato_tie, float r_accent, float r_qmix, const PatternInput& input, bool wasHeld, bool hadTail, int subLevel = -1);
     void handlePhraseBoundary(PatternInput input, bool isMelodyRealtime, bool isRhythmRealtime);
-    StepResult executeModeA(const ClockEngine& clock, float restProb, float legatoProb, float noteVal, const PatternInput& input, int dir = +1);
-    StepResult executeModeB(bool gate1Rise, bool gate1High, float restProb, float legatoProb, float noteVal, const PatternInput& input);
+    // RATE MANAGER (S3b): the Step tier replaced the ClockEngine& — the dispatch feeds
+    // the tier from the same sixteenth edge (clock or phase), so the engine no longer
+    // re-reads a clock object (and Mode E's synthesized phaseView hack is gone).
+    StepResult executeModeA(const redDot::RateManager& rm, float noteVal, const PatternInput& input, int dir = +1);
+    StepResult executeModeB(bool gate1Rise, bool gate1High, float noteVal, const PatternInput& input);
     // subGate subdivision (GATE_SUBDIVISION_STEP_GATE.md).  Three edge streams advance the playhead
     // and each runs executeStep (rest/legato/accent/pitch — all Sands lanes draw, Tie emergent from
     // pitch equality):
@@ -751,7 +2187,7 @@ struct SequencerEngine {
     //     — executeStep rolls the rest lane first, so restProb may still silence it.
     // mainGateHigh/ghostHigh are passed for the IMPL 2b mirror in tests; the engine itself is
     // region-agnostic (which edge fired selects the region).  Unpatched = executeModeB.
-    StepResult executeModeBSubdivided(bool mainGateRise, bool mainGateHigh, bool subGateRise, float restProb, float legatoProb, float noteVal, const PatternInput& input, bool ghostRise = false, bool ghostHigh = false);
+    StepResult executeModeBSubdivided(bool mainGateRise, bool mainGateHigh, bool subGateRise, float noteVal, const PatternInput& input, bool ghostRise = false, bool ghostHigh = false);
     // (executeModeC/D removed — MODE_COLLAPSE_6_TO_3: dead code; the controller routes C→A, D→B,
     //  and the quantiser is now the q-mix axis engaged per-step in the dispatch, not an engine mode.)
     float quantize(float vIn);
@@ -761,7 +2197,26 @@ struct SequencerEngine {
 
     // ── Poly voice execution ──────────────────────────────────────────────────
     // Call executePolyVoices() after any stepped executeModeA/B call.
-    // voices[i].restProb must be set by the caller before invoking.
-    void executePolyVoice(int voiceIdx, const PatternInput& input, bool wasHeld, bool hadTail);
+    // voices[voiceSlot].restProb must be set by the caller before invoking.
+    // STRONG types (CC_PROMPT_STRONG_TYPES): voiceIdx is a MINTED VoiceSlot.
+    void executePolyVoice(VoiceSlot voiceIdx, const PatternInput& input, bool wasHeld, bool hadTail, int subLevel = -1);
     void executePolyVoices(const PatternInput& input);
+
+    // R-2 (RHYTHM_DECISION_MANAGER_PLAN §2.3): the named parent read — the four mono scalars
+    // the poly cascade consumed as loose state (lastStepResult.decision/nvIdx, gs.gateHeld,
+    // wasHeldMono/hadMonoTail) assembled as ONE ParentView. executePolyVoice + nvIdxForVoice
+    // read mono ONLY through this.
+    // F-1 (plan §3.1): the producer for container slot 0 — V1 stays the mono voice's view.
+    // Containers on slots 1..15 read containerView(u) below (the captured poly verdict +
+    // live gate state), so the same cascade folds ANY forest the graph carries.
+    ParentView monoParentView() const;
+
+    // F-1: the per-container view — u is a STORAGE slot (0 = V1 … 15 = V16). u == 0
+    // delegates to monoParentView(); u >= 1 assembles the poly container's ParentView
+    // from its captured rhythm verdict (polyVerdict_), its captured drawn length
+    // (polyNv_), and its live VoiceBank gate state. Out-of-range u is defensive-neutral
+    // (fail-closed: no onset offer, envelope cell closed). F-2: executePolyVoices visits
+    // in the MATERIALIZED topological order, so every container — any slot, any direction —
+    // is captured fresh on the edge its child reads it.
+    ParentView containerView(int u) const;
 };

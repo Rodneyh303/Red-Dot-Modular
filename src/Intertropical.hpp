@@ -12,7 +12,8 @@
 
 #include <rack.hpp>
 #include "dsp/VoiceResolver.hpp"
-#include "ui/VisualExpanderHelpers.hpp"   // findMonsoonEitherSide
+#include "ui/VisualExpanderHelpers.hpp"   // Monsoon complete type (the walk helpers are service-internal now)
+#include "ui/ModuleLookupCore.hpp"   // THE lookup authority: the topology epoch (onExpanderChange bump — CC_PROMPT_MODULE_LOOKUP_AUTHORITY_START)
 
 using namespace rack;
 // The real Monsoon is a GLOBAL type from Monsoon.hpp (included by the .cpp before use).
@@ -44,7 +45,7 @@ struct IntertropicalIds {
         // a note and its expression arrive at Keppel in the same frame. Sized to the same nOut as the
         // note outs; SKIP the per-output pitch transpose (a semitone offset is meaningless on Y/Z, and
         // X-bend is relative to an already-transposed note). Silent when CA is absent or a pair's IN is
-        // unpatched (CA itself goes 0-channel there). Indices 5..12 share the `output_%d` marker prefix
+        // unpatched (CA itself goes 0-channel there). Indices 5..12 share the output_%d marker prefix
         // with the note outs so the widget binds both in one loop.
         EXPR_OUT_0, EXPR_OUT_1, EXPR_OUT_2, EXPR_OUT_3,
         EXPR_OUT_4, EXPR_OUT_5, EXPR_OUT_6, EXPR_OUT_7,
@@ -215,14 +216,20 @@ struct Intertropical : Module {
     // THIS instance regardless of rack position. 0 = unassigned (assigned lazily).
     // See ui/IntertropicalPairing.hpp.
     int   pairId        = 0;
-    // Host Monsoon, cached each process() (IT<->Monsoon adjacency is LOCAL). Exposed so a followed
-    // consumer (Lantern) reads the engine THROUGH the IT — one rack-wide pair link then yields BOTH
-    // the arrangement (IT) and the engine detail (Monsoon), across rows. See LANTERN_CROSS_ROW_FIX.
-    Monsoon* cachedHost = nullptr;
-    Monsoon* getHost() const { return cachedHost; }
-    // Host lookup (findMonsoonEitherSide) walks the chain; topology is control-rate, so refresh the
-    // cache on a divider — matches the sibling-expander idiom (PROCESS_RATE_AUDIT). Runtime-only.
-    rack::dsp::ClockDivider hostLookupDiv_;
+    // Host Monsoon (IT<->Monsoon adjacency is LOCAL). Exposed so a followed consumer (Lantern)
+    // reads the engine THROUGH the IT — one rack-wide pair link then yields BOTH the arrangement
+    // (IT) and the engine detail (Monsoon), across rows. See LANTERN_CROSS_ROW_FIX.
+    // LOOKUP AUTHORITY (CC_PROMPT_MODULE_LOOKUP_AUTHORITY_START): resolves through the memoized
+    // redDot::lookupMonsoon (event-driven); the cachedHost member + the /512 hostLookupDiv_ poll
+    // are DELETED. Defined in the .cpp, NOT inline here: ui/ModuleLookup.hpp includes
+    // ui/IntertropicalPairing.hpp, which includes this header (include cycle).
+    Monsoon* getHost();
+
+    // LOOKUP AUTHORITY: the event is THE trigger — bump the global topology epoch so this module's
+    // adjacency (the lookup* memos) re-resolves on the next read, engine + widget threads.
+    void onExpanderChange(const ExpanderChangeEvent& e) override {
+        redDot::bumpTopologyEpoch();
+    }
     // Runtime-only (NOT persisted): guards the one-shot pairId resolution done in process().
     // Assignment can't happen in onAdd() — Rack holds the engine mutex during module insertion,
     // and getModuleIds() re-locks it => deadlock. process() runs where getModuleIds is safe.

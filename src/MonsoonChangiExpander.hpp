@@ -1,5 +1,6 @@
 #pragma once
 #include <rack.hpp>
+#include "ui/ModuleLookupCore.hpp"   // THE lookup authority: the topology epoch (CC_PROMPT_MODULE_LOOKUP_AUTHORITY_START)
 #include "Monsoon.hpp"
 
 using namespace rack;
@@ -24,6 +25,12 @@ namespace ChangiIds {
 }
 
 struct MonsoonChangiExpander : Module {
+    // THE LOOKUP AUTHORITY: the event bumps the global topology epoch — adjacency
+    // (the lookup* memos) re-resolves on the next read.
+    void onExpanderChange(const ExpanderChangeEvent& e) override {
+        redDot::bumpTopologyEpoch();
+    }
+
     MonsoonChangiExpander() {
         config(0, 0, ChangiIds::NUM_OUTPUTS, 0);
         // index 0 = MONO (voice 1); indices 1..15 = poly voices 2..16.

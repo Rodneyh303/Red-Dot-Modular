@@ -2,8 +2,9 @@
 #include "Monsoon.hpp"
 #include "Intertropical.hpp"
 #include "MonsoonChangiT3Expander.hpp"
-#include "ui/VisualExpanderHelpers.hpp"     // redDot::findMonsoonEitherSide
-#include "ui/IntertropicalPairing.hpp"      // resolveFollowedIT, presentPairIds
+#include "ui/VisualExpanderHelpers.hpp"     // redDot::findMonsoonEitherSide (service-internal)
+#include "ui/IntertropicalPairing.hpp"      // resolveFollowedIT, presentPairIds (service-internal)
+#include "ui/ModuleLookup.hpp"   // THE lookup authority: lookupMonsoon / lookupIntertropical (CC_PROMPT_MODULE_LOOKUP_AUTHORITY_START)
 #include "ui/SvgPanelKit.hpp"
 #include "ui/ConnectMark.hpp"
 
@@ -15,11 +16,10 @@ using namespace ChangiT3Ids;
 //    STEP-LEGATO->SLEG_OUT (see Intertropical::process), so we read those two for STEP/SLEG.
 //    CV is already post-transpose + tie-latched inside Intertropical. ──
 void MonsoonChangiT3Expander::process(const ProcessArgs& args) {
-    // Resolve the followed Intertropical at CONTROL rate (rack-wide scan); mirror its jacks every
-    // sample from the cached pointer so the 40 outputs stay continuous. See rate-discipline note.
-    if (itLookupDiv_.process())
-        cachedIT_ = redDot::resolveFollowedIT(this, followIT);
-    Intertropical* it = cachedIT_;
+    // LOOKUP AUTHORITY: the followed Intertropical resolves through the memo (one
+    // walk per topology generation — event-driven; was the /512 divider poll); the
+    // 40-jack MIRROR runs per-sample from it, so signal stays continuous.
+    Intertropical* it = redDot::lookupIntertropical(this, followIT);
     if (!it) {
         for (int o = 0; o < ChangiT3Ids::NUM_OUTPUTS; ++o) outputs[o].setVoltage(0.f);
         return;
@@ -71,7 +71,7 @@ struct MonsoonChangiT3ExpanderWidget : ModuleWidget,
         if (auto* s = findNamed("light_connect")) {
             connectMark = redDot::makeConnectMark(module, centerOf(s), mm2px(8.f));
             connectMark->connected = [mod]() {
-                return mod && redDot::resolveFollowedIT(mod, mod->followIT) != nullptr;
+                return mod && redDot::lookupIntertropical(mod, mod->followIT) != nullptr;
             };
             addChild(connectMark);
         }
@@ -81,7 +81,7 @@ struct MonsoonChangiT3ExpanderWidget : ModuleWidget,
         ModuleWidget::step();
         kitStep();
         if (!module) return;
-        Monsoon* m = redDot::findMonsoonEitherSide(module);
+        Monsoon* m = redDot::lookupMonsoon(module);
         int wantLight = (m && m->lightTheme) ? 1 : 0;
         if (wantLight != lastThemeLight) {
             lastThemeLight = wantLight;

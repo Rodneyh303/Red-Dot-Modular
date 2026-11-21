@@ -1,5 +1,6 @@
 #pragma once
 #include <rack.hpp>
+#include "ui/ModuleLookupCore.hpp"   // THE lookup authority: the topology epoch (CC_PROMPT_MODULE_LOOKUP_AUTHORITY_START)
 #include "Monsoon.hpp"
 #include "dsp/ScaleList.hpp"
 
@@ -37,6 +38,12 @@ namespace ShophouseIds {
 }
 
 struct MonsoonShophouseExpander : Module {
+    // THE LOOKUP AUTHORITY: the event bumps the global topology epoch — adjacency
+    // (the lookup* memos) re-resolves on the next read.
+    void onExpanderChange(const ExpanderChangeEvent& e) override {
+        redDot::bumpTopologyEpoch();
+    }
+
     ScaleList list{ShophouseIds::NUM_FRONTS};
     // MONSOON_SCALE_AUTHORING: per-front display name for a slot loaded with a user .dmtune (empty =
     // factory slot). The mask itself lives in list.entry(f).customMask; this is just the label.

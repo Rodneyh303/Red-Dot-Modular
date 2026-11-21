@@ -26,6 +26,8 @@
 #include "dsp/engines/PhaseEngine.hpp"
 #include "dsp/engines/PatternEngine.hpp"
 #include "dsp/engines/SequencerEngine.hpp"
+#include "dsp/PhaseDistStore.hpp"   // the §14 parameter-set store (the snapshot members below)
+#include "dsp/PhaseDistCellHold.hpp"   // the §14 PPQN-cell hold (the transform's engine-side evaluation state, below)
 #include "dsp/managers/MonsoonSandsManager.hpp"
 #include "dsp/managers/MonsoonParameterManager.hpp"
 #include "dsp/managers/MonsoonPersistenceManager.hpp"
@@ -37,6 +39,12 @@
 #include "dsp/managers/MonsoonTimingController.hpp"
 #include "dsp/managers/MonsoonCVRouter.hpp"
 #include "dsp/managers/MonsoonOutputGenerator.hpp"
+#include "dsp/MacroTapBank.hpp"
+#include "dsp/SubgateKnobs.hpp"
+#include "dsp/QmixOctave.hpp"
+#include "dsp/VoiceResolver.hpp"   // the SUBGATE main-threshold mapping (mono()/slot()) — VoiceResolver is minted here, complete
+#include "ui/RateManager.hpp"   // THE compute-rate authority (CC_PROMPT_RATE_MANAGER_START) — rack-free core
+#include "dsp/WarpF.hpp"
 #include "dsp/gates/GateState.hpp"
 #include "dsp/engines/SequencerEngine.hpp"
 
@@ -65,6 +73,10 @@ static inline T clampv(T v, T lo, T hi) {
 struct InputState {
     float clk, gate1, gate2, gate3;
     float run, reset, cv1, cv2;
+    // PHASE TIER Stage 2: CV3 read at audio rate in the phase origin (modeSelect == 2),
+    // where it is the SUBPHASE input (Rodney: "Lets use cv3 in for subphase"). Outside
+    // Mode E CV3 keeps its assignable-modulation role and stays on its throttled read.
+    float cv3;
     bool  gate1Rise, gate2Rise;
     // subGate (ratchet) = Gate 2 (GATE mode B) / Gate 3 (Mode D).  The fine-grid clock INSIDE main
     // gates (ratchet/tie/rest/legato within gates).  Accepts a trigger OR gate (onset-only).
@@ -285,6 +297,34 @@ namespace MonsoonIds {
         // Only used when CV1 (the phase input) is UNPATCHED -- the DAW-automatable fallback.
         PHASE_PARAM,
 
+        // PHASE TIER Stage 2: the SUBPHASE CALIBRATION knob — regionSize, quarter .. bar,
+        // CONTINUOUS (the design doc: "anything between (quarter-note → bar)"). Knob 0..1
+        // maps to regionSixteenths = 4 + 12·v (4 = one quarter, 16 = one bar). Default 1.0
+        // = one bar (the showcase value: 2 regions at a 32-step pattern; "no jumps between
+        // bars" preserved by construction). Only read in the phase origin while CV3 (the
+        // subphase input) is PATCHED — unpatched CV3 is Stage 1 exactly.
+        // (PHASE-DISTORTION NOTE — the decided snap fix RODES HERE: the knob is now a
+        // DETENT picker over the straight 24-PPQN pulse list {bar, half, quarter, eighth,
+        // 16th} = {96,48,24,12,6} pulses = {16,8,4,2,1} sixteenths — see the
+        // Monsoon.cpp read site. Rodney: "The calibration snap-to-pulses fix above is
+        // small and can ride with it".)
+        SUBPHASE_CAL_PARAM,
+
+        // ── THE PHASE-DISTORTION EXPANDER MODEL (PHASE_DISTRIBUTION_SPEC §14,
+        // CC_PROMPT_PHASE_DISTORTION_EXPANDER Task 3) — the TWO INDICES ────────────
+        // Each Monsoon holds TWO INDICES into the distribution expander's EIGHT
+        // PARAMETER SETS: which set distorts its phase tier, which its subphase tier.
+        // These are the only routing choices (no matrix, no software channel routing
+        // beyond the two indices). 1..8; DEFAULT 2N−1 / 2N for Monsoon N (the pairId —
+        // the lowest-free 1..8 identity the host-identity block self-assigns), applied
+        // ONCE on a fresh module at the pairId latch; a loaded patch keeps its authored
+        // values (the picks "persist with that Monsoon", §14). A single Monsoon (N=1)
+        // defaults to sets 1 and 2 with no setup — the static config defaults below.
+        // The index values are read at the CONTROL block (the snapshot's cadence), so
+        // an index change lands at a block boundary like every set change.
+        PHASE_SET_PARAM,
+        SUBPHASE_SET_PARAM,
+
         NUM_PARAMS
     };
 
@@ -495,7 +535,16 @@ namespace MonsoonIds {
         STEP_LIGHTS_START = 0,
         STEP_LIGHTS_END   = STEP_LIGHTS_START + 16,
 
-        // STEP_LIGHTS_END consumes slot 16; RHYTHM_DICE_LIGHT auto-follows at 17
+        // BAR 1/BAR 2 — the inner-disc bar indicator (D10 (2) as amended by D15): two
+        // LEDs INSIDE the ring's unused center (upper = bar 1, lower = bar 2 — the
+        // disc's hemisphere cut). Ride P5's offset-enum re-seat (append right after
+        // STEP_LIGHTS_END; downstream ids shift automatically — every consumer uses the
+        // symbolic ids and nothing persists a light index: brightnesses are recomputed
+        // every UI frame).
+        BAR1_LIGHT,
+        BAR2_LIGHT,
+
+        // STEP_LIGHTS_END consumes slots 16..18; RHYTHM_DICE_LIGHT auto-follows at 19
         RHYTHM_DICE_LIGHT,
         MELODY_DICE_LIGHT,
         LOCK_LIGHT,
@@ -557,9 +606,11 @@ struct MonsoonRightMessage {
     int   modeSelect       = 0;    // 0=A 1=B 2=C 3=D
 
     // Current pattern snapshot (useful for a pattern display expander)
-    bool  rhythmPattern[16]  = {};
-    int   melodySemitone[16] = {};
-    float melodyPitchV[16]   = {};
+    // (rhythmPattern[16] RETIRED — CC_PROMPT_RHYTHMPATTERN_DELETE_AND_POLARITY ITEM 1)
+    // STEPS_32 Stage 2a: the mirrors ride the engine's STORAGE width (kStepStorage) —
+    // whole-row twins of PatternEngine's arrays; reads stay ring-bounded (≤16 today).
+    int   melodySemitone[dotModular::kStepStorage] = {};
+    float melodyPitchV[dotModular::kStepStorage]   = {};
 
     // Seed voltages
     float rhythmSeedV  = 0.f;  // 0..10V
@@ -588,9 +639,45 @@ struct MonsoonLeftMessage {
 };
 
 // ------------------------------- Module --------------------------------------
+struct SandsPhaseDistSubpanel;      // the §14 store's owner (CC_FIX_PHASE_STORE_ON_SUBPANEL:
+                                    // the phase AUTHORING subpanel, self-contained) — a
+                                    // pointer member below; Monsoon.cpp includes the full
+                                    // header (that header includes THIS one — no cycle)
 struct Monsoon : Module {
     ClockEngine clock;
     redDot::PhaseEngine phase;   // Mode E: CV1 phase ramp → pulse grid (forward+reverse)
+
+    // ── THE PHASE-DISTORTION SOURCE (PHASE_DISTRIBUTION_SPEC §14, amended by
+    // CC_FIX_PHASE_STORE_ON_SUBPANEL) ─────────────────────────────────────────────
+    // The PhaseDistStore's owner is now the SandsPhaseDistSubpanel (the phase
+    // AUTHORING surface — requiring IT is not a surprise; requiring the unrelated
+    // Distribution expander was). Resolved at the Control tier by a rack-wide
+    // first-found (lowest module id — deterministic under any module order) scan,
+    // epoch-memoized (the lookup authority's law: event-driven re-resolution, never
+    // polled). The model serves the WHOLE Monsoon network from ONE subpanel's store
+    // ("several Monsoons may read the same parameter set"), so the segment walk is
+    // the wrong tool here — a Monsoon in another segment must still find it.
+    SandsPhaseDistSubpanel* phaseDistPanel_ = nullptr;
+    // THE READER'S PER-BLOCK SNAPSHOT (the Task-1 mechanism's reader half): copied
+    // ONCE per Control-tier tick from the store under its mutex, then read PER SAMPLE
+    // by the Mode E path — engine-thread-private state, no lock on the hot path.
+    // [0] = the phase tier's set, [1] = the subphase tier's. Defaults = identity.
+    // (std::array — the array-guard's P-B form.)
+    std::array<redDot::PhaseDistSet, 2> phaseDistSnap_ = {};
+    // The identity flags, computed AT the snapshot (the Stage-1 gate's bypass: an
+    // identity set — or no expander — takes the RAW path verbatim, bit-identical).
+    std::array<bool, 2> phaseDistIdentity_ = {true, true};
+    // THE PPQN-CELL HOLD (CC_FIX_PHASE_DISTORT_AT_PPQN, docs tip 9b900695): the
+    // transform is evaluated ONCE PER PPQN CELL of the tier's input and held until
+    // the next cell — [0] = the transport tier (the plain probe's llround on the
+    // span grid), [1] = the subphase tier (the fine term's floor on the
+    // region-relative grid). Between cells the engine reads the held value; the
+    // display keeps its own video-rate evaluation and the two never cross. Reset on
+    // the raw path (identity / CV3 unpatched) so a re-entry re-seeds.
+    std::array<dotModular::PhaseDistCellHold, 2> phaseDistHold_ = {};
+    // The dynamic-default latch (2N−1 / 2N applied ONCE on a fresh module): true in
+    // the ctor, cleared by dataFromJson so a loaded patch keeps its authored picks.
+    bool phaseSetsFresh_ = true;
 
     int cv1Mode = 0;
     // Global probability-CV-out config (read by the Sands visual expanders; they have
@@ -620,7 +707,7 @@ struct Monsoon : Module {
     // Mode B holdRemain is nullified so there is no MidNote, every shouldExecute carries a real
     // decision).  Held between onsets and ANDed with the mono gate envelope (IMPL 2b) so a poly
     // voice's gate WIDTH follows Gate 1 / ghost like the mono gate, not a 1-step internal hold.
-    bool polyVoiceActive[15] = {};
+    bool polyVoiceActive[16] = {};
     // Per-sample memory of Gate 1's Schmitt level (TRUE-mode legato: holds the gate for 1 sample
     // after the fall so an overlap / <=1-sample gap ties; a >=2-sample gap drops it -> fresh).
     // Edge-timed (reset while HIGH) => direction-agnostic / reverse-safe. No ms timer.
@@ -683,7 +770,7 @@ struct Monsoon : Module {
 
     // ── Host identity (CONNECTION_MODEL_SPEC.md §2, node-anchored) ────────────────────────────────
     // Each Monsoon owns a small pairId (1..8), lowest-unused, persisted, stable across reload — the
-    // SAME scheme as Intertropical/CA (assignPairIdT<Monsoon>). Bound expanders DISPLAY this via
+    // SAME scheme as Intertropical/CA (assignPairIdT on Monsoon). Bound expanders DISPLAY this via
     // pairColour(pairId); the Monsoon owns identity, they inherit it. The colour+number badge only
     // renders when 2+ Monsoons exist (§4/Q6); single-Monsoon rigs show a plain connect dot.
     //   pairId == 0 → NOT participating: either not yet assigned, OR the 8-cap was hit (a 9th Monsoon
@@ -691,6 +778,11 @@ struct Monsoon : Module {
     // Assigned lazily in updateExpanderPointers() (control rate; NOT ctor — getModuleIds re-lock).
     int  pairId = 0;
     bool pairChecked = false;   // one-shot clash-scan latch (mirrors Intertropical::pairChecked); runtime only
+    // The lookup-authority epoch cache (CC_PROMPT_MODULE_LOOKUP_AUTHORITY_START):
+    // updateExpanderPointers() re-runs only when the topology generation moved (an
+    // onExpanderChange fired somewhere — the multi-hop fan-out; see
+    // ui/ModuleLookupCore.hpp). Runtime only.
+    uint64_t lookupEpoch_ = 0;
     // Hard cap: 8 connection-participating Monsoons = the 8-hue pairColour palette, so colour is a
     // COMPLETE unique identifier (never wraps). Locked to the palette width in IntertropicalPairing.hpp.
     static constexpr int kMaxParticipatingMonsoons = 8;
@@ -723,6 +815,12 @@ struct Monsoon : Module {
 
     int lastModeSelect = -1;
     int lightTheme = 0; // 0 = Dark, 1 = Light. Using int to match PeranakanLatticePanel expectations.
+    // SEND VOICE persistence (CC_FIX_SEND_VOICE_FROM_MACRO): the MACRO strip's voice-tab
+    // selection, stored as a VOICE NUMBER 1..16 (1 = V1 mono). The Macro visual WRITES it
+    // on tab change and READS it on init (re-selects the tab + publishes
+    // PatternEngine::setSendVoice so the send subpanel reopens on the same voice).
+    // Saved/loaded under the key "macroViewVoice"; absent key ⟹ V1 (the default here).
+    int macroViewVoice = 1;
     // Single source of truth for the spread interpolation target mode (context
     // menu lives on Monsoon). false = Average Poly (mono + active poly average);
     // true = Mono Draw (target the raw mono draw; mono strand becomes a fixed
@@ -772,8 +870,16 @@ struct Monsoon : Module {
         // Per-lane pitch flags: 0..11 = semitones, 12 = octaveLo, 13 = octaveHi.
         bool  pitchLane[14] = {false};
     } modViz;
-    dsp::ClockDivider lightDivider;
-    dsp::ClockDivider controlDivider; // For DNA modulation at "Control Rate"
+    // (lightDivider + controlDivider DELETED — CC_PROMPT_RATE_MANAGER_START, S7: their
+    //  SR-aware divisions live INSIDE the RateManager (setSampleRate/tickClocks — the
+    //  controlDivider pattern generalized); the raw members cannot be .process()'d.
+    //  Deletion IS the compile-time enforcement.)
+    // RATE MANAGER (CC_PROMPT_RATE_MANAGER_START): the compute-rate authority — producers
+    // DECLARE (rate, fingerprint, work) and the manager owns dispatch. Stage 0: the Control
+    // tier is fed by the controlDivider edge (pure wrapper, behaviour-identical); the Macro
+    // sync-population is its first producer. The raw dividers are DELETED at the end of the
+    // migration — deletion is the enforcement.
+    redDot::RateManager rateManager;
 
     SequencerEngine engine;
 
@@ -801,15 +907,31 @@ struct Monsoon : Module {
         // separate VAR/LEG atten path was a relic of the "VAR/LEG are mono-only, no spread"
         // era; the sands consolidation (POLY_LANES=7) ends it. varlegDeleg stays (it is the
         // VAR/LEG LOR delegation toggle, a distinct feature — see getVarlegDeleg).
-        // macroOwn: owner per poly lane(0..4, QMIX-widened). INDEXING IS POLY-BANK, NOT voiceSlot:
-        //   v = 0..14  -> V2..V16 (poly bank index)
-        //   v = 15     -> V1/mono   (see getMonoMacroOwn/setMonoMacroOwn)
-        // index = v*5 + lane. NOTE this differs from lorBase/spread/varlegAtten/macroSend/
-        // macroAtten, which all use VoiceResolver::voiceSlot (mono = slot 0).
-        float macroOwn[112] = {0};   // 16 × 7 poly lanes (SANDS CONSOLIDATION Step 1)
-        // macroSend: Macro-CV blend send per (v=0..15)×lane(0..4)×item(0..3). index=(v*5+lane)*4+item.
+        // eastOwns: owner per lane, 7 lanes (MEL/OCT/QMIX/REST/ACC/VAR/LEG), 16 voiceSlot
+        //   rows. index = v*7 + lane — the SAME VoiceResolver::voiceSlot convention as
+        //   lorBase/spread/macroSend/macroAtten. Row 0 = V1/mono via kMonoMacroOwnRow
+        //   (getMonoMacroOwn/setMonoMacroOwn are DELETED; the old poly-bank v*5+lane
+        //   indexing is gone with them).
+        // BOOLEAN MODEL (Rodney, 2026-10-22): the store IS the boolean — true = EAST owns
+        //   the (voice,lane), false = Macro owns (delegated to the shared base). Written by
+        //   the East owner menu / OwnerCell via setOwnerEast, read via ownerIsEast. NO
+        //   threshold exists anywhere in the derivation chain: the old `float macroOwn[112]`
+        //   + `> 0.5f` reads are GONE (the field was NAMED after the wrong side — 1.0 meant
+        //   EAST owns — the "weird boolean" polarity trap this model kills). Patch JSON is
+        //   boolean too (key "editorEastOwns"); patch compatibility with the old float
+        //   array is explicitly NOT kept (Rodney).
+        bool eastOwns[112] = {};   // 16 × 7; default false = Macro-owned while Macro attached
+        // macroSend: Macro-CV blend send per (v=0..15)×lane×item(0..3). index=(v*7+lane)*4+item.
         // CONVENTION: VoiceResolver::voiceSlot (mono = slot 0). Verified against call sites.
         float macroSend[448] = {0};  // 16 × 7 lanes × 4 items (SANDS CONSOLIDATION Step 1)
+        // macroTap: PER-VOICE PRE/POST send-tap per (v=0..15)×lane×kind. index=(v*7+lane)*2+kind
+        // (kind 0 = LOR items 0-2, 1 = spread item 3) — MacroTapBank's stride, mirroring
+        // macroSend's shape/conventions. The per-voice fix for the P9b global-tap regression:
+        // the send is per-voice, so the tap must be too (a global tap forces every receiving
+        // voice onto one PRE/POST choice). Default 1.0 = POST (set in the Monsoon ctor);
+        // globalTap[14] below is the Macro-panel delegation default. See
+        // CC_PROMPT_per_voice_send_tap.md.
+        float macroTap[224] = {0};  // 16 × 7 lanes × 2 kinds (MacroTapBank::N)
         // macroAtten: atten depth per (v=0..15)×(lane*4+col, 28 wide). index = v*28 + lane*4+col.
         // CONVENTION: VoiceResolver::voiceSlot (mono = slot 0). Verified against call sites.
         // SANDS CONSOLIDATION Step 2: now 7 poly lanes (REST/MEL/OCT/ACC/QMIX/VAR/LEG) × 4 cols
@@ -863,6 +985,99 @@ struct Monsoon : Module {
         // Mono V1 ownership per poly lane (MEL/OCT/REST/ACC): 0 = Macro owns V1's base for
         // this lane, 1 = Mono owns it. Was a param (ownerDispId), cross-read by Macro.
         float monoOwner[7]     = {1,1,1,1,1,1,1};  // 7 poly lanes (SANDS CONSOLIDATION Step 1; default: Mono owns)
+
+        // Warp-F bank (CC_PROMPT_02): per-voice-per-lane warp curve + depth — flat like
+        // spread[112], same stride — plus Macro's global default (the delegation source)
+        // and the set-time drawn-curve pool. Default-constructed = all IdentityWarp with
+        // w=0 (no warp; old patches unchanged). NO mirror/engine wiring yet (CC_PROMPT_03).
+        // Kept at struct END (ABI hygiene — see the modViz note above).
+        dotModular::WarpBank warp;
+        // The SUBGATE TIER bank (SubgateKnobs — CC_PROMPT_STRAITS_SUBGATE_KNOBS_SPEC
+        // on its STRAITS home per Rodney: the knobs' PANEL surface is the NEW Straits
+        // expander base + its new subpanels — never the distribution expander): the
+        // authored three-way sources per (voice, subgate level, decision) + the
+        // audio-thread mod-delta planes. NO MONSOON PANEL CHANGE — the globals live
+        // on the Straits subgate BASE's store-backed knobs (cross-voice role), the
+        // per-voice knobs on its SUBPANELS (touch = claim); Monsoon only HOLDS the
+        // store the Straits surfaces address and the engine consumes (the
+        // EditorState law: bus-addressable via the accessors below). Defaults =
+        // follow main = byte-identical (the bank ctor). Kept at struct END (the
+        // same ABI-hygiene note as warp).
+        dotModular::SubgateKnobs::SubgateBank subgate;
+        // The QMIX-OCTAVE tier bank (QmixOctave — CC_PROMPT_QMIX_OCTAVE +
+        // QMIX_OCTAVE_PLAN.md Stages 2-3, the SubgateKnobs pattern minus the axes the
+        // octave decision lacks): the authored octave-threshold sources per voice —
+        // the GLOBAL knob (the Straits base's store-backed Qmix-octave knob), the
+        // FOLLOW-DEGREE switch (default: the octave threshold IS the voice's degree
+        // qmix level — "follow main qmix poly voice subpanel for both pitch and
+        // octave", today's behaviour), the OWN per-voice cells (the qmix-octave
+        // SUBPANEL's knobs, touch = claim — the most-flexible end state: per voice
+        // separate qmix probability for pitch-within-octave AND octave). NO MONSOON
+        // PANEL CHANGE — Monsoon only HOLDS the store the Straits surfaces address
+        // and the ModeController consumes into voices[].qmixOctLevel (the same
+        // EditorState law as subgate). NO delta planes (the spec asks a knob; the
+        // subgate panels carry none post-merge — modulation is Causeway, not in
+        // scope), hence no watchdog/heartbeat machinery. Defaults = follow-degree =
+        // byte-identical (the bank ctor). Kept at struct END (the same ABI-hygiene
+        // note as warp/subgate).
+        dotModular::QmixOctave::Bank qmixOctave;
+        // The UNIFIED ADDRESSING voice-range authoring rows (Stage 2b —
+        // CC_PROMPT_UNIFIED_ADDRESSING_SPEC on feat/unified-addressing): the Macro
+        // (GLOBAL) voice range + the per-voice East rows, the SAME float-store
+        // discipline as globalLor above — bounds-guarded accessors, persisted by
+        // MonsoonPersistenceManager, pushed to the engine's voiceLorStore_ once per
+        // control block (pushVoiceLorEditor). Row item order {L,O,R} = the engine's
+        // LOR_LEN/LOR_OFF/LOR_ROT. Dir 0..3 = the LaneDir order (Fwd/Rev/Pend/PingPong).
+        // Identity defaults (16/0/0, dir 0, follow-Macro) are byte-neutral: the push
+        // lands on the store reset() seeded and the pass-through branch holds — old
+        // patches (no persisted keys) play exactly as before. Kept at struct END
+        // (the same ABI-hygiene note as warp/subgate).
+        float voiceLorMacro[3]        = {(float)dotModular::kPatternLengthCap, 0.f, 0.f};  // the GLOBAL voice range L/O/R (Macro tier) — (bug 23) identity = the FULL voice window (the cap)
+        float voiceLorMacroDir        = 0.f;                // Macro tier direction (LaneDir order)
+        float voiceLorEast[48]        = {(float)dotModular::kPatternLengthCap,0.f,0.f, (float)dotModular::kPatternLengthCap,0.f,0.f, (float)dotModular::kPatternLengthCap,0.f,0.f, (float)dotModular::kPatternLengthCap,0.f,0.f,
+                                         (float)dotModular::kPatternLengthCap,0.f,0.f, (float)dotModular::kPatternLengthCap,0.f,0.f, (float)dotModular::kPatternLengthCap,0.f,0.f, (float)dotModular::kPatternLengthCap,0.f,0.f,
+                                         (float)dotModular::kPatternLengthCap,0.f,0.f, (float)dotModular::kPatternLengthCap,0.f,0.f, (float)dotModular::kPatternLengthCap,0.f,0.f, (float)dotModular::kPatternLengthCap,0.f,0.f,
+                                         (float)dotModular::kPatternLengthCap,0.f,0.f, (float)dotModular::kPatternLengthCap,0.f,0.f, (float)dotModular::kPatternLengthCap,0.f,0.f, (float)dotModular::kPatternLengthCap,0.f,0.f}; // 16 voices x {L,O,R} — (bug 23) identity rows seed the FULL window (the cap)
+        float voiceLorEastDir[16]     = {};                 // per-voice direction (LaneDir order)
+        float voiceLorLocalEast[16]   = {};                 // 0 = follow Macro (default), !=0 = own East row
+        // (B) VOICE-LOR PARITY: the L/O/R CV-depth rows (the lanes' macroAtten law, one
+        // axis over — NO spread/warp cols: the voice LOR has neither). Macro[3] is the
+        // GLOBAL depth (the Macro panel's 3 mono jacks); East[48] is per voice (the East
+        // panel's 3 poly jacks, channel == voiceSlot). Depth 0 = the pushed base stands
+        // (byte-neutral default). Item order {L,O,R}, the same as the LOR rows.
+        float voiceLorAttenMacro[3]   = {};                 // the Macro jacks' L/O/R depths
+        float voiceLorAttenEast[48]   = {};                 // 16 voices x {L,O,R} depths
+
+        // ── UNIFIED ADDRESSING Stage 4: the OUTPUT-MASK rows (the ONE output layer) ──
+        // The same Macro/East delegation split as the voice-LOR rows: the MACRO tier
+        // is the GLOBAL mask (all voices), the EAST rows are per-voice;
+        // maskLocalEastMask[v] picks (0 = follow Macro, the default). Kind: 0 = CYCLE
+        // (the all-on degenerate mask — today's behaviour, the DEFAULT), 1 = DYNAMIC
+        // (the range-as-mask, derived from the row's O/L = absolute-1), 2 = PAINTED
+        // (the fixed-rotatable pattern; followR picks the rotation source: 0 = static
+        // absolute steps = absolute-2, !=0 = follows the row's R = absolute-3).
+        // Patterns are the DECIDED uint64 play masks, LENGTH-MASKED on the frame RING
+        // (dotModular::kMaskLenMask — the STEPS_32 Stage 2a integer representation; bit c
+        // = phrase step c+1 plays; the ring's all-on = the default). The old float
+        // storage (a 16-bit integer in a float) is GONE — a mask above 16 bits does not
+        // round-trip a float's 24-bit mantissa (the float-precision wall the DECIDED
+        // block names); persistence moved to fresh integer keys (MonsoonPersistenceManager).
+        // CYCLE (0) is the base default (the corrected model: "Cycle (default = as if
+        // no mask)" — the read cycles within the LOR, no output gate); ABS1 (1) is a
+        // CHOICE (the read runs the full phrase; the output plays the LOR window
+        // only); the OVERLAY engages by PAINTING (kind 2 = cycle + overlay). The old
+        // RANGE-driven default (decision 1) is superseded by the corrected model.
+        // Saved patches load their own kinds verbatim. Kept at struct END (ABI hygiene).
+        float maskMacroKind        = 0.f;     // CYCLE (the corrected model's default base)
+        uint64_t maskMacroPatternBits = dotModular::kMaskLenMask;
+        float maskMacroFollowR     = 0.f;     // the painted kind's rotation source
+        float maskEastKind[16]         = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};   // per-voice kind (CYCLE default)
+        uint64_t maskEastPatternBits[16] = {dotModular::kMaskLenMask,dotModular::kMaskLenMask,dotModular::kMaskLenMask,dotModular::kMaskLenMask,
+                                            dotModular::kMaskLenMask,dotModular::kMaskLenMask,dotModular::kMaskLenMask,dotModular::kMaskLenMask,
+                                            dotModular::kMaskLenMask,dotModular::kMaskLenMask,dotModular::kMaskLenMask,dotModular::kMaskLenMask,
+                                            dotModular::kMaskLenMask,dotModular::kMaskLenMask,dotModular::kMaskLenMask,dotModular::kMaskLenMask};
+        float maskEastFollowR[16]      = {};
+        float maskLocalEastMask[16]    = {};   // 0 = follow the MACRO mask (default)
     } editor;
 
     // Unified LOR base accessors. slot = voiceSlot (0 = V1/mono), bank 0..6, c 0..2.
@@ -890,6 +1105,99 @@ struct Monsoon : Module {
     float getGlobalDir(int lane) const { return gLaneOk(lane) ? editor.globalDir[lane] : 0.f; }
     void  setGlobalDir(int lane, float x) { if (gLaneOk(lane)) editor.globalDir[lane] = x; }
 
+    // ── UNIFIED ADDRESSING voice-range rows (Stage 2b) ─────────────────────────
+    // The same bounds-guarded float-accessor discipline as the globalLor slice:
+    // a bad index returns 0 rather than reading past the array (these are read on
+    // the audio/control path every block). v = voiceSlot 0..15 (V1 mono + V2..V16).
+    // The Macro/East surfaces author these; MonsoonPersistenceManager persists them;
+    // the ONE engine reach is the per-block pushVoiceLorEditor call in process().
+    static bool vLorOk(int v) { return v >= 0 && v < 16; }
+    float getVoiceLorMacro(int c) const {
+        return (c >= 0 && c < 3) ? editor.voiceLorMacro[c] : 0.f; }
+    void  setVoiceLorMacro(int c, float x) {
+        if (c >= 0 && c < 3) editor.voiceLorMacro[c] = x; }
+    float getVoiceLorMacroDir() const { return editor.voiceLorMacroDir; }
+    void  setVoiceLorMacroDir(float x) { editor.voiceLorMacroDir = x; }
+    float getVoiceLorEast(int v, int c) const {
+        return (vLorOk(v) && c >= 0 && c < 3) ? editor.voiceLorEast[v*3 + c] : 0.f; }
+    void  setVoiceLorEast(int v, int c, float x) {
+        if (vLorOk(v) && c >= 0 && c < 3) editor.voiceLorEast[v*3 + c] = x; }
+    float getVoiceLorEastDir(int v) const {
+        return vLorOk(v) ? editor.voiceLorEastDir[v] : 0.f; }
+    void  setVoiceLorEastDir(int v, float x) {
+        if (vLorOk(v)) editor.voiceLorEastDir[v] = x; }
+    float getVoiceLorLocalEast(int v) const {
+        return vLorOk(v) ? editor.voiceLorLocalEast[v] : 0.f; }
+    void  setVoiceLorLocalEast(int v, float x) {
+        if (vLorOk(v)) editor.voiceLorLocalEast[v] = x; }
+    // Reset a row to the identity window (16/0/0/Forward) — the context menus' reset
+    // action and the identity law's escape hatch (identity = pass-through by value).
+    void resetVoiceLorMacro() {
+        editor.voiceLorMacro[0] = (float)dotModular::kPatternLengthCap; editor.voiceLorMacro[1] = 0.f; editor.voiceLorMacro[2] = 0.f;
+        editor.voiceLorMacroDir = 0.f; }
+    void resetVoiceLorEast(int v) {
+        if (!vLorOk(v)) return;
+        editor.voiceLorEast[v*3 + 0] = (float)dotModular::kPatternLengthCap; editor.voiceLorEast[v*3 + 1] = 0.f;
+        editor.voiceLorEast[v*3 + 2] = 0.f;  editor.voiceLorEastDir[v] = 0.f; }
+    // (B) VOICE-LOR PARITY: the L/O/R CV-depth accessors (the macroAtten law, one axis
+    // over). Depths are bipolar -1..1 (the lanes' attenuverter convention); 0 = the
+    // pushed base stands. The fold (Monsoon::process, after both pushes) is the only reader.
+    float getVoiceLorAttenMacro(int c) const {
+        return (c >= 0 && c < 3) ? editor.voiceLorAttenMacro[c] : 0.f; }
+    void  setVoiceLorAttenMacro(int c, float x) {
+        if (c >= 0 && c < 3) editor.voiceLorAttenMacro[c] = x; }
+    float getVoiceLorAttenEast(int v, int c) const {
+        return (vLorOk(v) && c >= 0 && c < 3) ? editor.voiceLorAttenEast[v*3 + c] : 0.f; }
+    void  setVoiceLorAttenEast(int v, int c, float x) {
+        if (vLorOk(v) && c >= 0 && c < 3) editor.voiceLorAttenEast[v*3 + c] = x; }
+
+    // ── UNIFIED ADDRESSING Stage 4: the output-mask row accessors (the vLorOk idiom:
+    // bounds-guarded, a bad index reads 0 / writes nothing — audio-path reads).
+    // STEPS_32 Stage 2a: the patterns ARE the DECIDED uint64 integer representation —
+    // the setters clamp on the RING (the store boundary, same law the engine push
+    // applies); the cell guards ride kMaskRing. The float getters/setters are gone
+    // (the float wall they bridged no longer exists).
+    float getMaskMacroKind() const        { return editor.maskMacroKind; }
+    void  setMaskMacroKind(float x)       { editor.maskMacroKind = x; }
+    uint64_t getMaskMacroPatternBits() const { return editor.maskMacroPatternBits; }
+    void  setMaskMacroPatternBits(uint64_t x){ editor.maskMacroPatternBits = x & dotModular::kMaskLenMask; }
+    // (FOLLOW-R RETIRED 2026-11-21 — UAS RESOLVED block) the painted mask is static; the stored key is
+    // still saved/loaded for patch compatibility but never acts. The getters report 0 and the
+    // setters are no-ops so no UI path can re-arm it or block painting on it.
+    float getMaskMacroFollowR() const     { return 0.f; }
+    void  setMaskMacroFollowR(float)      { }
+    // per-cell view over the bit pattern (the paint surface reads/writes cells)
+    bool  getMaskMacroCell(int c) const {
+        return (c >= 0 && c < dotModular::kMaskRing) && (((editor.maskMacroPatternBits >> c) & 1ULL) != 0); }
+    void  setMaskMacroCell(int c, bool play) {
+        if (c < 0 || c >= dotModular::kMaskRing) return;
+        if (play) editor.maskMacroPatternBits |= (uint64_t(1) << c);
+        else      editor.maskMacroPatternBits &= ~(uint64_t(1) << c); }
+    float getMaskEastKind(int v) const        { return vLorOk(v) ? editor.maskEastKind[v] : 0.f; }
+    void  setMaskEastKind(int v, float x)     { if (vLorOk(v)) editor.maskEastKind[v] = x; }
+    uint64_t getMaskEastPatternBits(int v) const { return vLorOk(v) ? editor.maskEastPatternBits[v] : 0ULL; }
+    void  setMaskEastPatternBits(int v, uint64_t x) {
+        if (vLorOk(v)) editor.maskEastPatternBits[v] = x & dotModular::kMaskLenMask; }
+    float getMaskEastFollowR(int) const       { return 0.f; }   // (FOLLOW-R RETIRED — see the macro accessor)
+    void  setMaskEastFollowR(int, float)      { }
+    bool  getMaskEastCell(int v, int c) const {
+        return (vLorOk(v) && c >= 0 && c < dotModular::kMaskRing) && (((editor.maskEastPatternBits[v] >> c) & 1ULL) != 0); }
+    void  setMaskEastCell(int v, int c, bool play) {
+        if (!vLorOk(v) || c < 0 || c >= dotModular::kMaskRing) return;
+        if (play) editor.maskEastPatternBits[v] |= (uint64_t(1) << c);
+        else      editor.maskEastPatternBits[v] &= ~(uint64_t(1) << c); }
+    float getMaskLocalEastMask(int v) const   { return vLorOk(v) ? editor.maskLocalEastMask[v] : 0.f; }
+    void  setMaskLocalEastMask(int v, float x){ if (vLorOk(v)) editor.maskLocalEastMask[v] = x; }
+    // Reset a mask row to the CYCLE base + all-on (the as-if-no-mask escape hatch;
+    // the abs1 region is the voice LOR — no separate mask range exists).
+    void resetMaskMacro() {
+        editor.maskMacroKind = 0.f; editor.maskMacroPatternBits = dotModular::kMaskLenMask;
+        editor.maskMacroFollowR = 0.f; }
+    void resetMaskEast(int v) {
+        if (!vLorOk(v)) return;
+        editor.maskEastKind[v] = 0.f; editor.maskEastPatternBits[v] = dotModular::kMaskLenMask;
+        editor.maskEastFollowR[v] = 0.f; }
+
     //  MONO slice accessors (Mono Sands de-param) 
     // monoAtten: lane 0..5 (editor order), col 0..3 (0..2 = LOR len/off/rot, 3 = spread).
     // Mirrors Macro's getGlobalAtten(lane, col) exactly -- one array, col 3 is the spread
@@ -906,7 +1214,341 @@ struct Monsoon : Module {
     float getSpread(int slot, int lane) const { return editor.spread[slot*7 + lane]; }  // 7 poly lanes
     void  setSpread(int slot, int lane, float x) { editor.spread[slot*7 + lane] = x; }  // 7 poly lanes
 
-    // Spread target mode (0=Anchor V1, 1=Follow CA) per poly lane (0=REST,1=MEL,2=OCT,3=ACC,4=QMIX).
+    // ── Warp-F bank accessors (CC_PROMPT_02). Per-voice: slot = voiceSlot (0 = V1/mono),
+    //    lane 0..6 — the spread[112] convention (unguarded, like getSpread/setSpread).
+    //    Global: Macro's delegation default — a ceded lane (owner()==MACRO) tracks it
+    //    instead of its own slot; same shape as getGlobalSpread vs getSpread.
+    const dotModular::WarpF& getWarpF(int slot, int lane) const { return editor.warp.warpF[slot*7 + lane]; }
+    void  setWarpF(int slot, int lane, const dotModular::WarpF& f) { editor.warp.warpF[slot*7 + lane] = f; }
+    float getWarpW(int slot, int lane) const { return editor.warp.warpW[slot*7 + lane]; }
+    void  setWarpW(int slot, int lane, float x) { editor.warp.warpW[slot*7 + lane] = x; }
+    const dotModular::WarpF& getGlobalWarpF(int lane) const {
+        static const dotModular::WarpF kIdentity = dotModular::IdentityWarp{};
+        return gLaneOk(lane) ? editor.warp.globalWarpF[lane] : kIdentity;
+    }
+    void  setGlobalWarpF(int lane, const dotModular::WarpF& f) { if (gLaneOk(lane)) editor.warp.globalWarpF[lane] = f; }
+    float getGlobalWarpW(int lane) const { return gLaneOk(lane) ? editor.warp.globalWarpW[lane] : 0.f; }
+    void  setGlobalWarpW(int lane, float x) { if (gLaneOk(lane)) editor.warp.globalWarpW[lane] = x; }
+
+    // ── FEEL-TEST STAGES (CC_PROMPT_TILT_AND_RAIL_FEELTEST_START): the rail-tilt /
+    //    injected-atom stores beside the (curve, depth) pair — per-voice (the spread[112]
+    //    convention, unguarded like getWarpF) + Macro's global delegation default (same
+    //    shape as getGlobalWarpW). Neutral: tilt 0 / mass 0 (level's interior default is
+    //    inert at mass 0). Eval-side clamps live in WarpStages.hpp, NOT here.
+    float getWarpTilt(int slot, int lane) const { return editor.warp.warpTilt[slot*7 + lane]; }
+    void  setWarpTilt(int slot, int lane, float x) { editor.warp.warpTilt[slot*7 + lane] = x; }
+    float getWarpAtomLevel(int slot, int lane) const { return editor.warp.warpAtomLevel[slot*7 + lane]; }
+    void  setWarpAtomLevel(int slot, int lane, float x) { editor.warp.warpAtomLevel[slot*7 + lane] = x; }
+    float getWarpAtomMass(int slot, int lane) const { return editor.warp.warpAtomMass[slot*7 + lane]; }
+    void  setWarpAtomMass(int slot, int lane, float x) { editor.warp.warpAtomMass[slot*7 + lane] = x; }
+    float getGlobalWarpTilt(int lane) const { return gLaneOk(lane) ? editor.warp.globalWarpTilt[lane] : 0.f; }
+    void  setGlobalWarpTilt(int lane, float x) { if (gLaneOk(lane)) editor.warp.globalWarpTilt[lane] = x; }
+    float getGlobalWarpAtomLevel(int lane) const { return gLaneOk(lane) ? editor.warp.globalWarpAtomLevel[lane] : 0.5f; }
+    void  setGlobalWarpAtomLevel(int lane, float x) { if (gLaneOk(lane)) editor.warp.globalWarpAtomLevel[lane] = x; }
+    float getGlobalWarpAtomMass(int lane) const { return gLaneOk(lane) ? editor.warp.globalWarpAtomMass[lane] : 0.f; }
+    void  setGlobalWarpAtomMass(int lane, float x) { if (gLaneOk(lane)) editor.warp.globalWarpAtomMass[lane] = x; }
+
+    // ── THE GAP STAGE (PHASE_DISTRIBUTION_SPEC §4/§9): the atom twins — the authored
+    //    (location, size) per voice/lane + Macro's global defaults. Neutral: size 0
+    //    (width zero IS the neutral body; the location's interior default is inert at
+    //    size 0, exactly like the atom level at mass 0). Eval-side clamps live in
+    //    WarpStages.hpp, NOT here.
+    float getWarpGapLoc(int slot, int lane) const { return editor.warp.warpGapLoc[slot*7 + lane]; }
+    void  setWarpGapLoc(int slot, int lane, float x) { editor.warp.warpGapLoc[slot*7 + lane] = x; }
+    float getWarpGapSize(int slot, int lane) const { return editor.warp.warpGapSize[slot*7 + lane]; }
+    void  setWarpGapSize(int slot, int lane, float x) { editor.warp.warpGapSize[slot*7 + lane] = x; }
+    float getGlobalWarpGapLoc(int lane) const { return gLaneOk(lane) ? editor.warp.globalWarpGapLoc[lane] : 0.5f; }
+    void  setGlobalWarpGapLoc(int lane, float x) { if (gLaneOk(lane)) editor.warp.globalWarpGapLoc[lane] = x; }
+    float getGlobalWarpGapSize(int lane) const { return gLaneOk(lane) ? editor.warp.globalWarpGapSize[lane] : 0.f; }
+    void  setGlobalWarpGapSize(int lane, float x) { if (gLaneOk(lane)) editor.warp.globalWarpGapSize[lane] = x; }
+
+    // ── CC_PROMPT_04 (warp UI): UI-thread warp edits → scoped mirror rebuild ─────
+    // The panel StoreKnob setters / the curve popup write the warp stores above on the
+    // UI thread, then bump a pending SCOPE here; Monsoon::process consumes it right
+    // after the bank wire and performs the matching rebuildWarpMirror* on the AUDIO
+    // thread — warped_ keeps a single writer (the gate-mod edge-counter pattern,
+    // inverted: UI bumps, audio consumes; plain fields, like params[]). Latency is
+    // ≤1 block (~3ms) — "display rebuilds immediately" at screen cadence (03 §2).
+    // Scopes follow 03's dirty-mask ruling: a Sands (East) edit is per-(voice,lane)
+    // (16 cells); a Macro edit is the lane across DELEGATING voices. Mixed scopes
+    // accumulating before the next block widen to ALL (a full rebuild is 0.064ms —
+    // 03's cost ruling — so the accumulation errs simple, never stale).
+    enum class WarpUiScope : uint8_t { NONE = 0, ALL, VOICE_LANE, LANE_DELEGATING };
+    WarpUiScope warpUiScope_ = WarpUiScope::NONE;
+    int  warpUiV_ = -1, warpUiLane_ = -1;
+    void requestWarpRebuildVoiceLane(int v, int lane) {
+        if (v < 0 || v >= 16 || lane < 0 || lane >= 7) return;
+        if (warpUiScope_ == WarpUiScope::NONE) {
+            warpUiScope_ = WarpUiScope::VOICE_LANE; warpUiV_ = v; warpUiLane_ = lane;
+        } else if (warpUiScope_ != WarpUiScope::VOICE_LANE || warpUiV_ != v || warpUiLane_ != lane) {
+            warpUiScope_ = WarpUiScope::ALL;   // a second, different scope in flight
+        }
+    }
+    void requestWarpRebuildLaneDelegating(int lane) {
+        if (lane < 0 || lane >= 7) return;
+        if (warpUiScope_ == WarpUiScope::NONE) {
+            warpUiScope_ = WarpUiScope::LANE_DELEGATING; warpUiLane_ = lane;
+        } else if (warpUiScope_ != WarpUiScope::LANE_DELEGATING || warpUiLane_ != lane) {
+            warpUiScope_ = WarpUiScope::ALL;
+        }
+    }
+
+    // ── the distribution send-bus planes (WarpBank::distGlobalDelta/distOwnDelta):
+    // AUDIO-THREAD-ONLY writers (the SandsDistributionExpander's process(); the UI
+    // thread never touches these — the single-writer law that lets the rebuild
+    // happen inline). Setters also raise the fold gate; the clears re-scan and
+    // lower it when BOTH planes land empty (rare events — role flips, the
+    // watchdog, a voice-switch leaving nothing behind). The clears rebuild the
+    // mirror inline (audio thread — the same thread Monsoon::process rebuilds on).
+    void setDistGlobalDelta(int lane, int p, float x) {
+        if (lane < 0 || lane >= 7 || p < 0 || p >= dotModular::WarpBank::DPARS) return;
+        editor.warp.distGlobalDelta[lane][p] = x;
+        if (x != 0.f) editor.warp.distDeltasActive = true;
+    }
+    void setDistOwnDelta(int v, int lane, int p, float x) {
+        if (v < 0 || v >= 16 || lane < 0 || lane >= 7 || p < 0 || p >= dotModular::WarpBank::DPARS) return;
+        editor.warp.distOwnDelta[v][lane][p] = x;
+        if (x != 0.f) editor.warp.distDeltasActive = true;
+    }
+    void recomputeDistDeltasActive() {
+        bool any = false;
+        for (int l = 0; l < 7 && !any; ++l)
+            for (int p = 0; p < dotModular::WarpBank::DPARS && !any; ++p)
+                any = editor.warp.distGlobalDelta[l][p] != 0.f;
+        for (int v = 0; v < 16 && !any; ++v)
+            for (int l = 0; l < 7 && !any; ++l)
+                for (int p = 0; p < dotModular::WarpBank::DPARS && !any; ++p)
+                    any = editor.warp.distOwnDelta[v][l][p] != 0.f;
+        editor.warp.distDeltasActive = any;
+    }
+    void clearDistGlobalDeltas() {
+        for (int l = 0; l < 7; ++l)
+            for (int p = 0; p < dotModular::WarpBank::DPARS; ++p)
+                editor.warp.distGlobalDelta[l][p] = 0.f;
+        engine.pe.rebuildWarpMirrorAll();   // rare event (death / role flip) — the wide scope
+        recomputeDistDeltasActive();
+    }
+    void clearDistOwnDeltas() {
+        for (int v = 0; v < 16; ++v)
+            for (int l = 0; l < 7; ++l)
+                for (int p = 0; p < dotModular::WarpBank::DPARS; ++p)
+                    editor.warp.distOwnDelta[v][l][p] = 0.f;
+        engine.pe.rebuildWarpMirrorAll();
+        recomputeDistDeltasActive();
+    }
+    // The watchdog state (consumed in Monsoon::process): per-publisher heartbeat
+    // shadows + idle accumulators. The expander bumps editor.warp.distPublishSeq[role]
+    // every block; a 0.5 s freeze with deltas live ⟹ the publisher is gone (deleted /
+    // bypassed) ⟹ drop its plane — a vanished expander must not leave deltas latched
+    // (the publish-overwrites law, extended to cover death).
+    uint32_t distWatchSeq_[2]  = {0, 0};
+    float    distWatchIdle_[2] = {0.f, 0.f};
+    // The SUBGATE watchdog: identical law for the Straits subgate base's global
+    // delta plane (slot 0) and the subpanels' per-voice planes (slot 1 — shared
+    // by both subpanels; either living keeps it fresh, both gone drops them).
+    uint32_t subgateWatchSeq_[2]  = {0, 0};
+    float    subgateWatchIdle_[2] = {0.f, 0.f};
+
+    // ── the Macro send subpanel's per-voice send amounts (WarpBank::distSend):
+    // UI-THREAD writer (the subpanel's store-backed knobs — the store-trusts-its-writer
+    // split, same as every authored param); the fold reads it on the audio thread at
+    // rebuild time. A write only matters when deltas are live, and the changed output
+    // is the mirrored warp cell — so the KNOB SETTER pairs this with
+    // requestWarpRebuildVoiceLane(slot, lane) (the pending-scope mechanism, consumed
+    // by Monsoon::process on the audio thread). Default 1.0 = identity (the bank ctor).
+    float getDistSend(int v, int lane, int p) const {
+        return (v >= 0 && v < 16 && lane >= 0 && lane < 7 && p >= 0 && p < dotModular::WarpBank::DPARS)
+            ? editor.warp.distSend[v][lane][p] : dotModular::WarpBank::kDistSendDefault;
+    }
+    void  setDistSend(int v, int lane, int p, float x) {
+        if (v < 0 || v >= 16 || lane < 0 || lane >= 7 || p < 0 || p >= dotModular::WarpBank::DPARS) return;
+        editor.warp.distSend[v][lane][p] = x;
+    }
+
+    // ── the SUBGATE TIER bank (SubgateKnobs): authored-cell accessors (UI-thread
+    // writer — the Straits subgate base's + subpanels' store-backed knobs) + the
+    // mod-delta planes (AUDIO-THREAD-ONLY writer — the base's/subpanels'
+    // process(), the dist-delta single-writer law verbatim; the watchdog drops
+    // them on publisher death). A per-voice knob write CLAIMS the cell
+    // (ownActive = the touch-is-claim law — the tier-1 opt-in); "clear per-voice
+    // overrides" de-claims (the menu's un-claim path).
+    // NO mirror rebuilds here: the subgate thresholds have no warped_ mirror —
+    // ModeController copies the bank into the engine per block (voices[].subRes),
+    // so the next block sees any change (the controller is the engine's sole
+    // subgate writer).
+    float getSubgateGlobal(int level, int dec) const {
+        namespace SK = dotModular::SubgateKnobs;
+        return (level >= 0 && level < SK::LEVELS && dec >= 0 && dec < SK::DECS)
+            ? editor.subgate.globalTh[level][dec] : SK::kDefaultThreshold;
+    }
+    void setSubgateGlobal(int level, int dec, float x) {
+        namespace SK = dotModular::SubgateKnobs;
+        if (level >= 0 && level < SK::LEVELS && dec >= 0 && dec < SK::DECS)
+            editor.subgate.globalTh[level][dec] = x;
+    }
+    bool isSubgateFollowMain(int level, int dec) const {
+        namespace SK = dotModular::SubgateKnobs;
+        return (level >= 0 && level < SK::LEVELS && dec >= 0 && dec < SK::DECS)
+            ? editor.subgate.followMain[level][dec] : true;
+    }
+    void setSubgateFollowMain(int level, int dec, bool follow) {
+        namespace SK = dotModular::SubgateKnobs;
+        if (level >= 0 && level < SK::LEVELS && dec >= 0 && dec < SK::DECS)
+            editor.subgate.followMain[level][dec] = follow;
+    }
+    bool isSubgateOwnActive(int v, int level, int dec) const {
+        namespace SK = dotModular::SubgateKnobs;
+        return (v >= 0 && v < SK::VOICES && level >= 0 && level < SK::LEVELS && dec >= 0 && dec < SK::DECS)
+            && editor.subgate.ownActive[v][level][dec];
+    }
+    void setSubgateOwn(int v, int level, int dec, float x) {
+        namespace SK = dotModular::SubgateKnobs;
+        if (v < 0 || v >= SK::VOICES || level < 0 || level >= SK::LEVELS || dec < 0 || dec >= SK::DECS) return;
+        editor.subgate.ownTh[v][level][dec] = x;
+        editor.subgate.ownActive[v][level][dec] = true;   // touch = claim (tier 1)
+    }
+    void clearSubgateOwnAll() {
+        namespace SK = dotModular::SubgateKnobs;
+        for (int v = 0; v < SK::VOICES; ++v)
+            for (int l = 0; l < SK::LEVELS; ++l)
+                for (int d = 0; d < SK::DECS; ++d)
+                    editor.subgate.ownActive[v][l][d] = false;
+    }
+    void setSubgateGlobalDelta(int level, int dec, float x) {
+        namespace SK = dotModular::SubgateKnobs;
+        if (level < 0 || level >= SK::LEVELS || dec < 0 || dec >= SK::DECS) return;
+        editor.subgate.globalDelta[level][dec] = x;
+        if (x != 0.f) editor.subgate.deltasActive = true;
+    }
+    void setSubgateOwnDelta(int v, int level, int dec, float x) {
+        namespace SK = dotModular::SubgateKnobs;
+        if (v < 0 || v >= SK::VOICES || level < 0 || level >= SK::LEVELS || dec < 0 || dec >= SK::DECS) return;
+        editor.subgate.ownDelta[v][level][dec] = x;
+        if (x != 0.f) editor.subgate.deltasActive = true;
+    }
+    void recomputeSubgateDeltasActive() {
+        namespace SK = dotModular::SubgateKnobs;
+        bool any = false;
+        for (int l = 0; l < SK::LEVELS && !any; ++l)
+            for (int d = 0; d < SK::DECS && !any; ++d)
+                any = editor.subgate.globalDelta[l][d] != 0.f;
+        for (int v = 0; v < SK::VOICES && !any; ++v)
+            for (int l = 0; l < SK::LEVELS && !any; ++l)
+                for (int d = 0; d < SK::DECS && !any; ++d)
+                    any = editor.subgate.ownDelta[v][l][d] != 0.f;
+        editor.subgate.deltasActive = any;
+    }
+    void clearSubgateGlobalDeltas() {
+        namespace SK = dotModular::SubgateKnobs;
+        for (int l = 0; l < SK::LEVELS; ++l)
+            for (int d = 0; d < SK::DECS; ++d)
+                editor.subgate.globalDelta[l][d] = 0.f;
+        recomputeSubgateDeltasActive();   // no mirror rebuild — no mirror exists
+    }
+    void clearSubgateOwnDeltas() {
+        namespace SK = dotModular::SubgateKnobs;
+        for (int v = 0; v < SK::VOICES; ++v)
+            for (int l = 0; l < SK::LEVELS; ++l)
+                for (int d = 0; d < SK::DECS; ++d)
+                    editor.subgate.ownDelta[v][l][d] = 0.f;
+        recomputeSubgateDeltasActive();
+    }
+    // The voice's MAIN threshold for a subgate decision (the follow-main tier's
+    // source + the expander knob's resolved DISPLAY): the same dec→lane mapping the
+    // engine's consumer sites use — REST→restProb, LEGATO→legatoProb, ADVANCE→
+    // variationProb (Variation IS the step-advance lane in gate mode), ACCENT→
+    // accentProb. storageSlot is the 0..15 storage convention (0 = V1/mono).
+    float subgateMainThreshold(int storageSlot, int dec) const {
+        namespace SK = dotModular::SubgateKnobs;
+        const dotModular::VoiceSlot vs = (storageSlot <= 0)
+            ? dotModular::VoiceResolver::mono()
+            : dotModular::VoiceResolver::slot(storageSlot + 1);
+        switch (dec) {
+            case SK::REST:    return engine.voices[vs].restProb;
+            case SK::LEGATO:  return engine.voices[vs].legatoProb;
+            case SK::ADVANCE: return engine.voices[vs].variationProb;
+            default:          return engine.voices[vs].accentProb;
+        }
+    }
+    // The knob-display resolution: the SAME pure resolver the engine runs at the
+    // edge (one authority), fed the bank + the live mod deltas + the voice's main
+    // threshold. Per-voice role shows what the selected voice actually plays.
+    float subgateDisplayThreshold(int storageSlot, int level, int dec) const {
+        namespace SK = dotModular::SubgateKnobs;
+        if (level < 0 || level >= SK::LEVELS || dec < 0 || dec >= SK::DECS
+            || storageSlot < 0 || storageSlot >= SK::VOICES) return SK::kDefaultThreshold;
+        const float d = editor.subgate.globalDelta[level][dec]
+                      + editor.subgate.ownDelta[storageSlot][level][dec];
+        return SK::resolve(editor.subgate.ownActive[storageSlot][level][dec],
+                           editor.subgate.ownTh[storageSlot][level][dec],
+                           editor.subgate.followMain[level][dec],
+                           editor.subgate.globalTh[level][dec],
+                           subgateMainThreshold(storageSlot, dec), d, dec);
+    }
+
+    // ── the QMIX-OCTAVE tier bank (QmixOctave): authored-cell accessors (UI-thread
+    // writer — the Straits base's global store knob + source switch, the subpanel's
+    // per-voice knobs) — the subgate accessor block's shape minus the delta planes
+    // (this bank has none: no mod jack in scope, nothing publishes audio-side, no
+    // watchdog). A per-voice knob write CLAIMS the cell (ownActive = the touch-is-claim
+    // law — the tier-1 opt-in); "clear per-voice overrides" de-claims (the menu's
+    // un-claim path, BOTH banks — the item's semantic is all per-voice claims on this
+    // base's family). NO mirror rebuilds: ModeController copies the bank into the
+    // engine per block (voices[].qmixOctLevel + the qmixOctLive gate), so the next
+    // block sees any change (the controller is the engine's sole qmix-octave writer).
+    float getQmixOctGlobal() const { return editor.qmixOctave.globalTh; }
+    void  setQmixOctGlobal(float x) { editor.qmixOctave.globalTh = x; }
+    bool  isQmixOctFollowDegree() const { return editor.qmixOctave.followDegree; }
+    void  setQmixOctFollowDegree(bool follow) { editor.qmixOctave.followDegree = follow; }
+    bool  isQmixOctOwnActive(int v) const {
+        namespace QO = dotModular::QmixOctave;
+        return (v >= 0 && v < QO::VOICES) && editor.qmixOctave.ownActive[v];
+    }
+    void  setQmixOctOwn(int v, float x) {
+        namespace QO = dotModular::QmixOctave;
+        if (v < 0 || v >= QO::VOICES) return;
+        editor.qmixOctave.ownTh[v] = x;
+        editor.qmixOctave.ownActive[v] = true;   // touch = claim (tier 1)
+    }
+    void  clearQmixOctOwnAll() {
+        namespace QO = dotModular::QmixOctave;
+        for (int v = 0; v < QO::VOICES; ++v) editor.qmixOctave.ownActive[v] = false;
+    }
+    // The voice's DEGREE threshold for the octave decision (the follow-degree tier's
+    // source — the resolver reads the voice's qmixLevel, which ModeController writes
+    // JUST BEFORE the qmix-octave resolution in the same pass: the subgate resolver's
+    // order-dependency note applies verbatim). storageSlot is the 0..15 storage
+    // convention (0 = V1/mono).
+    float qmixOctDegreeValue(int storageSlot) const {
+        const dotModular::VoiceSlot vs = (storageSlot <= 0)
+            ? dotModular::VoiceResolver::mono()
+            : dotModular::VoiceResolver::slot(storageSlot + 1);
+        return engine.voices[vs].qmixLevel;
+    }
+    // The per-voice RESOLUTION the ModeController pushes (the one authority the engine
+    // consumes): own claim > { follow-degree (default) | global } by the switch, clamped
+    // [0,1]. BYTE-IDENTITY DEFAULT: with nothing authored this returns the voice's
+    // qmixLevel EXACTLY — the octave decision IS the degree decision (the Stage 1 split's
+    // default, today's behaviour).
+    float qmixOctaveThreshold(int storageSlot) const {
+        namespace QO = dotModular::QmixOctave;
+        if (storageSlot < 0 || storageSlot >= QO::VOICES)
+            return QO::resolve(false, 0.f, true, 0.f, 0.f);
+        return QO::resolve(editor.qmixOctave.ownActive[storageSlot],
+                           editor.qmixOctave.ownTh[storageSlot],
+                           editor.qmixOctave.followDegree,
+                           editor.qmixOctave.globalTh,
+                           qmixOctDegreeValue(storageSlot));
+    }
+    // The knob-display resolution: the SAME pure resolver the ModeController runs at the
+    // edge (one authority). Per-voice role shows what the selected voice actually plays.
+    float qmixOctaveDisplayThreshold(int storageSlot) const {
+        return qmixOctaveThreshold(storageSlot);
+    }
+
+    // Spread target mode (0=Anchor V1, 1=Follow CA) per poly lane, UNIFIED PL_* order
+    // (0=MEL,1=OCT,2=QMIX,3=REST,4=ACC,5=VAR,6=LEG — the menu indexes SandsLaneNames::
+    // EDITOR_LONG, which is this order; pe.spreadTargetMode mirrors it 1:1).
     uint8_t getSpreadTargetMode(int lane) const { return (lane>=0&&lane<7) ? editor.spreadTargetMode[lane] : 0; }
     void    setSpreadTargetMode(int lane, uint8_t mode) { if(lane>=0&&lane<7) editor.spreadTargetMode[lane] = mode; }
     float   getSpreadDefault(int lane, int mode) const { return (lane>=0&&lane<7&&mode>=0&&mode<2) ? editor.spreadDefault[lane*2+mode] : 0; }
@@ -926,29 +1568,42 @@ struct Monsoon : Module {
 
     // MACRO accessors — stride 5 poly lanes (QMIX-widened; was 4). laneCol spans lane*4+col over
     // 5 lanes → row stride 20 for macroAtten (was 16). lane 0..4, item/col 0..3, v 0..15.
-    // V1→voice-0 unification: macroOwn has 16 rows (0..15). Rows 0..14 = V2..V16
-    // (poly bank index); row 15 = V1/mono. getMonoMacroOwn is a thin wrapper over
-    // getMacroOwn(15, ...) — same data, unified accessor. Next step: renumber V1
-    // to row 0 with a data migration so getMonoMacroOwn can be deleted entirely.
-    // The kMonoVoice index in macroOwn (row 15) is the V1 ownership slot.
-    static constexpr int kMonoMacroOwnRow = 15;
-    float getMacroOwn(int v, int lane) const { return editor.macroOwn[v*7 + lane]; }
-    void  setMacroOwn(int v, int lane, float x) { editor.macroOwn[v*7 + lane] = x; }
-    float getMonoMacroOwn(int lane) const { return getMacroOwn(kMonoMacroOwnRow, lane); }
-    void  setMonoMacroOwn(int lane, float x) { setMacroOwn(kMonoMacroOwnRow, lane, x); }
+    // V1→voice-0 unification: eastOwns has 16 rows (0..15). Row 0 = V1 (was 15);
+    // rows 1..15 = V2..V16 (poly bank index + 1). Phase A: V1 = index 0, consistent
+    // with kMonoSlot=0 (V1 data slice). Old patches discarded — no backward-compat.
+    // (getMonoMacroOwn/setMonoMacroOwn DELETED — all call sites use
+    //  getOwnerEast(kMonoMacroOwnRow, ...) / setOwnerEast(kMonoMacroOwnRow, ...) directly.)
+    static constexpr int kMonoMacroOwnRow = 0;
+    // BOOLEAN MODEL (Rodney, 2026-10-22): the accessors are boolean — true = EAST owns
+    // the (voice,lane), false = Macro owns. The float get/setMacroOwn pair and its
+    // "> 0.5f" threshold are DELETED; no threshold remains between the store and the
+    // topology (fillOwnersFromStore takes const bool*). The undo envelope is typed too:
+    // StoreEditAction carries V natively, so the OwnerCell undo pushes a BOOL action
+    // straight into setOwnerEast — the float encode/decode edge is gone (Rodney:
+    // "why float instead of bool for undo?" — no reason; deleted 2026-10-22).
+    bool getOwnerEast(int v, int lane) const { return editor.eastOwns[v*7 + lane]; }
+    void  setOwnerEast(int v, int lane, bool east) { editor.eastOwns[v*7 + lane] = east; }
+    // THE polarity predicate: true = EAST owns the lane (East UI owner menu / OwnerCell),
+    // false = Macro owns. Same name as SandsTopology::Inputs's fillOwners parameter
+    // (SandsTopology.hpp) — one vocabulary, store to topology. Now a plain boolean read:
+    // there is no threshold left to misdocument.
+    bool ownerIsEast(int v, int lane) const { return getOwnerEast(v, lane); }
     float getMacroSend(int v, int lane, int item) const { return editor.macroSend[(v*7 + lane)*4 + item]; }
     void  setMacroSend(int v, int lane, int item, float x) { editor.macroSend[(v*7 + lane)*4 + item] = x; }
+    // Per-voice send-tap (P9b fix): which = 0 for LOR items 0-2, 1 for spread item 3.
+    // Same stride convention as macroSend (MacroTapBank::index).
+    float getMacroTap(int v, int lane, int which) const { return editor.macroTap[(v*7 + lane)*2 + which]; }
+    void  setMacroTap(int v, int lane, int which, float x) { editor.macroTap[(v*7 + lane)*2 + which] = x; }
     float getMacroAtten(int v, int laneCol) const { return editor.macroAtten[v*28 + laneCol]; }
     void  setMacroAtten(int v, int laneCol, float x) { editor.macroAtten[v*28 + laneCol] = x; }
 
     // LANE_DIR accessors — the ONE place the index math lives (mirrors old dirId/monoDirId).
-    // V1→voice-0: laneDir has 16 rows (0..15). Rows 0..14 = V2..V16; row 15 = V1/mono.
-    // getMonoLaneDir is a thin wrapper over getLaneDir(15, ...) — same data, unified accessor.
-    static constexpr int kMonoLaneDirRow = 15;
+    // V1→voice-0: laneDir has 16 rows (0..15). Row 0 = V1 (was 15); rows 1..15 = V2..V16.
+    // Phase A: V1 = index 0. (getMonoLaneDir/setMonoLaneDir DELETED — dead code, all call
+    //  sites use getLaneDir(kMonoLaneDirRow, ...) / setLaneDir(kMonoLaneDirRow, ...) directly.)
+    static constexpr int kMonoLaneDirRow = 0;   // Phase A: V1 = index 0 (was 15)
     float getLaneDir(int v, int lane) const { return editor.laneDir[v*6 + lane]; }
     void  setLaneDir(int v, int lane, float x) { editor.laneDir[v*6 + lane] = x; }
-    float getMonoLaneDir(int lane) const { return getLaneDir(kMonoLaneDirRow, lane); }
-    void  setMonoLaneDir(int lane, float x) { setLaneDir(kMonoLaneDirRow, lane, x); }
 
     // VARLEG accessors. varlegDeleg stays (VAR/LEG LOR delegation toggle — a distinct feature).
     // varlegAtten RETIRED: VAR/LEG CV-depth now uses the unified macroAtten store via
@@ -994,8 +1649,8 @@ struct Monsoon : Module {
     int& qmixMode   = engine.pe.qmixMode;   // Task 4 (QMIX)
     int& startStep = engine.startStep;
     int& endStep = engine.endStep;
-    int& stepIndex = engine.stepIndex;
-    int& lastStepIndex = engine.lastStepIndex;
+    // (STEP 4-final) the stepIndex/lastStepIndex reference aliases are DELETED with
+    // the engine fields — the position reads go through playedColumn()/started().
     int& modeSelect = engine.modeSelect;
     int& ppqnSetting = engine.ppqnSetting;
     int& noteVariationMask = engine.noteVariationMask;
@@ -1003,14 +1658,15 @@ struct Monsoon : Module {
     int& cachedOffset = engine.cachedOffset;
     float bpm = 120.f;
 
-    bool (&rhythmPattern)[16] = engine.pe.rhythmPattern;
-    float (&melodyPitchV)[16] = engine.pe.melodyPitchV;
-    int (&melodySemitone)[16] = engine.pe.melodySemitone;
-    float (&rhythmRandom)[16] = engine.pe.rhythmRandom;
-    float (&variationRandom)[16] = engine.pe.variationRandom;
-    float (&legatoRandom)[16] = engine.pe.legatoRandom;
-    float (&melodyRandom)[16] = engine.pe.melodyRandom;
-    float (&octaveRandom)[16] = engine.pe.octaveRandom;
+    // (the rhythmPattern reference alias RETIRED — ITEM 1, with the member)
+    // STEPS_32 Stage 2a: the mirrors and mono row views ride the engine's STORAGE width.
+    float (&melodyPitchV)[dotModular::kStepStorage] = engine.pe.melodyPitchV;
+    int (&melodySemitone)[dotModular::kStepStorage] = engine.pe.melodySemitone;
+    std::array<float, dotModular::kStepStorage>& rhythmRandom = engine.pe.rhythmRandom;
+    std::array<float, dotModular::kStepStorage>& variationRandom = engine.pe.variationRandom;
+    std::array<float, dotModular::kStepStorage>& legatoRandom = engine.pe.legatoRandom;
+    std::array<float, dotModular::kStepStorage>& melodyRandom = engine.pe.melodyRandom;
+    std::array<float, dotModular::kStepStorage>& octaveRandom = engine.pe.octaveRandom;
 
     dsp::PulseGenerator& gatePulse = engine.gs.gatePulse;
     bool& prevExtGate = engine.prevGate1High;
@@ -1025,12 +1681,10 @@ struct Monsoon : Module {
     float& cachedRhythmSeedFloat = engine.pe.cachedRhythmSeedFloat;
     bool& melodySeedCached = engine.pe.melodySeedCached;
     bool& rhythmSeedCached = engine.pe.rhythmSeedCached;
-    int& cachedMelodyStepIndex = engine.pe.cachedMelodyStepIndex;
-    int& cachedMelodyLastStepIndex = engine.pe.cachedMelodyLastStepIndex;
-    float (&cachedMelodyPitchV)[16] = engine.pe.cachedMelodyPitchV;
-    int& cachedRhythmStepIndex = engine.pe.cachedRhythmStepIndex;
-    int& cachedRhythmLastStepIndex = engine.pe.cachedRhythmLastStepIndex;
-    bool (&cachedRhythmPattern)[16] = engine.pe.cachedRhythmPattern;
+    float (&cachedMelodyPitchV)[dotModular::kStepStorage] = engine.pe.cachedMelodyPitchV;
+    // (STEP 4-final) the cached*StepIndex/LastStepIndex aliases are DELETED with the
+    // vestigial position cache (the pattern buffer above STAYS — the real feature).
+    // (the cachedRhythmPattern reference alias RETIRED — ITEM 1, with the member)
 
     int& activeSemiCount = engine.activeSemiCount;
     float (&faderCache)[dotModular::TuningTable::MAXN] = engine.faderCache;
@@ -1087,8 +1741,11 @@ struct Monsoon : Module {
     // base + Causeway CV × att, clamped. Voice-1/mono q-mix level is QMIX_LEVEL_PARAM (getEffectiveMonoQmix).
     float getBasePolyQmix(int voiceIdx);
     float getEffectivePolyQmix(int voiceIdx);
-    // Per-voice VARIATION/LEGATO, mirroring rest/accent. No Causeway VAR/LEG CV inputs yet,
-    // so effective = base (clamped). Mono base = VARIATION_PARAM / LEGATO_PARAM raw knob.
+    // Per-voice VARIATION/LEGATO, mirroring rest/accent. No Causeway VAR/LEG CV inputs yet.
+    // VAR is BIPOLAR (CC_FIX_PER_VOICE_ADVANCE_WANDER — the same formula shape as the
+    // mono gate-mode write: (2*knob - 1) under ONE clamp [-1,+1]; centre = stutter,
+    // down = backward — no mono/poly knob-behaviour split); LEGATO stays a unipolar
+    // probability. Mono base = VARIATION_PARAM / LEGATO_PARAM raw knob.
     float getBasePolyVariation(int voiceIdx);
     float getBasePolyLegato(int voiceIdx);
     float getEffectivePolyVariation(int voiceIdx);
@@ -1101,6 +1758,7 @@ struct Monsoon : Module {
 
     void switchMelodyMode();
     void switchRhythmMode();
+    void switchQmixMode();
     int pickSemitoneWeighted();
     //inline float unitRandomStochastic() { return engine.pe.unitStochastic(); }
     float genPitchV(int& outSemitone);
@@ -1205,6 +1863,7 @@ extern Model* modelMonsoonRafflesExpander;
 extern Model* modelMonsoonJunctionExpander;
 extern Model* modelMonsoonChangeAlleyExpander;
 extern Model* modelMonsoonChangeAlleyV2;
+extern Model* modelCantonment;            // articulation-envelope routing (containment DAG; CA sibling)
 extern Model* modelMonsoonTemasekExpander;
 //extern Model* modelMonsoonSandsExpander;
 extern Model* modelMonsoonStraitsExpander; // base poly expander
@@ -1214,6 +1873,18 @@ extern Model* modelStraitsLaneREST;        // REST lane expander
 extern Model* modelStraitsLaneACCENT;      // ACCENT lane expander
 extern Model* modelStraitsLaneVARIATION;   // VARIATION lane expander
 extern Model* modelStraitsLaneLEGATO;      // LEGATO lane expander
+extern Model* modelStraitsSubgatePanelRatchetRest;    // subgate per-voice panels — ONE per (level x decision)
+                                                       //   (StraitsBase-spawned, hidden; the global tier is on StraitsBase)
+extern Model* modelStraitsSubgatePanelRatchetLegato;  //   (CC_PROMPT_FIX_SUBGATE_PANELS option (a): the lane law —
+extern Model* modelStraitsSubgatePanelRatchetAccent;  //    one panel = one decision's 16 voices, 6/6/4 165-wide)
+extern Model* modelStraitsSubgatePanelRatchetAdvance;
+extern Model* modelStraitsSubgatePanelGhostRest;
+extern Model* modelStraitsSubgatePanelGhostLegato;
+extern Model* modelStraitsSubgatePanelGhostAccent;
+extern Model* modelStraitsSubgatePanelGhostAdvance;
+extern Model* modelStraitsQmixOctPanel;   // qmix-octave per-voice panel — ONE panel, 16 voices x ONE octave
+                                          //   threshold (CC_PROMPT_QMIX_OCTAVE Stage 3; StraitsBase-spawned, hidden;
+                                          //   docked AFTER the subgate panels — the run's last tier)
 extern Model* modelMonsoonCausewayPolyExpander; // poly CV modulation expander
 extern Model* modelMonsoonChangiExpander; // per-voice output expander
 extern Model* modelMonsoonShophouseExpander; // scale expander (12th module)
@@ -1222,6 +1893,7 @@ extern Model* modelColonnades;                 // tuning+scale authoring expande
 extern Model* modelColonnadesDuo;              // tuning+scale authoring expander, 24-tone (microtonal Phase 3)
 extern Model* modelMonsoonShophouseMicro;      // tuning+scale scene modulator for Colonnades/Duo (.dmtune fronts)
 extern Model* modelKeppel;                     // poly microtonal CV → MPE MIDI out (standalone utility)
+extern Model* modelWoodlands;                  // MPE MIDI in → poly CV (the mirror of Keppel) [working name]
 extern Model* modelLantern;                    // Lantern note-output visualiser
 // West retired (Straits redesign)
 //extern Model* modelMonsoonStraitsSands;        // NEW (Macro): global DNA controls (compact)
@@ -1231,7 +1903,11 @@ extern Model* modelLantern;                    // Lantern note-output visualiser
 extern Model* modelMonsoonSandsVisualExpander;  // Mono visual DNA editor (voice 1)
 extern Model* modelStraitsEastSandsVisual;      // East visual DNA editor (voices 2-8)
 extern Model* modelStraitsSandsMacroVisual;     // Macro visual DNA editor (global)
+extern Model* modelSandsDistributionExpander;   // the distribution sub-expander (dual role by host)
+extern Model* modelSandsMacroSendSubpanel;      // the Macro send subpanel (every Macro→East send, one snapped panel)
 extern Model* modelIntertropical;               // Intertropical scene sequencer
+extern Model* modelPhaseDistortion;             // the standalone phase-distortion module (PHASE_DISTRIBUTION_SPEC §13 — the B comparison build; 8 phase in/out, per-channel sets, the ONE shared primitive; the expander model A stays)
+extern Model* modelSandsPhaseDistSubpanel;      // the phase-distortion sets authoring subpanel (CC_PROMPT_PHASE_DISTORTION_PANEL TASK 1 — the §14 store's UI; edits the rack-wide-lowest-id expander's store, the SAME instance the Monsoons read)
 
 // ─── Change Alley pin matrix expander ────────────────────────────────────────
 namespace ChangeAlleyIds {

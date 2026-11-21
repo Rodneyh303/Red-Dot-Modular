@@ -38,7 +38,7 @@ struct ModArcOverlay : rack::TransparentWidget {
     float travelTopPx = 4.f;
     float travelBotPx = 4.f;
 
-    // Position this overlay over `knob`, padded by `padPx` on every side. The pad
+    // Position this overlay over knob, padded by padPx on every side. The pad
     // matters: the radial arc (and round line caps) can draw a little OUTSIDE the
     // knob's bounds, and the widget framework only repaints a widget's own box —
     // so without the pad, stale arc pixels linger as "trails" when the knob is

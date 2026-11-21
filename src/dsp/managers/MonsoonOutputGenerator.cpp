@@ -5,6 +5,7 @@
 #include "../../MonsoonStraitsExpander.hpp"
 #include "../../MonsoonChangiExpander.hpp"
 #include "../../MonsoonChangiT2Expander.hpp"
+#include "../VoiceResolver.hpp"   // CC_PROMPT_STRONG_TYPES: VoiceSlot minting (slot)
 
 using namespace rack;
 
@@ -28,6 +29,39 @@ void OutputGenerator::drive(SequencerEngine& engine,
     
     generateOutputs(engine, outputs, currentPitchV, effectiveMuted, sampleTime);
 
+    // ── UNIFIED ADDRESSING Stage 4: the OUTPUT MASK (output-gate-only) ──────────
+    // The ONE output layer (the doc's containment hierarchy): a per-step play/mute
+    // mask per voice — cycle = the all-on degenerate mask (today's behaviour, the
+    // default), dynamic = the range-as-mask (O/L-derived = absolute-1), painted =
+    // the fixed-rotatable pattern (static = absolute-2, follows-R = absolute-3).
+    // Where the mask mutes the CURRENT PHRASE STEP, zero the voice's GATE + CV OUT
+    // (and the articulation terminals derived from them) — NOT the modulation CV
+    // inputs, NOT generation, NOT correlation: the same safe output-stage mute as
+    // the run/mute gates; marginals/correlation untouched. The phrase-wrap cut rule
+    // falls out of the per-step evaluation: a wrap INSIDE the mask carries the gate
+    // across normally; only the mask's real end cuts; step 1 outside = cut at 16.
+    // At defaults (cycle everywhere) outputMaskPasses is TRUE every step — every
+    // voltage below lands bit-identically (the goldens' output path untouched).
+    // THE GLOBAL STEP (CC_FIX_MASK_GLOBAL_STEP — UNIFIED_ADDRESSING_SYSTEM.md:331):
+    // the mask is an OUTPUT GATE in GLOBAL-position space — it carves per-voice
+    // SOUND REGIONS out of the phrase (a voice with range [O, O+L) is SILENT while
+    // the global playhead is outside it; entrances/exits, voices occupying
+    // different phrase regions). It must NOT be keyed to the voice's read cell:
+    // the reads run cycle-mode everywhere and NEVER leave the window, so a
+    // read-keyed mask is inert (Range ≡ Cycle; painted cells at out-of-read steps
+    // never fire). The reads stay ungated; only the output is gated, globally —
+    // the per-voice difference lives in each voice's OWN range/pattern.
+    const int maskStep = engine.pos_.playedColumn();   // the GLOBAL playhead step (global-position space, spec:331) — the resolver's played column (== stepIndex, the identity harness; SLICE 3)
+    const bool monoMaskPass = engine.outputMaskPasses(dotModular::VoiceResolver::mono(), maskStep);
+    if (!monoMaskPass) {
+        outputs[GATE_OUTPUT].setVoltage(0.f);
+        outputs[CV_OUTPUT].setVoltage(0.f);
+        outputs[ACCENT_OUTPUT].setVoltage(0.f);
+        outputs[STEP_GATE_OUTPUT].setVoltage(0.f);
+        outputs[STEP_LEGATO_GATE_OUTPUT].setVoltage(0.f);
+        currentPitchV = 0.f;   // the cached local feeds the Straits/Changi ch0 writes below
+    }
+
     // Cache gate state for summary outputs
     float gateV = outputs[GATE_OUTPUT].getVoltage();
     float stepGateV   = outputs[STEP_GATE_OUTPUT].getVoltage();         // mono STEP  (for poly ch0)
@@ -47,32 +81,59 @@ void OutputGenerator::drive(SequencerEngine& engine,
     // Semantics preserved verbatim: muted / inactive voices (i >= numPolyVoices) DO NOT call
     // process() (gate stays frozen, as before) and read out as 0V. The guard runs the precompute
     // only when at least one poly consumer is attached, so the pulse isn't advanced when nothing
-    // reads it (matching the old behaviour where the blocks only ran under their own `if`).
+    // reads it (matching the old behaviour where the blocks only ran under their own if).
     auto* straits  = expanderManager.cachedPolyVoiceExpander;
     auto* changi   = expanderManager.cachedChangiExpander;
     auto* changiT2 = expanderManager.cachedChangiT2Expander;
     const bool anyPolyConsumer = (straits != nullptr) || (changi != nullptr) || (changiT2 != nullptr);
 
-    float polyGateV[15]   = {};
-    float polyStepV[15]   = {};
-    float polyCV[15]      = {};
-    float polyAccentV[15] = {};
-    float polySlegV[15]   = {};
+    float polyGateV[16]   = {};
+    float polyStepV[16]   = {};
+    float polyCV[16]      = {};
+    float polyAccentV[16] = {};
+    float polySlegV[16]   = {};
     if (anyPolyConsumer) {
+        // NOTE (CC_PROMPT_STRONG_TYPES audit — behaviour PRESERVED, flagged not fixed):
+        // this loop indexes voices[i] for i = 0..14 against cable channels documented
+        // "ch1..15 = poly voices 2..16" (V2..V16 = slots 1..15). voices[0] is V1's
+        // DORMANT per-voice slot post-COLLAPSE (mono runs on eng.gs), so ch1 reads a
+        // dead gate and every later channel shows the PREVIOUS voice — the suspected
+        // pre-existing off-by-one this migration exists to expose. Fix belongs in its
+        // own red-first commit + Rack feel-test, NOT in the behaviour-identical sweep.
         for (int i = 0; i < 15; ++i) {
             if (effectiveMuted || i >= (int)engine.numPolyVoices) {
                 // Skipped voice: leave arrays at 0 and DON'T advance process() (frozen gate).
                 continue;
             }
-            float vg     = engine.voices[i].gs.process(sampleTime);
-            float vgStep = engine.voices[i].gsStep.process(sampleTime);   // STEP mirror (per voice)
+            // OFF-BY-ONE FIX (audit item 1, confirmed in Rack — Lantern row 2 missing,
+            // Straits lane N drove row N+1): this loop is 0-BASED (writes polyGateV[i] →
+            // ch = i+1), so ch(i+1) must show poly voice V(i+2) = VoiceSlot{i+1} = slot(i+2).
+            // Was slot(i+1) = VoiceSlot{i}: ch1 read V1's DORMANT slot and V16 was never
+            // output. (The other poly loops here are 1-BASED (i=1..numPolyVoices) where
+            // slot(i+1) is already correct — do NOT change those.)
+            const auto vs = dotModular::VoiceResolver::slot(i + 2);
+            float vg     = engine.voices[vs].gs.process(sampleTime);
+            float vgStep = engine.voices[vs].gsStep.process(sampleTime);   // STEP mirror (per voice)
             polyGateV[i]   = vg;
             polyStepV[i]   = vgStep;
-            polyCV[i]      = engine.voices[i].gs.currentPitchV;
+            polyCV[i]      = engine.voices[vs].gs.currentPitchV;
             // Accent is a poly lane: each voice fires its OWN accent (drawn per-voice in
             // executePolyVoice), gated by the voice actually sounding.
-            polyAccentV[i] = (engine.voices[i].accented && vg > 5.f) ? 10.f : 0.f;
-            polySlegV[i]   = engine.voices[i].gs.slurMember ? vgStep : 0.f;  // SLEG: slur-masked
+            polyAccentV[i] = (engine.voices[vs].accented && vg > 5.f) ? 10.f : 0.f;
+            polySlegV[i]   = engine.voices[vs].gs.slurMember ? vgStep : 0.f;  // SLEG: slur-masked
+            // Stage 4: the voice's OUTPUT MASK — zero the whole terminal set where the
+            // mask mutes the current GLOBAL step (output-gate-only; the state machines
+            // above ran untouched — the mute is post-process, read-side only). The
+            // step is the GLOBAL playhead for every voice (spec:331) — the per-voice
+            // difference comes from each voice's OWN range/pattern (its sound
+            // region), not from a per-voice step.
+            if (!engine.outputMaskPasses(vs, maskStep)) {
+                polyGateV[i]   = 0.f;
+                polyStepV[i]   = 0.f;
+                polyCV[i]      = 0.f;
+                polyAccentV[i] = 0.f;
+                polySlegV[i]   = 0.f;
+            }
         }
     }
 
@@ -208,20 +269,20 @@ void OutputGenerator::setPolyVoiceOutputs(engine::Output* outputs,
     // (mono accent stays on the mono ACCENT_OUTPUT; poly voices now use their OWN accent)
     
     // Output active voices
-    for (int i = 0; i < numPolyVoices && i < 7; ++i) {
-        float vg = engine.voices[i].gs.process(sampleTime);
+    for (int i = 1; i <= numPolyVoices && i <= 7; ++i) {
+        float vg = engine.voices[dotModular::VoiceResolver::slot(i + 1)].gs.process(sampleTime);
         
         // Main voice gate
         setGateWithMute_(outputs[i], vg, muted);
         
         // Poly voice CV (pitch)
-        float pv = engine.voices[i].gs.currentPitchV;
+        float pv = engine.voices[dotModular::VoiceResolver::slot(i + 1)].gs.currentPitchV;
         if (i + 7 < 14) {  // Assume CV outputs follow gate outputs
             outputs[i + 7].setVoltage(muted ? 0.f : pv);
         }
         
         // Poly accent: each voice fires its OWN accent (poly lane), gated by sounding.
-        float polyAccent = (engine.voices[i].accented && vg > 5.f) ? 10.f : 0.f;
+        float polyAccent = (engine.voices[dotModular::VoiceResolver::slot(i + 1)].accented && vg > 5.f) ? 10.f : 0.f;
         if (i + 14 < 21) {  // Assume accent outputs follow CV outputs
             setGateWithMute_(outputs[i + 14], polyAccent, muted);
         }

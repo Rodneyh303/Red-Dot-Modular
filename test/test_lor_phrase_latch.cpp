@@ -1,0 +1,827 @@
+// test_lor_phrase_latch.cpp — CC_PROMPT_CADENCE_C1 + C1b (the cadence latch suite)
+//
+// C1 (merged): nested LOR latched at the level's ADDRESSED-AGAINST frame — voice
+// rows at the global phrase edge, probability lanes at the voice-frame edge (an
+// identity row's pass-through cycle IS the phrase), the boundary evaluated LIVE
+// (the 8→6 trace), C2 keep-counting pinned.
+//
+// C1b Stage B RE-EXPRESSES the cadence (the doc's DECIDED law): the BASE and the CV
+// are split — `effective = base_live + cv_committed_at_boundary`. A BASE change (the
+// store rows — what a knob/drag edits) now bites IMMEDIATELY while unlocked (the C1
+// "hold every LOR edit to the phrase" was wrong for base edits); a CV change (the
+// manager's delta push) lands only at the boundary. The commit gates stay Stage A's:
+// (phrase edge OR unlock flush) gated by the axis's ScopeBit — lock-aware (P5/P6).
+//
+// The A/B/C march structure survives unchanged: A = no change, B = the value applied
+// from reset, C = applied mid-march. The change VEHICLE distinguishes the cadence:
+// a store write (base → immediate) vs the engine's CV-delta push (boundary). The
+// reads under a MAPPED row are pure in (phrasePos, L, O, R), so C==A until the CV
+// edge and C==B from it, bit-for-bit; the base variant asserts C==B from the change
+// step itself. Reproduce-first (Stage B): the base-immediacy pins FAILED on the C1
+// engine (the combined latch held base edits to the edge — the captured run); the
+// CV pins are new API and pin the split from birth.
+#include <cstdio>
+#include <vector>
+#include "engines/SequencerEngine.hpp"
+#include "VoiceResolver.hpp"
+
+static int g_fail = 0;
+#define CHECK(c, m) do { if (!(c)) { std::printf("  FAIL: %s\n", m); ++g_fail; } } while (0)
+
+static constexpr int STEPS = 26;
+
+struct March {
+    std::vector<int> read;      // the observable per step (post-advance)
+    std::vector<int> pp;        // pos_.phrasePos() per step (post-advance)
+    std::vector<int> phase;     // voiceFramePhase_[v] per step (post-advance)
+    std::vector<int> cell;      // the row walk's cell per step (laneTickFor(dir, phase+1, L) — the TRUE-WRAP reference, BUG 6)
+};
+
+// The engine voice slot for V2 (the first poly voice).
+static dotModular::VoiceSlot v2() { return dotModular::VoiceResolver::slot(2); }
+// A zeroed east CV-delta block ([16*3] slot-major).
+static std::vector<int> zeroEast() { return std::vector<int>(16 * 3, 0); }
+
+// ── P1: the VOICE ROW — base immediate, CV at the global phrase edge ──────────
+static void p1_voice_row() {
+    std::printf("P1 voice row: base immediate (unlocked), CV at the phrase edge\n");
+    const int v = v2().v;
+    char msg[160];
+    {   // BASE: the store edit bites the NEXT STEP (immediate).
+        March march[3];
+        for (int which = 0; which < 3; ++which) {
+            SequencerEngine eng; eng.reset();
+            eng.updateWindow(8.f, 0.f, false, 0.f, 0.f, false);
+            eng.numPolyVoices = 2;
+            eng.setVoiceLorLocalEast(v2(), true);
+            eng.voiceLorRef(v2(), SequencerEngine::LOR_LEN) = (which == 1) ? 6 : 4;
+            for (int t = 0; t < STEPS; ++t) {
+                eng.advancePlayhead(1, nullptr);
+                if (which == 2 && t == 1) eng.voiceLorRef(v2(), SequencerEngine::LOR_LEN) = 6;
+                march[which].read.push_back(eng.voiceRead_[v]);
+                march[which].pp.push_back(eng.pos_.phrasePos());
+            }
+        }
+        for (int t = 2; t < STEPS; ++t) {
+            std::snprintf(msg, sizeof(msg), "P1-base: step %d (pp=%d) still on the old window (read %d, want %d) — a base edit must land IMMEDIATELY while unlocked",
+                          t, march[2].pp[t], march[2].read[t], march[1].read[t]);
+            CHECK(march[2].read[t] == march[1].read[t], msg);
+        }
+    }
+    {   // CV: the delta push lands at the global phrase edge (the C1 cadence, CV-ward).
+        March march[3];
+        for (int which = 0; which < 3; ++which) {
+            SequencerEngine eng; eng.reset();
+            eng.updateWindow(8.f, 0.f, false, 0.f, 0.f, false);
+            eng.numPolyVoices = 2;
+            eng.setVoiceLorLocalEast(v2(), true);
+            if (which == 1) {   // B: the delta applied from reset (committed at the first edge)
+                std::vector<int> m3 = {2, 0, 0};
+                std::vector<int> east = zeroEast();
+                east[v * 3 + SequencerEngine::LOR_LEN] = 2;
+                eng.pushVoiceLorCv(m3.data(), east.data());
+            }
+            for (int t = 0; t < STEPS; ++t) {
+                eng.advancePlayhead(1, nullptr);
+                if (which == 2 && t == 1) {   // C: the delta pushed mid-phrase (pending, not committed)
+                    std::vector<int> m3 = {2, 0, 0};
+                    std::vector<int> east = zeroEast();
+                    east[v * 3 + SequencerEngine::LOR_LEN] = 2;
+                    eng.pushVoiceLorCv(m3.data(), east.data());
+                }
+                march[which].read.push_back(eng.voiceRead_[v]);
+                march[which].pp.push_back(eng.pos_.phrasePos());
+            }
+        }
+        int edge = -1;
+        for (int t = 2; t < STEPS; ++t)
+            if (march[2].pp[t] == 0) { edge = t; break; }
+        std::snprintf(msg, sizeof(msg), "P1-cv: no phrase edge found after the change (edge=%d)", edge);
+        CHECK(edge > 2, msg);
+        if (edge <= 2) return;
+        for (int t = 2; t < edge; ++t) {
+            std::snprintf(msg, sizeof(msg), "P1-cv: step %d (pp=%d) already moved to the new window (read %d, want the old %d) — CV must commit only at the boundary",
+                          t, march[2].pp[t], march[2].read[t], march[0].read[t]);
+            CHECK(march[2].read[t] == march[0].read[t], msg);
+        }
+        for (int t = edge; t < STEPS; ++t) {
+            std::snprintf(msg, sizeof(msg), "P1-cv: step %d after the edge disagrees with the new-window march (read %d, want %d)",
+                          t, march[2].read[t], march[1].read[t]);
+            CHECK(march[2].read[t] == march[1].read[t], msg);
+        }
+        // THE REFINEMENT'S NEGATIVE: the voice row's parent is the GLOBAL — the voice's
+        // OWN frame edge (mid-phrase) must NOT commit its CV.
+        { bool switchedEarly = false;
+          for (int t = 2; t < edge; ++t) switchedEarly = switchedEarly || (march[2].read[t] == march[1].read[t] && march[2].read[t] != march[0].read[t]);
+          CHECK(!switchedEarly, "P1-cv: the CV committed at the row's OWN frame edge — the rung is the parent's phrase");
+        }
+    }
+}
+
+// ── P1b: the MACRO ROW — base immediate, CV at the global phrase edge ─────────
+static void p1b_macro_row() {
+    std::printf("P1b macro row: base immediate (unlocked), CV at the phrase edge\n");
+    char msg[160];
+    {   // BASE immediate.
+        March march[3];
+        for (int which = 0; which < 3; ++which) {
+            SequencerEngine eng; eng.reset();
+            eng.updateWindow(8.f, 0.f, false, 0.f, 0.f, false);
+            eng.macroVoiceLor_[SequencerEngine::LOR_LEN] = (which == 1) ? 6 : 4;
+            for (int t = 0; t < STEPS; ++t) {
+                eng.advancePlayhead(1, nullptr);
+                if (which == 2 && t == 1) eng.macroVoiceLor_[SequencerEngine::LOR_LEN] = 6;
+                march[which].read.push_back(eng.macroFrameRead());
+                march[which].pp.push_back(eng.pos_.phrasePos());
+            }
+        }
+        for (int t = 2; t < STEPS; ++t) {
+            std::snprintf(msg, sizeof(msg), "P1b-base: step %d (pp=%d) still on the old window (read %d, want %d)",
+                          t, march[2].pp[t], march[2].read[t], march[1].read[t]);
+            CHECK(march[2].read[t] == march[1].read[t], msg);
+        }
+    }
+    {   // CV at the phrase edge.
+        March march[3];
+        for (int which = 0; which < 3; ++which) {
+            SequencerEngine eng; eng.reset();
+            eng.updateWindow(8.f, 0.f, false, 0.f, 0.f, false);
+            if (which == 1) { std::vector<int> m3 = {2, 0, 0}; std::vector<int> east = zeroEast(); eng.pushVoiceLorCv(m3.data(), east.data()); }
+            for (int t = 0; t < STEPS; ++t) {
+                eng.advancePlayhead(1, nullptr);
+                if (which == 2 && t == 1) { std::vector<int> m3 = {2, 0, 0}; std::vector<int> east = zeroEast(); eng.pushVoiceLorCv(m3.data(), east.data()); }
+                march[which].read.push_back(eng.macroFrameRead());
+                march[which].pp.push_back(eng.pos_.phrasePos());
+            }
+        }
+        int edge = -1;
+        for (int t = 2; t < STEPS; ++t)
+            if (march[2].pp[t] == 0) { edge = t; break; }
+        std::snprintf(msg, sizeof(msg), "P1b-cv: no phrase edge found after the change (edge=%d)", edge);
+        CHECK(edge > 2, msg);
+        if (edge <= 2) return;
+        for (int t = 2; t < edge; ++t) {
+            std::snprintf(msg, sizeof(msg), "P1b-cv: step %d (pp=%d) already moved to the new window (read %d, want the old %d)",
+                          t, march[2].pp[t], march[2].read[t], march[0].read[t]);
+            CHECK(march[2].read[t] == march[0].read[t], msg);
+        }
+        for (int t = edge; t < STEPS; ++t) {
+            std::snprintf(msg, sizeof(msg), "P1b-cv: step %d after the edge disagrees with the new-window march (read %d, want %d)",
+                          t, march[2].read[t], march[1].read[t]);
+            CHECK(march[2].read[t] == march[1].read[t], msg);
+        }
+    }
+}
+
+// ── P2: the PROBABILITY LANE — base immediate, CV at the VOICE-FRAME edge ─────
+// V2 carries a mapped row {L=4} (its frame edge every 4 steps, mid-phrase at 4),
+// its REST lane runs L=3; the change to 5: base bites immediately, CV lands at
+// phase==0 — NOT per step and not at the global phrase.
+static void p2_lane() {
+    std::printf("P2 probability lane: base immediate (unlocked), CV at the voice-frame edge\n");
+    const int strand = dotModular::STRAND_RHYTHM;
+    char msg[160];
+    {   // BASE immediate.
+        March march[3];
+        for (int which = 0; which < 3; ++which) {
+            SequencerEngine eng; eng.reset();
+            eng.updateWindow(8.f, 0.f, false, 0.f, 0.f, false);
+            eng.numPolyVoices = 2;
+            eng.setVoiceLorLocalEast(v2(), true);
+            eng.voiceLorRef(v2(), SequencerEngine::LOR_LEN) = 4;
+            eng.polyLORRef(v2(), dotModular::LaneId{SequencerEngine::PL_REST}, SequencerEngine::LOR_LEN) = (which == 1) ? 5 : 3;
+            for (int t = 0; t < STEPS; ++t) {
+                eng.advancePlayhead(1, nullptr);
+                if (which == 2 && t == 1)
+                    eng.polyLORRef(v2(), dotModular::LaneId{SequencerEngine::PL_REST}, SequencerEngine::LOR_LEN) = 5;
+                march[which].read.push_back(eng.laneTickV_[v2().v][strand]);
+                march[which].pp.push_back(eng.pos_.phrasePos());
+                march[which].phase.push_back(eng.voiceFramePhase_[v2().v]);
+            }
+        }
+        for (int t = 2; t < STEPS; ++t) {
+            std::snprintf(msg, sizeof(msg), "P2-base: step %d (phase=%d) still on the old lane window (tick %d, want %d)",
+                          t, march[2].phase[t], march[2].read[t], march[1].read[t]);
+            CHECK(march[2].read[t] == march[1].read[t], msg);
+        }
+    }
+    {   // CV at the voice-frame edge.
+        March march[3];
+        for (int which = 0; which < 3; ++which) {
+            SequencerEngine eng; eng.reset();
+            eng.updateWindow(8.f, 0.f, false, 0.f, 0.f, false);
+            eng.numPolyVoices = 2;
+            eng.setVoiceLorLocalEast(v2(), true);
+            eng.voiceLorRef(v2(), SequencerEngine::LOR_LEN) = 4;
+            if (which == 1) { std::vector<int> d3 = {2, 0, 0}; eng.pushLaneLorCvPoly(v2(), SequencerEngine::PL_REST, d3.data()); }
+            for (int t = 0; t < STEPS; ++t) {
+                eng.advancePlayhead(1, nullptr);
+                if (which == 2 && t == 1) { std::vector<int> d3 = {2, 0, 0}; eng.pushLaneLorCvPoly(v2(), SequencerEngine::PL_REST, d3.data()); }
+                march[which].read.push_back(eng.laneTickV_[v2().v][strand]);
+                march[which].pp.push_back(eng.pos_.phrasePos());
+                march[which].phase.push_back(eng.voiceFramePhase_[v2().v]);
+                {   // (REMAINING BUGS 6) the TRUE-WRAP reference: the row walk's
+                    // cell, computed the way the reads consume it (laneTickFor(dir,
+                    // phase+1, L) on the post-advance phase) — NOT the bare phase
+                    // field, whose indexing convention enshrined the shift.
+                    int rL, rO, rR; SequencerEngine::LaneDir rd;
+                    eng.effectiveVoiceLor(v2().v, rL, rO, rR, rd);
+                    march[which].cell.push_back((int)SequencerEngine::laneTickFor(rd, (int64_t)eng.voiceFramePhase_[v2().v] + 1, rL));
+                }
+            }
+        }
+        // (REMAINING BUGS 6) the edge reference CORRECTED: the TRUE WRAP — the
+        // step at which the voice walk is actually at cell 0 (the playhead's
+        // return) — not the bare post-advance phase==0 loop that enshrined
+        // whatever shift the engine had.
+        int edge = -1;
+        for (int t = 2; t < STEPS; ++t)
+            if (march[2].cell[t] == 0) { edge = t; break; }
+        std::snprintf(msg, sizeof(msg), "P2-cv: no voice-frame edge found after the change (edge=%d)", edge);
+        CHECK(edge > 2, msg);
+        if (edge <= 2) return;
+        std::snprintf(msg, sizeof(msg), "P2-cv: the edge is the global phrase (pp=%d at t=%d) — the lane CV must latch at the VOICE frame, which lands mid-phrase",
+                      march[2].pp[edge], edge);
+        CHECK(march[2].pp[edge] != 0, msg);
+        for (int t = 2; t < edge; ++t) {
+            std::snprintf(msg, sizeof(msg), "P2-cv: step %d (phase=%d) already moved to the new lane window (tick %d, want the old %d)",
+                          t, march[2].phase[t], march[2].read[t], march[0].read[t]);
+            CHECK(march[2].read[t] == march[0].read[t], msg);
+        }
+        for (int t = edge; t < STEPS; ++t) {
+            std::snprintf(msg, sizeof(msg), "P2-cv: step %d after the edge disagrees with the new-window march (tick %d, want %d)",
+                          t, march[2].read[t], march[1].read[t]);
+            CHECK(march[2].read[t] == march[1].read[t], msg);
+        }
+    }
+}
+
+// ── P3: the boundary is LIVE — shrinking the global 8→6 mid-phrase moves the ──
+// voice-row CV latch point to the new, EARLIER wrap (not the stale 8-cycle one).
+static void p3_live_boundary_shrink8to6() {
+    std::printf("P3 live boundary: global 8->6 mid-phrase moves the CV latch point earlier\n");
+    const int v = v2().v;
+    char msg[160];
+    March march[3];   // all three shrink 8->6 at t==3; C also pushes its CV delta there
+    for (int which = 0; which < 3; ++which) {
+        SequencerEngine eng; eng.reset();
+        eng.updateWindow(8.f, 0.f, false, 0.f, 0.f, false);
+        eng.numPolyVoices = 2;
+        eng.setVoiceLorLocalEast(v2(), true);
+        eng.voiceLorRef(v2(), SequencerEngine::LOR_LEN) = (which == 1) ? 6 : 4;
+        if (which == 1) { std::vector<int> m3 = {0, 0, 0}; std::vector<int> east = zeroEast(); east[v * 3 + SequencerEngine::LOR_LEN] = 2; eng.pushVoiceLorCv(m3.data(), east.data()); }
+        for (int t = 0; t < STEPS; ++t) {
+            eng.advancePlayhead(1, nullptr);
+            if (t == 3) {
+                eng.updateWindow(6.f, 0.f, false, 0.f, 0.f, false);   // the STEP-rate shrink (all marches)
+                if (which == 2) {   // the pending CV delta rides the MOVED boundary
+                    std::vector<int> m3 = {0, 0, 0};
+                    std::vector<int> east = zeroEast();
+                    east[v * 3 + SequencerEngine::LOR_LEN] = 2;
+                    eng.pushVoiceLorCv(m3.data(), east.data());
+                }
+            }
+            march[which].read.push_back(eng.voiceRead_[v]);
+            march[which].pp.push_back(eng.pos_.phrasePos());
+        }
+    }
+    int edge = -1;
+    for (int t = 4; t < STEPS; ++t)
+        if (march[2].pp[t] == 0) { edge = t; break; }
+    std::snprintf(msg, sizeof(msg), "P3: no phrase edge after the shrink (edge=%d)", edge);
+    CHECK(edge == 6, msg);
+    if (edge != 6) return;
+    std::snprintf(msg, sizeof(msg), "P3: the latch waited for the STALE 8-cycle boundary (edge t=%d) — the boundary must be evaluated live (the 8->6 trace)", edge);
+    CHECK(edge < 8, msg);
+    for (int t = 4; t < edge; ++t) {
+        std::snprintf(msg, sizeof(msg), "P3: step %d (pp=%d) already moved to the new window (read %d, want the old %d)",
+                      t, march[2].pp[t], march[2].read[t], march[0].read[t]);
+        CHECK(march[2].read[t] == march[0].read[t], msg);
+    }
+    for (int t = edge; t < STEPS; ++t) {
+        std::snprintf(msg, sizeof(msg), "P3: step %d after the moved boundary disagrees with the new-window march (read %d, want %d)",
+                      t, march[2].read[t], march[1].read[t]);
+        CHECK(march[2].read[t] == march[1].read[t], msg);
+    }
+}
+
+// ── P4: global L+O stay STEP-rate and C2 keeps counting ───────────────────────
+static void p4_c2_keep_counting_and_step_rate_global() {
+    std::printf("P4 C2 keep-counting + global L/O stay step-rate\n");
+    char msg[160];
+    {   // (i) no-fold case
+        SequencerEngine eng; eng.reset();
+        eng.updateWindow(10.f, 0.f, false, 0.f, 0.f, false);
+        for (int t = 0; t < 5; ++t) eng.advancePlayhead(1, nullptr);
+        std::snprintf(msg, sizeof(msg), "P4(i): march sanity (phrasePos %d, want 4)", eng.pos_.phrasePos());
+        CHECK(eng.pos_.phrasePos() == 4, msg);
+        eng.updateWindow(8.f, 0.f, false, 0.f, 0.f, false);
+        eng.advancePlayhead(1, nullptr);
+        std::snprintf(msg, sizeof(msg), "P4(i): phrasePos after the shrink step is %d, want 5 (the walk plays THROUGH — no re-seed)",
+                      eng.pos_.phrasePos());
+        CHECK(eng.pos_.phrasePos() == 5, msg);
+        eng.advancePlayhead(1, nullptr);
+        CHECK(eng.pos_.phrasePos() == 6, "P4(i): phrasePos 6");
+        eng.advancePlayhead(1, nullptr);
+        CHECK(eng.pos_.phrasePos() == 7, "P4(i): phrasePos 7");
+        eng.advancePlayhead(1, nullptr);
+        std::snprintf(msg, sizeof(msg), "P4(i): the wrap bites at the NEW length (phrasePos %d, want 0 at the 8-cycle — was 10)",
+                      eng.pos_.phrasePos());
+        CHECK(eng.pos_.phrasePos() == 0, msg);
+    }
+    {   // (ii) the fold case (shrink BELOW the current phrase coordinate)
+        SequencerEngine eng; eng.reset();
+        eng.updateWindow(10.f, 0.f, false, 0.f, 0.f, false);
+        for (int t = 0; t < 9; ++t) eng.advancePlayhead(1, nullptr);
+        std::snprintf(msg, sizeof(msg), "P4(ii): march sanity (phrasePos %d, want 8)", eng.pos_.phrasePos());
+        CHECK(eng.pos_.phrasePos() == 8, msg);
+        const int64_t tickBefore = eng.transportTick_;
+        const int foldBefore = eng.pos_.phaseClock(eng.transportTick_);
+        eng.updateWindow(6.f, 0.f, false, 0.f, 0.f, false);
+        std::snprintf(msg, sizeof(msg), "P4(ii): the transport tick moved with the re-author (%lld -> %lld) — KEEP-COUNTING means the clock is untouched",
+                      (long long)tickBefore, (long long)eng.transportTick_);
+        CHECK(eng.transportTick_ == tickBefore, msg);
+        const int foldAfter = eng.pos_.phaseClock(eng.transportTick_);
+        std::snprintf(msg, sizeof(msg), "P4(ii): the transport phrase view folded %d -> %d, want 8 -> 2 (mod the new length, never re-seeded)",
+                      foldBefore, foldAfter);
+        CHECK(foldBefore == 8 && foldAfter == 2, msg);
+        eng.advancePlayhead(1, nullptr);
+        std::snprintf(msg, sizeof(msg), "P4(ii): the played column re-parks INTO the shrunk window (pp %d)", eng.pos_.phrasePos());
+        CHECK(eng.pos_.phrasePos() >= 0 && eng.pos_.phrasePos() < 6, msg);
+        std::snprintf(msg, sizeof(msg), "P4(ii): the transport fold continues from the fold (%d, want 3)", eng.pos_.phaseClock(eng.transportTick_));
+        CHECK(eng.pos_.phaseClock(eng.transportTick_) == 3, msg);
+    }
+}
+
+// ── P5/P6 (C1b Stage A): the CV commit is lock-aware ──────────────────────────
+// (phrase edge OR unlock flush) gated by the axis's ScopeBit. Under lock the
+// committed CV holds (the pending may churn); the first step event after unlock
+// flushes. A lane whose axis bit is set commits at the phrase edge even under lock.
+static void p5p6_lock_aware_commit() {
+    std::printf("P5/P6 lock-aware CV commit (CC_PROMPT_CADENCE_C1B STAGE A)\n");
+    const int v = v2().v;
+    char msg[160];
+    {   // P5: under lock the committed CV pends; at the unlock edge it flushes.
+        SequencerEngine eng; eng.reset();
+        eng.updateWindow(8.f, 0.f, false, 0.f, 0.f, false);
+        eng.numPolyVoices = 2;
+        eng.setVoiceLorLocalEast(v2(), true);
+        eng.voiceLorRef(v2(), SequencerEngine::LOR_LEN) = 4;
+        for (int t = 0; t < 3; ++t) eng.advancePlayhead(1, nullptr);
+        eng.locked = true;                       // the lock closes (the engine's own bool — Monsoon aliases it)
+        for (int t = 0; t < 3; ++t) eng.advancePlayhead(1, nullptr);   // the tracker sees the locked state
+        {   // the CV delta lands on the PENDING side mid-phrase, under lock
+            std::vector<int> m3 = {2, 0, 0};
+            std::vector<int> east = zeroEast();
+            east[v * 3 + SequencerEngine::LOR_LEN] = 2;
+            eng.pushVoiceLorCv(m3.data(), east.data());
+        }
+        bool held = true;                        // march past the divergence (pp==4: held 4 mod 4 = 0; pended 4 mod 6 = 4)
+        bool sawDivergenceStep = false;
+        int divergeRead = -1;
+        for (int t = 0; t < 14; ++t) {
+            eng.advancePlayhead(1, nullptr);
+            const int pp = eng.pos_.phrasePos();
+            if (pp == 4 && !sawDivergenceStep) {
+                sawDivergenceStep = true;
+                divergeRead = eng.voiceRead_[v];
+                held = held && (divergeRead == 0);
+            }
+        }
+        std::snprintf(msg, sizeof(msg), "P5: never reached the divergence step (pp==4)");
+        CHECK(sawDivergenceStep, msg);
+        std::snprintf(msg, sizeof(msg), "P5: the effective read moved to the new window UNDER LOCK at the divergence step (read %d, want the held 0) — the committed CV must pend while the axis is frozen",
+                      divergeRead);
+        CHECK(held && sawDivergenceStep, msg);
+        eng.locked = false;                      // the unlock edge
+        eng.advancePlayhead(1, nullptr);         // the first step event after unlock = the flush
+        bool walksNew = true;
+        for (int t = 0; t < 8; ++t) {
+            eng.advancePlayhead(1, nullptr);
+            walksNew = walksNew && (eng.voiceRead_[v] == eng.pos_.phrasePos() % 6);   // the flush = the CLOSED FORM under the new window
+        }
+        std::snprintf(msg, sizeof(msg), "P5: the read does not walk the new window after the unlock flush (read %d at pp %d)",
+                      eng.voiceRead_[v], eng.pos_.phrasePos());
+        CHECK(walksNew, msg);
+    }
+    {   // P6: the scope opt-out — with the axis's ScopeBit set, the CV commit fires at
+        // the phrase edge EVEN UNDER LOCK (the dirLive_ opt-out, SB_SANDS_R for the voice family).
+        SequencerEngine eng; eng.reset();
+        eng.updateWindow(8.f, 0.f, false, 0.f, 0.f, false);
+        eng.numPolyVoices = 2;
+        eng.setVoiceLorLocalEast(v2(), true);
+        eng.voiceLorRef(v2(), SequencerEngine::LOR_LEN) = 4;
+        eng.scopeLiveMask = 1u << 2;             // SB_SANDS_R: the rhythm-axis LOR is live-under-lock
+        for (int t = 0; t < 3; ++t) eng.advancePlayhead(1, nullptr);
+        eng.locked = true;
+        for (int t = 0; t < 3; ++t) eng.advancePlayhead(1, nullptr);
+        {   // the CV delta pending mid-phrase
+            std::vector<int> m3 = {2, 0, 0};
+            std::vector<int> east = zeroEast();
+            east[v * 3 + SequencerEngine::LOR_LEN] = 2;
+            eng.pushVoiceLorCv(m3.data(), east.data());
+        }
+        int edgeAt = -1;
+        for (int t = 0; t < 8; ++t) {
+            eng.advancePlayhead(1, nullptr);
+            if (eng.pos_.phrasePos() == 0) { edgeAt = t; break; }
+        }
+        std::snprintf(msg, sizeof(msg), "P6: no phrase edge observed (edgeAt=%d)", edgeAt);
+        CHECK(edgeAt >= 0, msg);
+        if (edgeAt < 0) return;
+        std::snprintf(msg, sizeof(msg), "P6: the read at the opted-out axis's edge is %d, want %d (the CV must commit at the edge under lock)",
+                      eng.voiceRead_[v], eng.pos_.phrasePos() % 6);
+        CHECK(eng.voiceRead_[v] == eng.pos_.phrasePos() % 6, msg);
+    }
+}
+
+// ── P7 (C1b Stage B): the row invariants hold on the COMPOSED row ─────────────
+// A CV delta cannot push L below 1, O out of the ring, or R outside [0, L-1].
+static void p7_row_invariants_on_composed() {
+    std::printf("P7 row invariants on the composed (base+CV) row\n");
+    const int v = v2().v;
+    char msg[160];
+    SequencerEngine eng; eng.reset();
+    eng.updateWindow(8.f, 0.f, false, 0.f, 0.f, false);
+    eng.numPolyVoices = 2;
+    eng.setVoiceLorLocalEast(v2(), true);
+    eng.voiceLorRef(v2(), SequencerEngine::LOR_LEN) = 4;
+    eng.voiceLorRef(v2(), SequencerEngine::LOR_ROT) = 2;
+    eng.advancePlayhead(1, nullptr);
+    eng.advancePlayhead(1, nullptr);   // OFF the commit edge (pp==1): the pending must wait for the boundary
+    {   // a negative LEN delta big enough to sink the row
+        std::vector<int> m3 = {0, 0, 0};
+        std::vector<int> east = zeroEast();
+        east[v * 3 + SequencerEngine::LOR_LEN]  = -9;   // 4 - 9 < 1
+        east[v * 3 + SequencerEngine::LOR_ROT]  = +9;   // R would escape [0, L-1]
+        eng.pushVoiceLorCv(m3.data(), east.data());
+    }
+    for (int t = 0; t < 8 && eng.pos_.phrasePos() != 0; ++t) eng.advancePlayhead(1, nullptr);   // the phrase edge commits the pending
+    std::printf("  (P7 commit edge at pp=%d)\n", eng.pos_.phrasePos());
+    int L, O, R; SequencerEngine::LaneDir d;
+    eng.effectiveVoiceLor(v, L, O, R, d);
+    std::snprintf(msg, sizeof(msg), "P7: the composed row broke the invariants (L=%d R=%d)", L, R);
+    CHECK(L >= 1 && R >= 0 && R <= L - 1, msg);
+    std::snprintf(msg, sizeof(msg), "P7: the composed row is not the clamped expectation (L=%d, want 1; R=%d, want 0)", L, R);
+    CHECK(L == 1 && R == 0, msg);
+}
+
+// ── P8 (C1b Stage C): THE EDIT-SUSPEND — during an active LOR gesture the CV ──
+// commit for the EDITED SCOPE holds the pre-gesture sample (the window tracks only
+// the live base — "a stable target"); other scopes/voices commit normally; on
+// release the CV resumes at the NEXT boundary. The test drives the engine's suspend
+// push directly (the rack-free form of the manager's per-block gesture snapshot).
+static void p8_edit_suspend() {
+    std::printf("P8 edit-suspend during an active gesture\n");
+    const int v = v2().v;
+    const int v3 = dotModular::VoiceResolver::slot(3).v;
+    char msg[160];
+    {   // the voice row: V2's LEN suspended — its CV holds; V3's commits at the edge.
+        SequencerEngine eng; eng.reset();
+        eng.updateWindow(8.f, 0.f, false, 0.f, 0.f, false);
+        eng.numPolyVoices = 4;
+        eng.setVoiceLorLocalEast(v2(), true);
+        eng.setVoiceLorLocalEast(dotModular::VoiceResolver::slot(3), true);
+        eng.voiceLorRef(v2(), SequencerEngine::LOR_LEN) = 4;
+        eng.voiceLorRef(dotModular::VoiceResolver::slot(3), SequencerEngine::LOR_LEN) = 4;
+        {   // the pre-gesture sample: +2 on BOTH voices, committed at the first edge
+            std::vector<int> m3 = {0, 0, 0};
+            std::vector<int> east = zeroEast();
+            east[v * 3 + SequencerEngine::LOR_LEN]  = 2;
+            east[v3 * 3 + SequencerEngine::LOR_LEN] = 2;
+            eng.pushVoiceLorCv(m3.data(), east.data());
+        }
+        eng.advancePlayhead(1, nullptr);   // the first edge commits (+2 each: both rows walk mod 6)
+        eng.advancePlayhead(1, nullptr);   // off-edge
+        {   // THE GESTURE ENGAGES on V2 (len+off items) and BOTH rows get new deltas:
+            // V2's is suspended (holds 6); V3's commits at the boundary (-> 4).
+            std::array<bool, 3> mac3 = {false, false, false};
+            std::array<bool, 3> vS = {true, false, false};   // the LEN item (the window zones)
+            std::array<bool, 3> lS = {false, false, false};
+            eng.setLorCvSuspend(mac3.data(), v, vS.data(), -1, lS.data());
+            std::vector<int> m3 = {0, 0, 0};
+            std::vector<int> east = zeroEast();
+            east[v * 3 + SequencerEngine::LOR_LEN]  = -2;   // V2: back toward the base — SUSPENDED
+            east[v3 * 3 + SequencerEngine::LOR_LEN] = -2;   // V3: the same push — NOT suspended
+            eng.pushVoiceLorCv(m3.data(), east.data());
+        }
+        int edge = -1;
+        for (int t = 0; t < 9; ++t) {
+            eng.advancePlayhead(1, nullptr);
+            if (eng.pos_.phrasePos() == 0) { edge = t; break; }
+        }
+        std::snprintf(msg, sizeof(msg), "P8: no boundary observed after the suspended push (edge=%d)", edge);
+        CHECK(edge > 0, msg);
+        if (edge <= 0) return;
+        // Probe at the DIVERGENCE step (pp==4): both windows read the same at the
+        // entry (the rotation-anchor law) — the held row walks mod 6 (read 4), the
+        // committed row mod 4 (read 0).
+        int v2Read4 = -1, v3Read4 = -1;
+        for (int t = 0; t < 9; ++t) {
+            eng.advancePlayhead(1, nullptr);
+            if (eng.pos_.phrasePos() == 4) { v2Read4 = eng.voiceRead_[v]; v3Read4 = eng.voiceRead_[v3]; break; }
+        }
+        std::snprintf(msg, sizeof(msg), "P8: never reached the divergence step (pp==4)");
+        CHECK(v2Read4 >= 0, msg);
+        if (v2Read4 < 0) return;
+        std::snprintf(msg, sizeof(msg), "P8: the SUSPENDED scope moved during the gesture (V2 read %d at pp 4, want the held 4) — the gesture must hold the pre-gesture sample",
+                      v2Read4);
+        CHECK(v2Read4 == 4, msg);
+        std::snprintf(msg, sizeof(msg), "P8: the NON-suspended voice did not commit at the boundary (V3 read %d at pp 4, want 0 mod 4)",
+                      v3Read4);
+        CHECK(v3Read4 == 0, msg);
+        {   // RELEASE: the suspend clears; the pending (−2) commits at the NEXT boundary.
+            std::array<bool, 3> mac3 = {false, false, false};
+            std::array<bool, 3> vS = {false, false, false};
+            std::array<bool, 3> lS = {false, false, false};
+            eng.setLorCvSuspend(mac3.data(), -1, vS.data(), -1, lS.data());
+        }
+        int edge2 = -1;
+        for (int t = 0; t < 10; ++t) {
+            eng.advancePlayhead(1, nullptr);
+            if (eng.pos_.phrasePos() == 0) { edge2 = t; break; }
+        }
+        std::snprintf(msg, sizeof(msg), "P8: no boundary after the release (edge2=%d)", edge2);
+        CHECK(edge2 > 0, msg);
+        if (edge2 <= 0) return;
+        int v2After = -1;
+        for (int t = 0; t < 9; ++t) {
+            eng.advancePlayhead(1, nullptr);
+            if (eng.pos_.phrasePos() == 4) { v2After = eng.voiceRead_[v]; break; }
+        }
+        std::snprintf(msg, sizeof(msg), "P8: the CV did not resume at the next boundary after release (V2 read %d at pp 4, want 0 mod 4)",
+                      v2After);
+        CHECK(v2After == 0, msg);
+    }
+}
+
+// ── P9: the PREVIEW accessors — base + PENDING (the Option-3 wireframe's source) ──
+// (CC_PROMPT_LANE_RANGE_DISPLAY_UNIFY Stage B) Reproduce-first: the accessors are NEW
+// API — the pin fails to even COMPILE before they exist (the honest absence). The
+// law: preview == base + the PENDING CV (the live-modulated window the wireframe
+// tracks); effective == base + the COMMITTED CV (what the audio walks). With no CV
+// they agree; with a pend pushed but not committed they DIVERGE (the wireframe's
+// whole point); after the commit (the frame edge) they agree again.
+static void p9_preview_accessors() {
+    std::printf("P9 preview accessors: base+pending vs base+committed (the wireframe source)\n");
+    char msg[160];
+    {
+        // No CV pushed: preview == effective, every family.
+        SequencerEngine eng; eng.reset();
+        eng.updateWindow(8.f, 0.f, false, 0.f, 0.f, false);
+        eng.numPolyVoices = 2;
+        for (int t = 0; t < 5; ++t) eng.advancePlayhead(1, nullptr);
+        int eL, eO, eR; SequencerEngine::LaneDir eD;
+        int pL, pO, pR; SequencerEngine::LaneDir pD;
+        const int sRest = SequencerEngine::editorLane(SequencerEngine::PL_REST);
+        eng.effectiveMonoLaneLor(sRest, eL, eO, eR, eD);
+        eng.effectiveMonoLanePreview(sRest, pL, pO, pR, pD);
+        CHECK(eL == pL && eO == pO && eR == pR, "P9: the mono-lane preview == effective with no CV");
+        eng.effectiveLaneLor(v2(), dotModular::LaneId{SequencerEngine::PL_REST}, eL, eO, eR, eD);
+        eng.effectiveLanePreview(v2(), dotModular::LaneId{SequencerEngine::PL_REST}, pL, pO, pR, pD);
+        CHECK(eL == pL && eO == pO && eR == pR, "P9: the poly-lane preview == effective with no CV");
+        eng.effectiveVoiceLor(v2().v, eL, eO, eR, eD);
+        eng.effectiveVoicePreview(v2().v, pL, pO, pR, pD);
+        CHECK(eL == pL && eO == pO && eR == pR, "P9: the voice preview == effective with no CV");
+        eng.effectiveMacroRowLor(eL, eO, eR, eD);
+        eng.effectiveMacroRowPreview(pL, pO, pR, pD);
+        CHECK(eL == pL && eO == pO && eR == pR, "P9: the macro-row preview == effective with no CV");
+    }
+    {
+        // A pend pushed but NOT committed: the A/B divergence, then the commit agreement.
+        SequencerEngine eng; eng.reset();
+        eng.updateWindow(8.f, 0.f, false, 0.f, 0.f, false);
+        eng.numPolyVoices = 2;
+        for (int t = 0; t < 5; ++t) eng.advancePlayhead(1, nullptr);
+        const int sRest = SequencerEngine::editorLane(SequencerEngine::PL_REST);
+        int bL, bO, bR; SequencerEngine::LaneDir bD;
+        eng.effectiveMonoLaneLor(sRest, bL, bO, bR, bD);   // the committed == the base (no CV yet)
+        std::vector<int> d3 = {2, 3, 1};
+        eng.pushLaneLorCvPoly(dotModular::VoiceResolver::mono(), SequencerEngine::PL_REST, d3.data());
+        int eL, eO, eR; SequencerEngine::LaneDir eD;
+        int pL, pO, pR; SequencerEngine::LaneDir pD;
+        eng.effectiveMonoLanePreview(sRest, pL, pO, pR, pD);
+        eng.effectiveMonoLaneLor(sRest, eL, eO, eR, eD);
+        std::snprintf(msg, sizeof msg, "P9: the mono-lane preview did not take the pending (got %d/%d/%d, want base+{2,3,1}=%d/%d/%d)",
+                      pL, pO, pR, bL + 2, bO + 3, bR + 1);
+        CHECK(pL == bL + 2 && pO == bO + 3 && pR == bR + 1, msg);
+        std::snprintf(msg, sizeof msg, "P9: the committed moved before the boundary (got %d/%d/%d, want the base %d/%d/%d)",
+                      eL, eO, eR, bL, bO, bR);
+        CHECK(eL == bL && eO == bO && eR == bR, msg);
+        // The poly lane + the macro row: the same divergence, one probe each.
+        eng.pushLaneLorCvPoly(v2(), SequencerEngine::PL_REST, d3.data());
+        eng.effectiveLanePreview(v2(), dotModular::LaneId{SequencerEngine::PL_REST}, pL, pO, pR, pD);
+        eng.effectiveLaneLor(v2(), dotModular::LaneId{SequencerEngine::PL_REST}, eL, eO, eR, eD);
+        CHECK(pL != eL || pO != eO || pR != eR, "P9: the poly-lane preview/effective diverge under the pending");
+        std::vector<int> mac3 = {1, 0, 0};
+        eng.pushVoiceLorCv(mac3.data(), zeroEast().data());
+        eng.effectiveMacroRowPreview(pL, pO, pR, pD);
+        eng.effectiveMacroRowLor(eL, eO, eR, eD);
+        CHECK(pL == eL + 1, "P9: the macro-row preview takes the pending macro delta");
+        // THE COMMIT (the frame edge): they agree again — the wireframe snaps into the solid.
+        eng.refreshLaneLatchesForVoice(0, true, false);
+        eng.refreshLaneLatchesForVoice(v2().v, true, false);
+        eng.refreshVoiceLorLatches();
+        eng.effectiveMonoLanePreview(sRest, pL, pO, pR, pD);
+        eng.effectiveMonoLaneLor(sRest, eL, eO, eR, eD);
+        CHECK(eL == pL && eO == pO && eR == pR, "P9: the mono lane agrees after the commit");
+        eng.effectiveLanePreview(v2(), dotModular::LaneId{SequencerEngine::PL_REST}, pL, pO, pR, pD);
+        eng.effectiveLaneLor(v2(), dotModular::LaneId{SequencerEngine::PL_REST}, eL, eO, eR, eD);
+        CHECK(eL == pL && eO == pO && eR == pR, "P9: the poly lane agrees after the commit");
+        eng.effectiveMacroRowPreview(pL, pO, pR, pD);
+        eng.effectiveMacroRowLor(eL, eO, eR, eD);
+        CHECK(eL == pL && eO == pO && eR == pR, "P9: the macro row agrees after the commit");
+    }
+}
+
+// ── P10: the DOUBLE COMMIT — the lane latch must fire ONCE per voice-frame cycle ──
+// (CC_PROMPT_LANE_RANGE_DISPLAY_UNIFY REMAINING BUGS 2, Rodney's "two jumps one step
+// apart" in the 16/8/8 rig). The lane-commit edge is evaluated at the tickHolders
+// head (voiceFramePhase_[v]==0, BEFORE the frame advance) AND re-checked in
+// deriveHolders (AFTER the advance — the NEXT step's phase) — so the re-check fires
+// one step early and the lane commits at TWO ADJACENT steps per cycle. THE RIG: the
+// global window 16; V2's row MAPPED at L=8 (its own 8-step frame cycle); a
+// per-step-varying lane pend pushed before each advance; the committed laneLorCv_
+// recorded per step. THE LAW: the commit spacings are EXACTLY the 8-step cycle —
+// never two adjacent.
+static void p10_single_commit_per_frame_cycle() {
+    std::printf("P10 single lane commit per voice-frame cycle (the double-commit bug)\n");
+    char msg[160];
+    SequencerEngine eng; eng.reset();
+    eng.updateWindow(16.f, 0.f, false, 0.f, 0.f, false);   // the global 16
+    eng.numPolyVoices = 2;
+    eng.setVoiceLorLocalEast(v2(), true);
+    eng.voiceLorRef(v2(), SequencerEngine::LOR_LEN) = 8;  // V2's row MAPPED at L=8
+    eng.refreshVoiceLorLatches();   // settle the row config before the march
+    const int el = SequencerEngine::editorLane(SequencerEngine::PL_REST);
+    const int v = v2().v;
+    int prevCommitted = eng.laneLorCv_[v][el][SequencerEngine::LOR_LEN];
+    std::vector<int> commitSteps;
+    for (int t = 0; t < 40; ++t) {
+        std::vector<int> d3 = {(t % 7) + 1, 0, 0};        // a per-step-varying pend
+        eng.pushLaneLorCvPoly(v2(), SequencerEngine::PL_REST, d3.data());
+        eng.advancePlayhead(1, nullptr);
+        const int committed = eng.laneLorCv_[v][el][SequencerEngine::LOR_LEN];
+        if (committed != prevCommitted) { commitSteps.push_back(t); prevCommitted = committed; }
+    }
+    std::snprintf(msg, sizeof msg, "P10: %zu commits in 40 steps (want 5 — one per 8-step frame cycle)",
+                  commitSteps.size());
+    CHECK(commitSteps.size() == 5, msg);
+    for (size_t i = 1; i < commitSteps.size(); ++i) {
+        std::snprintf(msg, sizeof msg, "P10: commits %d and %d ONE STEP APART (spacing %d, want 8) — the lane double-commits per cycle",
+                      commitSteps[i - 1], commitSteps[i], commitSteps[i] - commitSteps[i - 1]);
+        CHECK(commitSteps[i] - commitSteps[i - 1] == 8, msg);
+    }
+}
+
+// ── P11: the STICKY suspend — the released edit's CV waits for the frame edge ────
+// (CC_PROMPT_LANE_RANGE_DISPLAY_UNIFY REMAINING BUGS 5, Rodney Rack 2026-11-17.) The
+// LOR-CV suspend is tied to the drag; nothing holds it past release — the drop lifts
+// the suspend IMMEDIATELY and the reconnect-path refresh (the immediate accept,
+// refreshLaneLatchesForVoice's default gates) overwrites the just-made edit mid-cycle.
+// THE MODEL (B1, confirmed): the base edit is IMMEDIATE on release; ONLY the
+// suspended item's CV waits — it stays held until the scope's next voice-frame edge
+// (voiceFramePhase_[v]==0), where it reconnects. Human edit = live; machine
+// modulation = latched. THE RIG: P10's (global 16, V2 mapped L=8). THE LAW: after the
+// drop, the committed lane CV holds the pre-suspend value through the immediate
+// accept AND every mid-cycle advance; it takes the pending exactly at the edge.
+static void p11_sticky_suspend_to_edge() {
+    std::printf("P11 sticky suspend: the released edit's CV waits for the voice-frame edge\n");
+    char msg[220];
+    SequencerEngine eng; eng.reset();
+    eng.updateWindow(16.f, 0.f, false, 0.f, 0.f, false);   // the global 16
+    eng.numPolyVoices = 2;
+    eng.setVoiceLorLocalEast(v2(), true);
+    eng.voiceLorRef(v2(), SequencerEngine::LOR_LEN) = 8;  // V2's row MAPPED at L=8
+    eng.refreshVoiceLorLatches();
+    const int el = SequencerEngine::editorLane(SequencerEngine::PL_REST);
+    const int v = v2().v;
+    for (int t = 0; t < 3; ++t) eng.advancePlayhead(1, nullptr);   // to mid-cycle
+    const int heldBefore = eng.laneLorCv_[v][el][SequencerEngine::LOR_LEN];   // 0 (no CV yet)
+    // THE DRAG (simulated): suspend the lane's LENGTH item; a modulation pend pushed.
+    const std::array<bool, 3> none3 = {false, false, false};
+    const std::array<bool, 3> len3  = {true, false, false};
+    eng.setLorCvSuspend(none3.data(), v, none3.data(), el, len3.data());
+    const std::vector<int> pend3 = {7, 0, 0};
+    eng.pushLaneLorCvPoly(v2(), SequencerEngine::PL_REST, pend3.data());
+    eng.advancePlayhead(1, nullptr);   // mid-cycle under the live suspend: the committed holds
+    std::snprintf(msg, sizeof msg, "P11: the live suspend did not hold the committed (%d, want %d)",
+                  eng.laneLorCv_[v][el][SequencerEngine::LOR_LEN], heldBefore);
+    CHECK(eng.laneLorCv_[v][el][SequencerEngine::LOR_LEN] == heldBefore, msg);
+    // THE RELEASE: the widget drops the suspend; the reconnect-path refresh runs (the
+    // immediate accept — refreshLaneLatchesForVoice's default gates). The committed
+    // must STILL hold (the sticky): the edit is not overwritten mid-cycle.
+    eng.setLorCvSuspend(none3.data(), -1, none3.data(), -1, none3.data());
+    eng.refreshLaneLatchesForVoice(v);   // the release-path immediate accept
+    std::snprintf(msg, sizeof msg, "P11: the CV reconnected ON RELEASE (committed %d, want the held %d) — the edit is clobbered mid-cycle",
+                  eng.laneLorCv_[v][el][SequencerEngine::LOR_LEN], heldBefore);
+    CHECK(eng.laneLorCv_[v][el][SequencerEngine::LOR_LEN] == heldBefore, msg);
+    // Advance to the frame edge — THE TRUE WRAP (REMAINING BUGS 6's corrected
+    // reference): the step whose LANDED phase is 0 (the walk's entry into cell 0 —
+    // the playhead's return), not the departure from it. The committed takes the
+    // pending EXACTLY there.
+    int edgeStep = -1;
+    for (int t = 0; t < 9; ++t) {
+        eng.advancePlayhead(1, nullptr);
+        if (eng.voiceFramePhase_[v] == 0) {
+            edgeStep = t;
+            std::snprintf(msg, sizeof msg, "P11: the CV did not reconnect AT the wrap (step %d, committed %d, want the pending 7)",
+                          t, eng.laneLorCv_[v][el][SequencerEngine::LOR_LEN]);
+            CHECK(eng.laneLorCv_[v][el][SequencerEngine::LOR_LEN] == 7, msg);
+            break;
+        }
+        std::snprintf(msg, sizeof msg, "P11: the CV reconnected BEFORE the wrap (step %d, committed %d, want the held %d)",
+                      t, eng.laneLorCv_[v][el][SequencerEngine::LOR_LEN], heldBefore);
+        CHECK(eng.laneLorCv_[v][el][SequencerEngine::LOR_LEN] == heldBefore, msg);
+    }
+    std::snprintf(msg, sizeof msg, "P11: no frame wrap observed in 9 steps");
+    CHECK(edgeStep >= 0, msg);
+}
+
+// ── P12: the TRUE-WRAP commit — the window moves ON the wrap step, not one later ─
+// (CC_PROMPT_LANE_RANGE_DISPLAY_UNIFY REMAINING BUGS 6, Rodney Rack 2026-11-17,
+// diagnose-first.) On the Sands panel the voice-lane playhead wraps (returns to
+// its frame start), advances ONE step, and only THEN does the lane window move —
+// whether or not the lane was edited: the general modulation-commit observable,
+// not the BUG-5 edit path. P2's edge loop keyed its expected step off the
+// post-advance voiceFramePhase==0 and so enshrined whatever shift the engine
+// had; THIS pin references the wrap the way the READS themselves do — the voice
+// walk at cell 0, laneTickFor(dir, phase+1, L)==0 on the post-advance phase
+// (the derive's own read law) — with the drawn playhead (the lane tick, the
+// panel's own source) as the cross-check. THE LAW: the lane's effective window
+// (the committed CV) changes AT that step — the wrap and the window move land
+// together. THE RIG: P10/P11's (global 16, V2 mapped L=8) + the lane's OWN
+// walk at L=8 so its wrap sits ON the frame edge; the pend is an OFFSET +2
+// (the window's lit cells shift; the walk's own L — and so the tick — is
+// untouched: the +1 lands clean, no re-seed noise). The per-step table is the
+// diagnosis the doc asks for: it shows exactly which step the commit lands on.
+static void p12_true_wrap_commit() {
+    std::printf("P12 true-wrap commit: the window moves ON the wrap step, not one later\n");
+    char msg[240];
+    SequencerEngine eng; eng.reset();
+    eng.updateWindow(16.f, 0.f, false, 0.f, 0.f, false);   // the global 16
+    eng.numPolyVoices = 2;
+    eng.setVoiceLorLocalEast(v2(), true);
+    eng.voiceLorRef(v2(), SequencerEngine::LOR_LEN) = 8;  // V2's row MAPPED at L=8
+    eng.polyLORRef(v2(), dotModular::LaneId{SequencerEngine::PL_REST}, SequencerEngine::LOR_LEN) = 8;   // the lane's own walk = 8: its wrap sits ON the frame edge
+    eng.refreshVoiceLorLatches();   // settle the config
+    const int el = SequencerEngine::editorLane(SequencerEngine::PL_REST);
+    const int v = v2().v;
+    const int strand = dotModular::STRAND_RHYTHM;   // PL_REST's strand — the tick the panel draws
+    eng.advancePlayhead(1, nullptr);   // t=0
+    eng.advancePlayhead(1, nullptr);   // t=1
+    {   // the modulation pend, mid-cycle: OFFSET +2 — the window moves, the walk does not
+        std::vector<int> d3 = {0, 2, 0};
+        eng.pushLaneLorCvPoly(v2(), SequencerEngine::PL_REST, d3.data());
+    }
+    int wrapT = -1, moveT = -1;
+    std::vector<int> off(26, -1);
+    for (int t = 2; t < 26; ++t) {
+        eng.advancePlayhead(1, nullptr);
+        int L, O, R; SequencerEngine::LaneDir d;
+        eng.effectiveLaneLor(v2(), dotModular::LaneId{SequencerEngine::PL_REST}, L, O, R, d);
+        off[t] = O;
+        int rL, rO, rR; SequencerEngine::LaneDir rd;
+        eng.effectiveVoiceLor(v, rL, rO, rR, rd);
+        const bool atCell0 = SequencerEngine::laneTickFor(rd, (int64_t)eng.voiceFramePhase_[v] + 1, rL) == 0;
+        if (atCell0 && wrapT < 0) wrapT = t;
+        if (O == 2 && moveT < 0) moveT = t;
+        if (t < 11 || (wrapT >= 0 && t < wrapT + 3))
+            std::printf("  t=%2d phase=%2d tick=%2d O=%d committedO=%d%s\n", t, eng.voiceFramePhase_[v],
+                        eng.laneTickV_[v][strand], O, eng.laneLorCv_[v][el][SequencerEngine::LOR_OFF],
+                        atCell0 ? "   <== the walk at cell 0 (THE WRAP)" : "");
+    }
+    std::snprintf(msg, sizeof msg, "P12: no wrap (the voice walk at cell 0) observed in 24 steps (wrapT=%d)", wrapT);
+    CHECK(wrapT > 2, msg);
+    if (wrapT < 0) return;
+    std::snprintf(msg, sizeof msg, "P12: the window never moved (moveT=%d — the pend never committed)", moveT);
+    CHECK(moveT >= 0, msg);
+    if (moveT < 0) return;
+    std::snprintf(msg, sizeof msg,
+                  "P12: the window landed ONE STEP AFTER the wrap (wrap t=%d, move t=%d) — the commit must land ON the wrap step (the playhead's return), not one later",
+                  wrapT, moveT);
+    CHECK(moveT == wrapT, msg);
+    for (int t = 2; t < wrapT; ++t) {
+        std::snprintf(msg, sizeof msg, "P12: the window moved BEFORE the wrap (t=%d, O=%d, want 0)", t, off[t]);
+        CHECK(off[t] == 0, msg);
+    }
+}
+
+int main() {
+    std::printf("== test_lor_phrase_latch (the cadence latch suite: C1 + C1b) ==\n");
+    p1_voice_row();
+    p1b_macro_row();
+    p2_lane();
+    p3_live_boundary_shrink8to6();
+    p4_c2_keep_counting_and_step_rate_global();
+    p5p6_lock_aware_commit();
+    p7_row_invariants_on_composed();
+    p8_edit_suspend();
+    p9_preview_accessors();
+    p10_single_commit_per_frame_cycle();
+    p11_sticky_suspend_to_edge();
+    p12_true_wrap_commit();
+    if (g_fail == 0) std::printf("all green\n");
+    else std::printf("%d FAILED\n", g_fail);
+    return g_fail ? 1 : 0;
+}

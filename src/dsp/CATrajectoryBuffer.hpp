@@ -79,7 +79,7 @@ struct CATrajectoryBuffer {
         }
     }
 
-    // Step one entry BACKWARD for `stream`: pop the newest live entry and write the PREVIOUS
+    // Step one entry BACKWARD for stream: pop the newest live entry and write the PREVIOUS
     // committed state into out[]. Returns true if a state was restored; returns false at the
     // buffer start (0 or 1 entries → nothing to reverse to → STOP, don't wrap).
     bool stepBack(int stream, uint8_t out[N_VOICES]) {

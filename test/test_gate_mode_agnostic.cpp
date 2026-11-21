@@ -36,6 +36,7 @@
 #include <vector>
 
 #include "engines/SequencerEngine.hpp"
+#include "VoiceResolver.hpp"   // CC_PROMPT_STRONG_TYPES: VoiceSlot minting
 
 #define SUITE(n) std::cout << "\n\033[1;34m[" << (n) << "]\033[0m\n"
 #define TEST(desc, ...) do { try { __VA_ARGS__; \
@@ -48,14 +49,12 @@ static int g_pass = 0, g_fail = 0;
 
 using D = MonoDecision;
 
-static PatternInput makeInput(float qmixLevel) {
+static PatternInput makeInput() {
     PatternInput in;
     for (int i = 0; i < 12; ++i) in.semiWeights[i] = 1.f;
     in.noteVariationMask = 0b111;
     in.variationAmount   = 0.5f;
     in.octaveLo = 0; in.octaveHi = 0;
-    in.qmixLevel = qmixLevel;
-    in.accentProb = 0.0f;   // accent off (deterministic) — accent is a gate behaviour we compare
     return in;
 }
 
@@ -86,10 +85,18 @@ static std::vector<Snap> runSeq(bool quantiserSrc, float qmixLevel, float quanti
     SequencerEngine eng; eng.numPolyVoices = 0;
     eng.quantiserPitchSource = quantiserSrc;
     eng.quantiserCV[0] = quantiserCV;
-    PatternInput in = makeInput(qmixLevel);
+    PatternInput in = makeInput();
+    // Phase A: qmixLevel and accentProb now on voices[0], not PatternInput
+    const float v0qmix = qmixLevel;
+    const float v0accent = 0.0f;   // accent off (deterministic) — gate behaviour we compare
     std::vector<Snap> out;
     auto step = [&](float restProb, float legatoProb) {
-        StepResult r = eng.executeModeB(/*gate1Rise=*/true, /*gate1High=*/true, restProb, legatoProb, 4.f, in);
+        eng.voices[dotModular::VoiceResolver::slot(0 + 1)].restProb   = restProb;
+        eng.voices[dotModular::VoiceResolver::slot(0 + 1)].legatoProb = legatoProb;
+        eng.voices[dotModular::VoiceResolver::slot(0 + 1)].accentProb    = v0accent;
+        eng.voices[dotModular::VoiceResolver::slot(0 + 1)].qmixLevel     = v0qmix;
+        eng.voices[dotModular::VoiceResolver::slot(0 + 1)].variationProb = in.variationAmount;
+        StepResult r = eng.executeModeB(/*gate1Rise=*/true, /*gate1High=*/true, 4.f, in);
         out.push_back({ category(r.decision), eng.gs.gateHeld, r.accented, eng.gs.currentPitchV, r.decision });
     };
     // Sequence: fresh note, legato-commit (connect), connect, rest, fresh, connect.

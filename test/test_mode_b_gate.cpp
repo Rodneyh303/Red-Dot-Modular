@@ -29,6 +29,7 @@
 #include <string>
 
 #include "engines/SequencerEngine.hpp"
+#include "VoiceResolver.hpp"   // CC_PROMPT_STRONG_TYPES: VoiceSlot minting
 
 #define SUITE(n) std::cout << "\n\033[1;34m[" << (n) << "]\033[0m\n"
 #define TEST(desc, ...) do { try { __VA_ARGS__; \
@@ -56,8 +57,13 @@ static PatternInput makeInput() {
 // gate1High=true models the gate being high at the rising edge (its width is applied by the
 // module layer, not here). restProb/legatoProb/noteVal are the Mode-A-identical shaping inputs.
 static StepResult rise(SequencerEngine& eng, float restProb, float legatoProb, float noteVal) {
-    const PatternInput in = makeInput();
-    return eng.executeModeB(/*gate1Rise=*/true, /*gate1High=*/true, restProb, legatoProb, noteVal, in);
+    PatternInput in = makeInput();
+    eng.voices[dotModular::VoiceResolver::slot(0 + 1)].restProb      = restProb;
+    eng.voices[dotModular::VoiceResolver::slot(0 + 1)].legatoProb    = legatoProb;
+    eng.voices[dotModular::VoiceResolver::slot(0 + 1)].accentProb    = 0.25f;     // default (PatternInput::accentProb deleted)
+    eng.voices[dotModular::VoiceResolver::slot(0 + 1)].qmixLevel     = 0.f;       // default (PatternInput::qmixLevel deleted)
+    eng.voices[dotModular::VoiceResolver::slot(0 + 1)].variationProb = in.variationAmount;
+    return eng.executeModeB(/*gate1Rise=*/true, /*gate1High=*/true, noteVal, in);
 }
 
 int main() {
@@ -68,7 +74,7 @@ int main() {
     // The core regression: with a multi-step noteVal, fast consecutive rises must STILL each
     // produce a fresh stepped decision — never MidNote. Pre-fix, rise 2+ returned MidNote
     // because holdRemain from the 1/4-note arm was still >=1 at the next edge.
-    for (int nv = 0; nv <= 7; ++nv) {
+    for (int nv = 0; nv < NUM_NOTE_VALUES; ++nv) {
         TEST(std::string("noteVal idx ") + std::to_string(nv) + ": every fast rise is a fresh step (never MidNote)", {
             SequencerEngine eng;
             eng.numPolyVoices = 0;
@@ -98,7 +104,7 @@ int main() {
     TEST("restProb high -> decision Rest and gate state low", {
         SequencerEngine eng; eng.numPolyVoices = 0;
         // r_rest defaults to 0; restProb=0.5 -> 0 < 0.5 -> rest fires deterministically.
-        StepResult r = rise(eng, /*restProb=*/0.5f, /*legatoProb=*/0.f, /*noteVal=*/2.f);
+        StepResult r = rise(eng, /*restProb=*/0.5f, /*legatoProb=*/0.f, /*noteVal=*/3.f);
         EXPECT(r.decision == D::Rest);
         EXPECT(!eng.gs.gateHeld);                        // rest closes the fused gate
         EXPECT(!r.accented);                             // no accent on a rest
@@ -108,15 +114,15 @@ int main() {
     SUITE("Mode B §4 — LEGATO decision reused from Mode A; REST wins over a pending slur");
     TEST("a held predecessor + legato roll connects (Tie/Legato, not a fresh NewNote)", {
         SequencerEngine eng; eng.numPolyVoices = 0;
-        rise(eng, 0.f, /*legatoProb=*/0.5f, 4.f);        // note 1: NewNote, commits slurForward
-        StepResult r2 = rise(eng, 0.f, /*legatoProb=*/0.5f, 4.f);   // note 2: connects back
+        rise(eng, 0.f, /*legatoProb=*/0.5f, 7.f);        // note 1: NewNote, commits slurForward
+        StepResult r2 = rise(eng, 0.f, /*legatoProb=*/0.5f, 7.f);   // note 2: connects back
         EXPECT(r2.decision == D::Tie || r2.decision == D::Legato);
     });
 
     TEST("rest wins over a pending slur (§4b): slur into a rest step -> Rest, gate low", {
         SequencerEngine eng; eng.numPolyVoices = 0;
-        rise(eng, 0.f, /*legatoProb=*/0.5f, 4.f);        // note 1 commits slurForward
-        StepResult r2 = rise(eng, /*restProb=*/0.5f, /*legatoProb=*/0.5f, 4.f);  // next step rests
+        rise(eng, 0.f, /*legatoProb=*/0.5f, 7.f);        // note 1 commits slurForward
+        StepResult r2 = rise(eng, /*restProb=*/0.5f, /*legatoProb=*/0.5f, 7.f);  // next step rests
         EXPECT(r2.decision == D::Rest);
         EXPECT(!eng.gs.gateHeld);
     });
@@ -182,7 +188,7 @@ int main() {
         // but the Lantern's sounding = gateHeld || holdRemain>0 would STILL read true unless the
         // driver zeroes holdRemain. Drive it end to end and assert output == Lantern == not sounding.
         SequencerEngine eng; eng.numPolyVoices = 0;
-        rise(eng, /*restProb=*/0.f, /*legatoProb=*/0.f, /*noteVal=*/2.f);   // real note: arms holdRemain
+        rise(eng, /*restProb=*/0.f, /*legatoProb=*/0.f, /*noteVal=*/3.f);   // real note: arms holdRemain
         EXPECT(eng.gs.holdRemain > 0.0001f);                                // precondition: armed
         driveGateB(eng, /*gate1High=*/true, /*isRest=*/true);              // this step is a REST
         const bool outputSees  = eng.gs.gateHeld;                           // output path
@@ -196,7 +202,7 @@ int main() {
         // Same class, the GAP case: note played (holdRemain armed), Gate 1 falls, no slur -> the
         // gate must read low in BOTH the output and the Lantern (holdRemain must not keep it alive).
         SequencerEngine eng; eng.numPolyVoices = 0;
-        rise(eng, 0.f, /*legatoProb=*/0.f, 2.f);           // note played; slurForward stays false
+        rise(eng, 0.f, /*legatoProb=*/0.f, 4.f);           // note played; slurForward stays false
         EXPECT(eng.gs.holdRemain > 0.0001f);
         driveGateB(eng, /*gate1High=*/false, /*isRest=*/false);   // Gate 1 low, non-legato gap
         EXPECT(!eng.gs.gateHeld);

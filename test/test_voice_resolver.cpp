@@ -2,11 +2,16 @@
 //
 // Proves the read-only resolver shadow faithfully mirrors reality BEFORE any caller depends
 // on it: for every voice V (1..16) and lane (REST/MELODY/OCTAVE), the resolver's
-// laneProbability / laneStep / laneProbabilityAtStep must return BIT-EXACTLY what the direct
-// engine accessors return —
+// laneProbability / laneStep must return BIT-EXACTLY what the direct engine accessors
+// return —
 //     V1  → eng.masterLane* (the mono master strand)
-//     V≥2 → eng.polyLane*(.., V-2)
-// plus the metadata dispatch (isMono/isPoly/polyBankIndex/baseEditableHere/spreadMode).
+//     V≥2 → eng.polyLane*(.., V-1 = voiceSlot)
+// laneProbabilityAtStep is the EXCEPTION (CC_PROMPT_macro_output_east_leak →
+// CC_PROMPT_UI_TO_RESOLVER_SPEC step 2): it is Macro's prob-OUT source and routes to
+// eng.effectiveProbability(MacroOwn) (the ONE Macro-own accessor the bars also read) —
+// never the shared master/poly funnels East's spread writes on an
+// East-owned lane (the backwards-delegation leak).
+// plus the metadata dispatch (isMono/isPoly/polyVoiceSlot/baseEditableHere/spreadMode).
 //
 // Strategy: construct a REAL SequencerEngine (now possible post-Xoroshiro-deprecation — the
 // test rack shim constructs it), seed every poly bank [v][step] and the master strand arrays
@@ -54,7 +59,8 @@ static float sentinel(int voice, int lane, int step) {
 
 static void seedEngine(SequencerEngine& eng) {
     eng.numPolyVoices = 15;               // all poly voices active
-    eng.totalStepsElapsed = 0;            // deterministic step → strand idx
+    // (POSITION_HOLDER_MODEL: no counter to seed — reset() anchored the holders at t=0,
+    // so the deterministic step → strand idx addressing starts from the anchor.)
     // Master strand arrays (voice 1 source). Use voice index 1 for sentinels.
     for (int s = 0; s < 16; ++s) {
         eng.pe.rhythmRandom[s] = sentinel(1, E::PL_REST,   s);
@@ -65,16 +71,34 @@ static void seedEngine(SequencerEngine& eng) {
     // Poly banks (voices 2..16 → bank 0..14).
     for (int v = 0; v < 15; ++v)
         for (int s = 0; s < 16; ++s) {
-            eng.pe.polyRandom(v, E::PL_REST)[s] = sentinel(v + 2, E::PL_REST,   s);
-            eng.pe.polyRandom(v, E::PL_MELODY)[s] = sentinel(v + 2, E::PL_MELODY, s);
-            eng.pe.polyRandom(v, E::PL_OCTAVE)[s] = sentinel(v + 2, E::PL_OCTAVE, s);
-            eng.pe.polyRandom(v, E::PL_ACCENT)[s] = sentinel(v + 2, E::PL_ACCENT, s);
-            // identity LOR so step index is predictable (= totalStepsElapsed & 0x0F = 0)
-            eng.polyLenERef(v, s % 3) = 16; // harmless; lanes use [v][lane]
+            eng.pe.polyRandom(dotModular::VoiceResolver::slot(v + 1 + 1), dotModular::LaneId{E::PL_REST})[s] = sentinel(v + 2, E::PL_REST,   s);
+            eng.pe.polyRandom(dotModular::VoiceResolver::slot(v + 1 + 1), dotModular::LaneId{E::PL_MELODY})[s] = sentinel(v + 2, E::PL_MELODY, s);
+            eng.pe.polyRandom(dotModular::VoiceResolver::slot(v + 1 + 1), dotModular::LaneId{E::PL_OCTAVE})[s] = sentinel(v + 2, E::PL_OCTAVE, s);
+            eng.pe.polyRandom(dotModular::VoiceResolver::slot(v + 1 + 1), dotModular::LaneId{E::PL_ACCENT})[s] = sentinel(v + 2, E::PL_ACCENT, s);
+            // identity LOR so step index is predictable (= the transport walk & 0x0F = 0 at the anchor)
+            eng.polyLenERef(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{s % 3}) = 16; // harmless; lanes use [v][lane]
+        }
+    // Macro-own base (CC_PROMPT_macro_output_east_leak): the pubSlewed* snapshots — what
+    // laneProbabilityAtStep resolves from (via SequencerEngine::macroOwnLaneProbability;
+    // macroOwnSpread defaults 0, no warp bank ⇒ the base comes back bit-exactly). The SAME
+    // sentinels, so the no-leak SUITE below pins the (voice, lane, step) addressing
+    // through the NEW source.
+    for (int s = 0; s < 16; ++s) {
+        eng.pe.pubSlewedPolyRhythm[0][s] = sentinel(1, E::PL_REST,   s);
+        eng.pe.pubSlewedPolyMelody[0][s] = sentinel(1, E::PL_MELODY, s);
+        eng.pe.pubSlewedPolyOctave[0][s] = sentinel(1, E::PL_OCTAVE, s);
+        eng.pe.pubSlewedPolyAccent[0][s] = sentinel(1, E::PL_ACCENT, s);
+    }
+    for (int v = 0; v < 15; ++v)
+        for (int s = 0; s < 16; ++s) {
+            eng.pe.pubSlewedPolyRhythm[v + 1][s] = sentinel(v + 2, E::PL_REST,   s);
+            eng.pe.pubSlewedPolyMelody[v + 1][s] = sentinel(v + 2, E::PL_MELODY, s);
+            eng.pe.pubSlewedPolyOctave[v + 1][s] = sentinel(v + 2, E::PL_OCTAVE, s);
+            eng.pe.pubSlewedPolyAccent[v + 1][s] = sentinel(v + 2, E::PL_ACCENT, s);
         }
     // identity LOR per (voice, lane)
     for (int v = 0; v < 15; ++v)
-        for (int l = 0; l < 4; ++l) { eng.polyLenERef(v, l) = 16; eng.polyOffERef(v, l) = 0; eng.polyRotERef(v, l) = 0; }
+        for (int l = 0; l < 4; ++l) { eng.polyLenERef(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{l}) = 16; eng.polyOffERef(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{l}) = 0; eng.polyRotERef(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{l}) = 0; }
 }
 
 int main() {
@@ -87,11 +111,11 @@ int main() {
     TEST("voice identity + bank index across all 16 voices", {
         EXPECT(VoiceResolver::isMono(1));
         EXPECT(!VoiceResolver::isPoly(1));
-        EXPECT_EQ(VoiceResolver::polyBankIndex(1), -1);
+        EXPECT_EQ(VoiceResolver::polyVoiceSlot(1), -1);
         for (int v = 2; v <= 16; ++v) {
             EXPECT(VoiceResolver::isPoly(v));
             EXPECT(!VoiceResolver::isMono(v));
-            EXPECT_EQ(VoiceResolver::polyBankIndex(v), v - 2);
+            EXPECT_EQ(VoiceResolver::polyVoiceSlot(v), v - 1);
         }
     });
     TEST("voiceSlot convention + the slot/bank invariant the send-bank off-by-one violated", {
@@ -106,7 +130,7 @@ int main() {
         // bank with a mono slice (send/atten) and a poly-only bank stay correctly offset. This
         // is exactly the relationship the Macro send/atten off-by-one broke (V2 → slot 0).
         for (int v = 2; v <= 16; ++v)
-            EXPECT_EQ(VoiceResolver::voiceSlot(v), VoiceResolver::polyBankIndex(v) + 1);
+            EXPECT_EQ(VoiceResolver::voiceSlot(v), VoiceResolver::polyVoiceSlot(v));
     });
     TEST("baseEditableHere: false for mono, true for poly", {
         EXPECT(!VoiceResolver::baseEditableHere(1));
@@ -125,7 +149,7 @@ int main() {
         for (int v = 2; v <= 16; ++v)
             for (int li = 0; li < 4; ++li)
                 EXPECT_BITEQ(r.laneProbability(v, lanes[li]),
-                             eng.polyLaneProbability(lanes[li], v - 2));
+                             eng.polyLaneProbability(dotModular::LaneId{lanes[li]}, dotModular::VoiceResolver::slot(v - 1 + 1)));
     });
 
     SUITE("VoiceResolver — laneStep == direct accessors");
@@ -136,22 +160,30 @@ int main() {
     TEST("V2..V16 laneStep == polyLaneStep(lane, V-2)", {
         for (int v = 2; v <= 16; ++v)
             for (int li = 0; li < 4; ++li)
-                EXPECT_EQ(r.laneStep(v, lanes[li]), eng.polyLaneStep(lanes[li], v - 2));
+                EXPECT_EQ(r.laneStep(v, lanes[li]), eng.polyLaneStep(dotModular::LaneId{lanes[li]}, dotModular::VoiceResolver::slot(v)));
     });
 
-    SUITE("VoiceResolver — laneProbabilityAtStep == direct accessors (every step)");
-    TEST("V2..V16 laneProbabilityAtStep matches at all 16 steps", {
+    SUITE("VoiceResolver — laneProbabilityAtStep == the ONE accessor (every step)");
+    // CC_PROMPT_UI_TO_RESOLVER_SPEC step 2 (was CC_PROMPT_macro_output_east_leak): AtStep
+    // is Macro's prob-OUT source — it routes to SequencerEngine::effectiveProbability
+    // (MacroOwn lens — the ONE accessor the bars also read; the deleted
+    // macroOwnLaneProbability was its bridge shim for one commit), NOT the shared
+    // master/poly funnels (which East's spread writes on an East-owned lane). The
+    // routing identity is unchanged: same lens, same (voiceSlot, lane, step) addressing.
+    TEST("V2..V16 laneProbabilityAtStep == effectiveProbability(MacroOwn) at all 16 steps", {
         for (int v = 2; v <= 16; ++v)
             for (int li = 0; li < 4; ++li)
                 for (int s = 0; s < 16; ++s)
                     EXPECT_BITEQ(r.laneProbabilityAtStep(v, lanes[li], s),
-                                 eng.polyLaneProbabilityAtStep(lanes[li], v - 2, s));
+                                 eng.effectiveProbability(dotModular::VoiceResolver::slot(v), dotModular::LaneId{lanes[li]}, s,
+                                                          SequencerEngine::ProbLens::MacroOwn));
     });
-    TEST("V1 laneProbabilityAtStep == masterLaneProbability (mono ignores explicit step)", {
+    TEST("V1 laneProbabilityAtStep == effectiveProbability(MacroOwn) at Macro's explicit step", {
         for (int li = 0; li < 4; ++li)
             for (int s = 0; s < 16; ++s)
                 EXPECT_BITEQ(r.laneProbabilityAtStep(1, lanes[li], s),
-                             eng.masterLaneProbability(lanes[li]));
+                             eng.effectiveProbability(dotModular::VoiceResolver::slot(1), dotModular::LaneId{lanes[li]}, s,
+                                                      SequencerEngine::ProbLens::MacroOwn));
     });
 
     SUITE("VoiceResolver — sentinels prove no cross-voice / cross-lane leakage");

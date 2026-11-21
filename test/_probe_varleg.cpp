@@ -32,10 +32,10 @@ int main() {
         int nonzero = 0;
         for (int v = 0; v < 15; ++v) {
             int nz = 0;
-            for (int i = 0; i < 16; ++i) if (pe.polyRandom(v, pl)[i] != 0.f) ++nz;
+            for (int i = 0; i < 16; ++i) if (pe.polyRandom(v + 1, pl)[i] != 0.f) ++nz;
             nonzero += nz;
             std::printf("  v%-2d  : ", v + 1);
-            for (int i = 0; i < 16; ++i) std::printf("%.3f ", pe.polyRandom(v, pl)[i]);
+            for (int i = 0; i < 16; ++i) std::printf("%.3f ", pe.polyRandom(v + 1, pl)[i]);
             std::printf("  (nonzero=%d/16)\n", nz);
         }
         std::printf("  TOTAL nonzero poly cells: %d/240\n\n", nonzero);
@@ -50,7 +50,7 @@ int main() {
     int rnz = 0;
     for (int v = 0; v < 15; ++v)
         for (int i = 0; i < 16; ++i)
-            if (pe.polyRandom(v, PatternEngine::PL_REST)[i] != 0.f) ++rnz;
+            if (pe.polyRandom(v + 1, PatternEngine::PL_REST)[i] != 0.f) ++rnz;
     std::printf("  TOTAL nonzero poly RHYTHM cells: %d/240\n", rnz);
     return 0;
 }

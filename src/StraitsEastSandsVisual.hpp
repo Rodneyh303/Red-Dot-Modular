@@ -1,7 +1,11 @@
 #pragma once
 #include <rack.hpp>
+#include <array>   // P-B: std::array member state (ARRAY_CONTAINER_AUDIT)
 #include "ui/SandsGrid.hpp"
-#include "ui/SandsLaneNames.hpp"   // canonical EDITOR / SPREAD lane-name tables (q-mix-correct)
+#include "dsp/LaneMapping.hpp"     // lane order + canonical lane names (Phase 3b-3 merge)
+#include "ui/ModuleLookupCore.hpp"   // THE lookup authority: the topology epoch (onExpanderChange bump — CC_PROMPT_MODULE_LOOKUP_AUTHORITY_START)
+#include "ui/SandsSnap.hpp"      // the Sands subpanel snap cluster (the Straits resnap pattern, family-parameterised)
+#include "ui/RateManager.hpp"        // THE compute-rate authority (CC_PROMPT_RATE_MANAGER_START, S5): the detector + prob-out tiers
 #include "Monsoon.hpp"
 
 using namespace rack;
@@ -9,17 +13,21 @@ using namespace MonsoonIds;
 
 namespace StraitsEastVisualIds {
 
-    // ── Panel geometry (48HP — +4HP for dir_mod + deleg_mod + prob_out jack columns) ──
-    static constexpr float W_MM        = 243.84f;  // 48HP
-    static constexpr float ED_X        = 88.f;
+    // ── Panel geometry (48HP + 9mm w-level column + 9mm warp-edit column — CC_PROMPT_04) ──
+    static constexpr float W_MM        = 264.16f;  // 52HP exactly (was 261.84 = "48HP + 9mm (w-level) + 9mm (warp-edit)"; re-widened so the drawn art fills the whole-HP box Rack's setPanel rounds to — the Distribution expander seats against this edge)
+    static constexpr float WLEVEL_X    = 88.f;     // w-level knob column (the OLD ED_X slot)
+    static constexpr float ED_X        = 97.f;     // +9mm: w-level column sits left of the grid
     static constexpr float ED_W        = 111.f;
-    static constexpr float OWNER_X     = 205.f;
-    static constexpr float DIR_X       = 212.f;
+    static constexpr float OWNER_X     = 214.f;
+    static constexpr float DIR_X       = 221.f;
+    static constexpr float WARPEDIT_X  = 229.f;    // CC_PROMPT_04 STEP 2: "CRV" button column
     // Column order matches the TOGGLE order left->right (delegation cell, then direction
     // cell), so the jacks line up with the controls they modulate instead of crossing over.
-    static constexpr float DELEG_MOD_X = 220.f;    // delegation gate-mod jack column
-    static constexpr float DIR_MOD_X   = 228.f;    // direction gate-mod jack column
-    static constexpr float PROB_OUT_X  = 236.f;    // prob-out jack column (shifted right)
+    static constexpr float DELEG_MOD_X = 238.f;    // delegation gate-mod jack column (+9 for CRV)
+    static constexpr float DIR_MOD_X   = 246.f;    // direction gate-mod jack column
+    static constexpr float PROB_OUT_X  = 254.f;    // prob-out jack column (shifted right)
+// P-B (ARRAY_CONTAINER_AUDIT): 2-D member alias — byte-identical to T[Rows][Cols] (Finding D).
+template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::array<T, Cols>, Rows>;
     static constexpr int   N_ROWS      = dotModular::SandsGrid::POLY_LANES;  // 5 — 1 row per spread lane
     // Bound to the grid so Mono/East/Macro cannot drift. Option B: LANE_H=13.
     static constexpr float ROW_TOP = dotModular::SandsGrid::LANE_TOP;      // 14
@@ -43,15 +51,24 @@ namespace StraitsEastVisualIds {
     // East shows 7 editor lanes (MEL/OCT/QMIX/REST/ACC + VAR/LEG), spanning the SAME band as Mono
     // (14..105). ED_LANE_H (13mm) drives prob-out/control-row placement; matches the gen script.
     // Lanes 5/6 (VAR/LEG) are locked/display-only for now.
-    static constexpr float ED_H      = dotModular::SandsGrid::monoHeight();  // 91 (7×13)
+    // UNIFIED ADDRESSING Stage 3: the editor BOX grows DOWN by the voice-range strip
+    // (RANGE_LANE_H) — the lanes keep their full 13mm and start one strip lower; the
+    // painted recess + every rowY()-anchored control shift with it (the gen scripts'
+    // RANGE_MM/rowY in lockstep).
+    static constexpr float ED_H      = dotModular::SandsGrid::monoBoxHeight();  // 96 (5mm range strip + 7×13)
     static constexpr int   N_EDITOR_LANES = dotModular::SandsGrid::EAST_LANES;  // 7
+    // P-A (ARRAY_CONTAINER_AUDIT Finding A): the ONE spelling of the voice/channel capacity
+    // (mono + 15 poly — the jacks' 16-channel convention, ch0 = master), aliased from the
+    // VoiceResolver authority (Monsoon.hpp includes it complete).
+    static constexpr int kVoiceSlots = dotModular::VoiceResolver::kVoiceSlots;
     static constexpr float ED_LANE_H = dotModular::SandsGrid::LANE_H;        // 13
 
     // Left-control rows align with the EDITOR lane centres (not the full panel),
     // so each lane's CV jacks + attens sit beside the visual lane they modulate —
-    // matching SandsMonoVisual's behaviour.
+    // matching SandsMonoVisual's behaviour. Stage 3: + RANGE_LANE_H — the lanes
+    // start below the voice-range strip at the top of the editor box.
     static inline float rowY(int r) {
-        return ED_Y + (r + 0.5f) * ED_LANE_H;
+        return ED_Y + dotModular::SandsGrid::RANGE_LANE_H + (r + 0.5f) * ED_LANE_H;
     }
 
     // ── Row → lane mapping (mono-style: row == lane) ──────────────────────
@@ -111,11 +128,22 @@ namespace StraitsEastVisualIds {
         NUM_LANE_INPUTS = CV_START + 28,              // 7 poly lanes × 4 cols (LEN/OFF/ROT/SPR)
         DIR_MOD_START = NUM_LANE_INPUTS,              // = 28 — direction gate-mod (7 east lanes)
         DELEG_MOD_START = DIR_MOD_START + 7,          // = 35 — delegation gate-mod (7 east lanes, all lanes)
-        NUM_INPUTS = DELEG_MOD_START + 7              // = 42
+        // (B) VOICE-LOR PARITY: the voice-range row's OWN jacks — the strip's control row,
+        // the same complement as a lane minus spread/warp (the voice LOR has neither —
+        // the directive's cut). 3 L/O/R CV jacks (poly: channel == voiceSlot, the lanes'
+        // cvId law) + the row's dir/deleg gate-mods.
+        VLOR_CV_START = DELEG_MOD_START + 7,          // = 42 — the voice LOR's L/O/R CV
+        VLOR_DIR_MOD = VLOR_CV_START + 3,             // = 45 — the voice row's direction gate-mod
+        VLOR_DELEG_MOD = VLOR_DIR_MOD + 1,            // = 46 — the voice row's delegation gate-mod
+        NUM_INPUTS = VLOR_DELEG_MOD + 1               // = 47
     };
     static inline int dirModId(int lane) { return DIR_MOD_START + lane; }
     static inline int delegModId(int lane) { return DELEG_MOD_START + lane; }
     static inline int cvId(int lane, int col) { return CV_START + lane*4 + col; }
+    // The voice-range row's jacks (item 0/1/2 = L/O/R; the gate-mods are singleton ids).
+    static inline int vlCvId(int item) { return VLOR_CV_START + item; }
+    static inline int vlorDirModId()   { return VLOR_DIR_MOD; }
+    static inline int vlorDelegModId() { return VLOR_DELEG_MOD; }
     // varlegCvId RETIRED: VAR/LEG CV jacks are now cvId(5, col) (VAR) / cvId(6, col) (LEG),
     // sharing the unified input-id range and the macroAtten depth store with the 5 core lanes.
 
@@ -123,7 +151,7 @@ namespace StraitsEastVisualIds {
 
     // Unified LOR bank for an EDITOR lane — the SINGLE canonical mapping now lives in
     // dsp/LaneMapping.hpp (dotModular::lorStoreBank), which also covers VAR/LEG (editor
-    // 5/6) so the old hand-rolled `vl + <literal>` bank drift (QMIX→LEGATO coupling) can't
+    // 5/6) so the old hand-rolled vl + <literal> bank drift (QMIX→LEGATO coupling) can't
     // recur. Thin forwarder kept for call-site readability.
     static inline int lorBank(int editorLane) {
         return dotModular::lorStoreBank(editorLane);
@@ -171,27 +199,45 @@ namespace StraitsEastVisualIds {
     // channel 1 = master value, channels 2..1+nVoices = the per-voice ensemble.
     // SANDS CONSOLIDATION Step 1: 7 poly outputs (added VAR/LEG).
     enum OutputId {
-        PROB_OUT_REST = 0, PROB_OUT_MEL, PROB_OUT_OCT, PROB_OUT_ACCENT, PROB_OUT_QMIX,
-        PROB_OUT_VAR, PROB_OUT_LEG,
+        // Unified lane order (MEL=0 OCT=1 QMIX=2 REST=3 ACC=4 VAR=5 LEG=6) — matches the
+        // panel rows, the resolver writes and the labels. (Was REST-first from the OLD
+        // spread order, so every id's NAME was crossed with the data it carries.)
+        PROB_OUT_START = 0, PROB_OUT_MEL, PROB_OUT_OCT, PROB_OUT_QMIX, PROB_OUT_REST,
+        PROB_OUT_ACCENT, PROB_OUT_VAR, PROB_OUT_LEG,
         NUM_OUTPUTS
     };
 }
 
 struct StraitsEastSandsVisual : Module {
+    // (CC_PROMPT_CADENCE_C1B STAGE C) the widget-written LOR gesture snapshot — the
+    // manager reads it per control block to suspend the CV commit for the edited
+    // scope while a drag is engaged. Written in the widget's step() from
+    // visualEditor->lorDrag + currentSlot(); owner 0 none / 1 strip (the voice row)
+    // / 2 lane; voice <0 or lane <0 = absent.
+    bool lorGestureActive = false;
+    int  lorGestureOwner  = 0;
+    int  lorGestureVoice  = -1;
+    int  lorGestureLane   = -1;
+    std::array<bool, 3> lorGestureItems = {};
+    // P-A scope fix (ARRAY_CONTAINER_AUDIT): the ONE spelling of the voice/channel
+    // capacity must live in THIS class too — StraitsEastVisualIds's copy is a sibling
+    // scope, and the P-B std::array members below name it bare (the real-SDK g++
+    // sweep rejects the unqualified use; the mock never compiled this header).
+    static constexpr int kVoiceSlots = dotModular::VoiceResolver::kVoiceSlots;
 
     // Per-voice, per-lane EFFECTIVE spread (interp param + per-voice/lane CV·att,
     // clamped, after combineSpread) — published by MonsoonExpanderManager each
     // sync so the East spread trimpot mod-arc can show the viewed voice's value.
     // lane: 0=REST 1=MELODY 2=OCTAVE 3=ACCENT 4=QMIX. Bipolar-ish 0..1 interp domain.
     // 5 poly lanes (QMIX-widened; was [15][4]). The spread-arc getModNorm reads lane up to 4.
-    float polySpreadEffective[15][dotModular::SandsGrid::POLY_LANES] = {};   // 5 lanes (REST/MEL/OCT/ACC/QMIX)
+    std::array<std::array<float, dotModular::SandsGrid::POLY_LANES>, kVoiceSlots> polySpreadEffective = {};   // 5 lanes (REST/MEL/OCT/ACC/QMIX)
 
     // Probability CV out config (persisted): scale 0=0..1V,1=0..5V,2=0..10V; S&H vs
     // continuous. probHeld/probLastStep per (lane, channel) for S&H (ch0=master, 1..15
     // = voices → index [lane][0..15]). 5 poly lanes (QMIX-widened; was [4][16] — the
     // process() prob-out S&H loop writes lane up to POLY_LANES-1=4, so [4] overflowed).
-    float probHeld[dotModular::SandsGrid::POLY_LANES][16] = {};
-    int   probLastStep[dotModular::SandsGrid::POLY_LANES][16];
+    std::array<std::array<float, kVoiceSlots>, dotModular::SandsGrid::POLY_LANES> probHeld = {};
+    std::array<std::array<int, kVoiceSlots>, dotModular::SandsGrid::POLY_LANES> probLastStep{};
 
     StraitsEastSandsVisual() {
         using namespace StraitsEastVisualIds;
@@ -205,11 +251,12 @@ struct StraitsEastSandsVisual : Module {
         config(0, StraitsEastVisualIds::NUM_INPUTS,
                StraitsEastVisualIds::NUM_OUTPUTS, StraitsEastVisualIds::NUM_LIGHTS);
         for (auto& a : probLastStep) for (auto& x : a) x = -1;
-        // SANDS CONSOLIDATION Step 1: 7 poly outputs (VAR/LEG added)
-        { static const char* ln[7] = {"REST","MEL","OCT","ACC","Q-MIX","VAR","LEG"};
-          for (int l = 0; l < dotModular::SandsGrid::POLY_LANES; ++l)
-            configOutput(StraitsEastVisualIds::PROB_OUT_REST + l,
-                std::string("Probability ") + ln[l] + " (poly: ch1 master, ch2+ voices)"); }
+        // SANDS CONSOLIDATION Step 1: 7 poly outputs (VAR/LEG added). Labels from the
+        // canonical table — the old local literal was in the OLD spread order, so every
+        // jack tooltip named the wrong lane (id 0 carries MEL, was labelled "REST").
+        for (int l = 0; l < dotModular::SandsGrid::POLY_LANES; ++l)
+            configOutput(StraitsEastVisualIds::PROB_OUT_START + l,
+                std::string("Probability ") + dotModular::SandsLaneNames::EDITOR[l] + " (poly: ch1 master, ch2+ voices)");
 
         // Spread base (4): STORE-BACKED (MVC step 1d). SPREAD_R/M/O/A ids KEPT (name panel slots)
         // but reserve NO param slots — StoreKnob reads/writes editor.spread[currentSlot(), lane]
@@ -219,16 +266,13 @@ struct StraitsEastSandsVisual : Module {
         // to/from the per-voice MACRO_OWN/SEND params on voice switch). Owner is
         // an on/off switch (off=Macro owns base, on=East owns). Sends -1..1
         // default unity (Macro CV reaches the voice; turn down to localise).
-        // (Dead: consumed only by (void)laneNm below — kept as the SPREAD-order table for parity.)
-        const char* const* laneNm = dotModular::SandsLaneNames::SPREAD;   // [POLY_LANES], spread order
         // V1 ownership (poly lanes 0..3): STORE-BACKED (MVC step 1d). ownerDispId ids KEPT (name
         // panel slots) but reserve NO param slots — OwnerCell reads/writes editor.macroOwn via
         // get/setMacroOwn (poly) / get/setMonoMacroOwn (V1) live per tab. No configSwitch.
-        (void)laneNm;
 
-        // cvId(lane,c) is indexed by SPREAD/poly-engine lane (lane 0=REST); label from the canonical
-        // SPREAD table (q-mix appended at index 4). paramNames are the 4 COLUMNS (Len/Off/Rot/Spr).
-        static const char* const* laneNames = dotModular::SandsLaneNames::SPREAD;   // [POLY_LANES], spread order
+        // cvId(lane,c) is indexed by the unified lane; label from the canonical table.
+        // paramNames are the 4 COLUMNS (Len/Off/Rot/Spr).
+        static const char* const* laneNames = dotModular::SandsLaneNames::EDITOR;   // [POLY_LANES]
         static const char* paramNames[4] = {"Len","Off","Rot","Spr"};
         for (int lane=0; lane<dotModular::SandsGrid::POLY_LANES; ++lane)
             // CV-depth attens: STORE-BACKED (MVC step 1d). attenDispId ids KEPT (name panel slots)
@@ -262,6 +306,125 @@ struct StraitsEastSandsVisual : Module {
         // delegation convention; toggle per lane via the V1 owner cell).
         gateModDiv.setDivision(GATE_MOD_DIV);   // gate-mod scan runs at /8, not per sample
         probOutDiv.setDivision(32);             // prob CV outs = CONTROL rate (~1.5 kHz @48k, matches controlDivider)
+        // RATE MANAGER (CC_PROMPT_RATE_MANAGER_START, S5): the dir/deleg CV-edge scan is
+        // a DETECTOR-PRODUCER on the Sample tier (fed by the /8 gateModDiv edge — the
+        // detector cadence; /8 preserved EXACTLY). Its input image is the raw CV state
+        // (all dir/deleg jack voltages + channel counts): bit-identical voltages ⇒ no
+        // edge is possible ⇒ the skip is semantically exact. The edge counters/prev
+        // states are the produce's own I/O, so a skip is a no-op by construction.
+        // D17 compare-in-place: the compare walks the LIVE jacks field-by-field against
+        // dirDelegSig_ (early-out — the channel count of a jack gates its voltage walk),
+        // no image build, no copy; the capture stores the post-run image only after a
+        // run. This is the hottest fingerprint in the plane (Sample tier, /8 ≈ 6 kHz) —
+        // the scratch copy + Img build it drops is the largest single saving of D17.
+        rateManager.declareProducer(
+            redDot::Rate::Sample,
+            [this]() -> bool {
+                for (int lane = 0; lane < dotModular::SandsGrid::EAST_LANES; ++lane) {
+                    auto& din = inputs[dirModId(lane)];
+                    const uint8_t ch = din.isConnected() ? (uint8_t)std::min(din.getChannels(), 16) : 0;
+                    if (ch != dirDelegSig_.dirCh[lane]) return true;
+                    for (int c = 0; c < ch; ++c) {
+                        const float v = din.getVoltage(c);
+                        if (std::memcmp(&v, &dirDelegSig_.dir[lane][c], sizeof v) != 0) return true;
+                    }
+                    auto& gin = inputs[delegModId(lane)];
+                    const uint8_t gch = gin.isConnected() ? (uint8_t)std::min(gin.getChannels(), 16) : 0;
+                    if (gch != dirDelegSig_.delegCh[lane]) return true;
+                    for (int c = 0; c < gch; ++c) {
+                        const float v = gin.getVoltage(c);
+                        if (std::memcmp(&v, &dirDelegSig_.deleg[lane][c], sizeof v) != 0) return true;
+                    }
+                }
+                {
+                    auto& vin = inputs[vlorDirModId()];
+                    const uint8_t ch = vin.isConnected() ? (uint8_t)std::min(vin.getChannels(), 16) : 0;
+                    if (ch != dirDelegSig_.vlorDirCh) return true;
+                    for (int c = 0; c < ch; ++c) {
+                        const float v = vin.getVoltage(c);
+                        if (std::memcmp(&v, &dirDelegSig_.vlorDir[c], sizeof v) != 0) return true;
+                    }
+                    auto& vgin = inputs[vlorDelegModId()];
+                    const uint8_t gch = vgin.isConnected() ? (uint8_t)std::min(vgin.getChannels(), 16) : 0;
+                    if (gch != dirDelegSig_.vlorDelegCh) return true;
+                    for (int c = 0; c < gch; ++c) {
+                        const float v = vgin.getVoltage(c);
+                        if (std::memcmp(&v, &dirDelegSig_.vlorDeleg[c], sizeof v) != 0) return true;
+                    }
+                }
+                return false;
+            },
+            // The capture: the old fingerprint body verbatim, landing in dirDelegSig_
+            // (the value-assign re-zero keeps the byte-image semantics — voltages
+            // beyond a dropped channel count read as ZERO, exactly as the old img{}
+            // zero-init had them).
+            [this] {
+                dirDelegSig_ = DirDelegSig{};
+                for (int lane = 0; lane < dotModular::SandsGrid::EAST_LANES; ++lane) {
+                    auto& din = inputs[dirModId(lane)];
+                    dirDelegSig_.dirCh[lane] = din.isConnected() ? (uint8_t)std::min(din.getChannels(), 16) : 0;
+                    for (int ch = 0; ch < dirDelegSig_.dirCh[lane]; ++ch) dirDelegSig_.dir[lane][ch] = din.getVoltage(ch);
+                    auto& gin = inputs[delegModId(lane)];
+                    dirDelegSig_.delegCh[lane] = gin.isConnected() ? (uint8_t)std::min(gin.getChannels(), 16) : 0;
+                    for (int ch = 0; ch < dirDelegSig_.delegCh[lane]; ++ch) dirDelegSig_.deleg[lane][ch] = gin.getVoltage(ch);
+                }
+                {
+                    auto& vin = inputs[vlorDirModId()];
+                    dirDelegSig_.vlorDirCh = vin.isConnected() ? (uint8_t)std::min(vin.getChannels(), 16) : 0;
+                    for (int ch = 0; ch < dirDelegSig_.vlorDirCh; ++ch) dirDelegSig_.vlorDir[ch] = vin.getVoltage(ch);
+                    auto& vgin = inputs[vlorDelegModId()];
+                    dirDelegSig_.vlorDelegCh = vgin.isConnected() ? (uint8_t)std::min(vgin.getChannels(), 16) : 0;
+                    for (int ch = 0; ch < dirDelegSig_.vlorDelegCh; ++ch) dirDelegSig_.vlorDeleg[ch] = vgin.getVoltage(ch);
+                }
+            },
+            [this] {
+                for (int lane = 0; lane < dotModular::SandsGrid::EAST_LANES; ++lane) {
+                    auto& din = inputs[dirModId(lane)];
+                    dirModChans[lane] = din.isConnected() ? (uint8_t)din.getChannels() : 0;
+                    if (din.isConnected()) {
+                        int nch = std::min(din.getChannels(), 16);
+                        for (int ch = 0; ch < nch; ++ch) {
+                            bool high = din.getVoltage(ch) > 1.f;
+                            if (high && !dirModPrev[lane][ch]) ++dirModEdges[lane][ch];
+                            dirModPrev[lane][ch] = high;
+                        }
+                    }
+                    auto& gin = inputs[delegModId(lane)];
+                    delegModChans[lane] = gin.isConnected() ? (uint8_t)gin.getChannels() : 0;
+                    if (gin.isConnected()) {
+                        int nch = std::min(gin.getChannels(), 16);
+                        for (int ch = 0; ch < nch; ++ch) {
+                            bool high = gin.getVoltage(ch) > 1.f;
+                            if (high && !delegModPrev[lane][ch]) ++delegModEdges[lane][ch];
+                            delegModPrev[lane][ch] = high;
+                        }
+                    }
+                }
+                // (B) VOICE-LOR PARITY: the voice row's gate-mod edges — the same law,
+                // ch == voiceSlot directly (ch0 = V1 … ch15 = V16, the poly-CV convention).
+                {
+                    auto& vin = inputs[vlorDirModId()];
+                    vlorDirModChans = vin.isConnected() ? (uint8_t)vin.getChannels() : 0;
+                    if (vin.isConnected()) {
+                        int nch = std::min(vin.getChannels(), 16);
+                        for (int ch = 0; ch < nch; ++ch) {
+                            bool high = vin.getVoltage(ch) > 1.f;
+                            if (high && !vlorDirModPrev[ch]) ++vlorDirModEdges[ch];
+                            vlorDirModPrev[ch] = high;
+                        }
+                    }
+                    auto& vgin = inputs[vlorDelegModId()];
+                    vlorDelegModChans = vgin.isConnected() ? (uint8_t)vgin.getChannels() : 0;
+                    if (vgin.isConnected()) {
+                        int nch = std::min(vgin.getChannels(), 16);
+                        for (int ch = 0; ch < nch; ++ch) {
+                            bool high = vgin.getVoltage(ch) > 1.f;
+                            if (high && !vlorDelegModPrev[ch]) ++vlorDelegModEdges[ch];
+                            vlorDelegModPrev[ch] = high;
+                        }
+                    }
+                }
+            });
         // East LANE DIRECTION bank: 16 slots (0..14 = poly V2..V16, 15 = V1/mono spare slot,
         // the monoOwnerId trick) x 6 strands. Real params, so Rack persists them and the
         // LANE_DIR migrated out of params[] to Monsoon::editor.laneDir (NUM_PARAMS_MIGRATION.md).
@@ -275,7 +438,7 @@ struct StraitsEastSandsVisual : Module {
         // (slot 0 = voice 1/mono, slot v = voice v+1), so the mono mix-in's depth no longer
         // aliases poly voice 2's. The panel's 12 attenuverters are display proxies copied to
         // the selected voice's slice on voice switch.
-        for (int v=0; v<16; ++v) {
+        for (int v=0; v<kVoiceSlots; ++v) {
             std::string vl = "V"+std::to_string(v+1)+" ";   // slot v = voice v+1
             // atten store MIGRATED to Monsoon::editor.macroAtten (getMacroAtten/setMacroAtten);
             // the per-voice depth params no longer live in params[]. The 12 visible attenuverters
@@ -298,10 +461,36 @@ struct StraitsEastSandsVisual : Module {
             }
             for (int lane=0; lane<dotModular::SandsGrid::EAST_LANES; ++lane)
                 configInput(delegModId(lane), std::string(laneNm[lane])+" delegation gate-mod (poly)");
+            // (B) VOICE-LOR PARITY: the voice-range row's jacks — the strip's control row.
+            // CV is poly (channel == voiceSlot: ch0 = V1 … ch15 = V16) with per-voice
+            // depth (editor.voiceLorAttenEast — the macroAtten law, one axis over); the
+            // gate-mods follow the lane jacks' edge law (audio-thread counters, the
+            // widget's applyGateMods applies).
+            {
+                static const char* vlorCN[3] = {"Length", "Offset", "Rotation"};
+                for (int item = 0; item < 3; ++item)
+                    configInput(vlCvId(item), std::string("Voice range ") + vlorCN[item]
+                                + " CV (poly, per-voice depth)");
+                configInput(vlorDirModId(),   "Voice range direction gate-mod (poly)");
+                configInput(vlorDelegModId(), "Voice range delegation gate-mod (poly)");
+            }
         }
    }
 
-    void process(const ProcessArgs&) override;   // defined in .cpp (needs findMonsoonEitherSide)
+    void process(const ProcessArgs&) override;   // defined in .cpp (adjacency via redDot::lookupMonsoon)
+    // THE LOOKUP AUTHORITY (CC_PROMPT_MODULE_LOOKUP_AUTHORITY_START): the event bumps
+    // the global topology epoch — this module's adjacency (the lookupMonsoon memo)
+    // re-resolves on the next read, engine + widget threads. cachedMon_ and its
+    // divider refresh are DELETED.
+    void onExpanderChange(const ExpanderChangeEvent& e) override {
+        redDot::bumpTopologyEpoch();
+        snap.topologyDirty.store(true, std::memory_order_relaxed);   // the subpanel fast path
+    }
+
+    // ── the Sands subpanel snap state (ui/SandsSnap.hpp): this module is a SNAP
+    // HOST — the Distribution expander chains RIGHT of it (the per-voice role's
+    // host side); the widget's step() runs the Straits resnap cluster on it.
+    redDot::SandsSnapHostState snap;
 
     // Gate edge detection state for dir_mod and deleg_mod inputs.
     // dirModPrev[lane][channel] — 7 lanes × 16 channels (ch0=mono, ch1..15=voices 2..16)
@@ -319,19 +508,42 @@ struct StraitsEastSandsVisual : Module {
     // The scan runs on a divider rather than every sample: a gate is milliseconds long
     // (hundreds of samples), so /8 still catches every edge at an eighth of the cost.
     static constexpr int GATE_MOD_DIV = 8;
-    rack::dsp::ClockDivider gateModDiv;
-    Monsoon* cachedMon_  = nullptr;   // refreshed on gateModDiv (topology is control-rate)
-    bool     gateModScan_ = false;    // set when gateModDiv ticks; consumed by the gate scan
-    rack::dsp::ClockDivider probOutDiv;   // prob CV outs: /32 = control rate
-    bool    dirModPrev[dotModular::SandsGrid::EAST_LANES][16]    = {};
-    bool    delegModPrev[dotModular::SandsGrid::EAST_LANES][16]  = {};
-    uint8_t dirModEdges[dotModular::SandsGrid::EAST_LANES][16]   = {};   // audio thread is the sole writer
-    uint8_t delegModEdges[dotModular::SandsGrid::EAST_LANES][16] = {};
+    // RATE MANAGER (S5): the module's OWN manager — the dir/deleg CV-edge detector
+    // (Sample tier, fed by the /8 gateModDiv edge — the cadence preserved exactly) and
+    // the prob-out recompute (Control tier, fed by the /32 probOutDiv edge). The raw
+    // gateModScan_ flag is DELETED (the tier's tick is the flag).
+    redDot::RateManager rateManager;
+    rack::dsp::ClockDivider gateModDiv;   // the /8 DETECTOR cadence (feeds the Sample tier)
+    rack::dsp::ClockDivider probOutDiv;   // prob CV outs: /32 = control rate (feeds the Control tier)
+    std::array<std::array<bool, kVoiceSlots>, dotModular::SandsGrid::EAST_LANES> dirModPrev = {};
+    std::array<std::array<bool, kVoiceSlots>, dotModular::SandsGrid::EAST_LANES> delegModPrev = {};
+    std::array<std::array<uint8_t, kVoiceSlots>, dotModular::SandsGrid::EAST_LANES> dirModEdges = {};   // audio thread is the sole writer
+    std::array<std::array<uint8_t, kVoiceSlots>, dotModular::SandsGrid::EAST_LANES> delegModEdges = {};
     // Channel count of each connected mod cable. A 1-channel cable into a poly input is
     // BROADCAST to every target (the VCV norm), rather than hitting only ch0 = V1 — a mono
     // gate means "apply this everywhere", not "apply it to voice 1".
     uint8_t dirModChans[dotModular::SandsGrid::EAST_LANES]   = {};
     uint8_t delegModChans[dotModular::SandsGrid::EAST_LANES] = {};
+    // (B) VOICE-LOR PARITY: the voice row's OWN gate-mod state (the same split-thread
+    // law, the same broadcast rule; ch == voiceSlot directly — ch0 = V1 … ch15 = V16).
+    std::array<bool, kVoiceSlots> vlorDirModPrev = {};
+    std::array<bool, kVoiceSlots> vlorDelegModPrev = {};
+    std::array<uint8_t, kVoiceSlots> vlorDirModEdges = {};   // audio thread is the sole writer
+    std::array<uint8_t, kVoiceSlots> vlorDelegModEdges = {};
+    uint8_t vlorDirModChans       = 0;
+    uint8_t vlorDelegModChans     = 0;
+    // D17: the gate-mod scan's typed shadow (the old fingerprint's byte image, per-
+    // instance and testable at the declaring site — never in the manager). The compare
+    // walks the LIVE jacks against it field-by-field (early-out); the capture
+    // value-assigns it after a run (the zero-init semantics preserved).
+    struct DirDelegSig {
+        std::array<std::array<float, kVoiceSlots>, dotModular::SandsGrid::EAST_LANES> dir, deleg;
+        std::array<uint8_t, dotModular::SandsGrid::EAST_LANES> dirCh, delegCh;
+        // (B) VOICE-LOR PARITY: the voice row's own gate-mod image (the
+        // same fingerprint discipline — ch == voiceSlot, 16 channels).
+        std::array<float, kVoiceSlots> vlorDir, vlorDeleg;
+        uint8_t vlorDirCh, vlorDelegCh;
+    } dirDelegSig_{};
 
     json_t* dataToJson() override {
         json_t* r = json_object();

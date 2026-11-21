@@ -1,13 +1,17 @@
 #pragma once
 #include <rack.hpp>
+#include <array>   // D17's PopulationSig joins the P-B std::array plane (ARRAY_CONTAINER_AUDIT)
 #include "../SandsTopology.hpp"   // for SandsTopology::Inputs (the presence authority target)
+#include "../../ui/RateManager.hpp"   // THE compute-rate authority (rack-free core — CC_PROMPT_RATE_MANAGER_START)
 
 // Forward declarations
-class SequencerEngine;
+struct SequencerEngine;
 struct Monsoon;
 // Model externs for the lane-extension system (declared in Monsoon.hpp, but
-// needed here before Monsoon.hpp reaches those lines — forward-declare).
-namespace rack { struct Model; }
+// needed here before Monsoon.hpp reaches those lines). rack::Model comes from
+// <rack.hpp> (included above); do NOT forward-declare it here — Clang treats a
+// local namespace rack { struct Model; } as conflicting with the SDK's
+// using plugin::Model; and reports every rack::Model reference as ambiguous.
 extern rack::Model* modelStraitsBase;
 extern rack::Model* modelStraitsLaneQMIX;
 extern rack::Model* modelStraitsLaneREST;
@@ -15,12 +19,14 @@ extern rack::Model* modelStraitsLaneACCENT;
 extern rack::Model* modelStraitsLaneVARIATION;
 extern rack::Model* modelStraitsLaneLEGATO;
 extern rack::Model* modelMonsoonShophouseMicro;
+extern rack::Model* modelSandsDistributionExpander;   // the Sands subpanel (hop-through)
 
 // Forward declarations
 struct MonsoonInterchangeExpander;
 struct MonsoonChangeAlleyExpander;
 struct MonsoonTemasekExpander;
 struct MonsoonChangeAlleyV2;
+struct MonsoonCantonment;
 struct MonsoonSandsExpander;
 struct MonsoonSandsVisualExpander;       // Mono visual DNA editor
 struct MonsoonStraitsExpander;
@@ -42,12 +48,23 @@ extern rack::Model* modelMonsoonJunctionExpander;
 extern rack::Model* modelMonsoonChangeAlleyExpander;
 extern rack::Model* modelMonsoonTemasekExpander;
 extern rack::Model* modelMonsoonChangeAlleyV2;
+extern rack::Model* modelCantonment;       // articulation-envelope routing (CA sibling; step 3 driver)
 extern rack::Model* modelMonsoonSandsExpander;
 extern rack::Model* modelSikit;            // tuning expander (microtonal Phase 1)
 extern rack::Model* modelColonnades;       // tuning+scale authoring expander (microtonal Phase 2)
 extern rack::Model* modelColonnadesDuo;    // tuning+scale authoring expander, 24-tone (microtonal Phase 3)
 extern rack::Model* modelMonsoonSandsVisualExpander;
 extern rack::Model* modelMonsoonStraitsExpander;
+extern rack::Model* modelStraitsSubgatePanelRatchetRest;    // subgate per-voice panels — ONE per (level x decision)
+                                                            //   (hop-through; the global tier is on StraitsBase)
+extern rack::Model* modelStraitsSubgatePanelRatchetLegato;  //   (hop-through; option (a))
+extern rack::Model* modelStraitsSubgatePanelRatchetAccent;
+extern rack::Model* modelStraitsSubgatePanelRatchetAdvance;
+extern rack::Model* modelStraitsSubgatePanelGhostRest;
+extern rack::Model* modelStraitsSubgatePanelGhostLegato;
+extern rack::Model* modelStraitsSubgatePanelGhostAccent;
+extern rack::Model* modelStraitsSubgatePanelGhostAdvance;
+extern rack::Model* modelStraitsQmixOctPanel;   // qmix-octave per-voice panel (hop-through; docked after the subgate panels)
 extern rack::Model* modelMonsoonCausewayPolyExpander;
 extern rack::Model* modelMonsoonChangiExpander;
 extern rack::Model* modelMonsoonChangiT2Expander;
@@ -60,7 +77,7 @@ extern rack::Model* modelStraitsEastSandsVisual;
 extern rack::Model* modelStraitsSandsMacroVisual;
 extern rack::Model* modelLantern;   // note-output visualiser — suite member, hop-only (see scan)
 extern rack::Model* modelIntertropical;   // arranger/observer — suite member, hop-only (see scan)
-
+extern rack::Model* modelSandsPhaseDistSubpanel;   // the expander phase-distortion subpanel (PHASE_DISTRIBUTION_SPEC §13 — the B comparison build; 8 phase in/out, per-channel sets, the ONE shared primitive; the expander model A stays)
 /**
  * ExpanderManager handles the discovery and caching of Monsoon expander modules.
  * It walks the left and right expansion chains to identify connected modules.
@@ -92,14 +109,18 @@ struct MonsoonExpanderManager {
         bool valid() const { return mod && (paramId >= 0 || eastMonoLane >= 0); }
         bool isField() const { return eastMonoLane >= 0; }
     };
-    // lane = STRAND index 0..5. Precedence: Mono (if it owns the lane; it always owns
-    // VAR/LEG) → Macro (lanes 0..3 only; it has no VAR/LEG) → East's V1 slot → nothing.
+    // lane = STRAND index 0..6. Precedence (CC_PROMPT_UI_TO_RESOLVER_SPEC step 2 — the
+    // stale pre-QMIX lane>=4 carve-out DELETED): Macro → East's V1 slot → nothing.
+    // ALL 7 lanes uniform — VAR/LEG follow Macro like 0-4 (Mono is dead; the "Macro has
+    // no VAR/LEG lane" rule died with the 5-lane order — the POLY push already followed
+    // Macro on all 7 lanes via resolveDirItem).
     MonoDirSrc monoDirAuthority(int lane) const;
 
     MonsoonInterchangeExpander*  cachedScaleExpander              = nullptr;
     rack::Module*                cachedRafflesExpander           = nullptr;
     rack::Module*                cachedJunctionExpander          = nullptr;
     MonsoonChangeAlleyV2*        cachedChangeAlleyV2             = nullptr;
+    MonsoonCantonment*          cachedCantonment               = nullptr;
     int  caPrevStep_   = 0;
     bool caPrevLocked_ = false;  // unlock-edge detect for restructure queue
     //MonsoonSandsExpander*        cachedDnaExpander                = nullptr;
@@ -133,6 +154,7 @@ struct MonsoonExpanderManager {
         cachedRafflesExpander           = nullptr;
         cachedJunctionExpander          = nullptr;
         cachedChangeAlleyV2             = nullptr;
+        cachedCantonment               = nullptr;
         //cachedDnaExpander                = nullptr;
         cachedSandsVisualExpander        = nullptr;
         cachedPolyVoiceExpander          = nullptr;
@@ -181,6 +203,12 @@ struct MonsoonExpanderManager {
                 } else if (curr->model == modelMonsoonChangeAlleyV2) {
                     if (!cachedChangeAlleyV2)
                         cachedChangeAlleyV2 = reinterpret_cast<MonsoonChangeAlleyV2*>(curr);
+                } else if (curr->model == modelCantonment) {
+                    // Containment (the CA sibling): first-found = the claimed mutator. The sync()
+                    // fire block drives ONLY the claimed instance (the owner-guard precedent — a
+                    // second Containment in the chain stays a reader).
+                    if (!cachedCantonment)
+                        cachedCantonment = reinterpret_cast<MonsoonCantonment*>(curr);
                 // } else if (curr->model == modelMonsoonSandsExpander) {
                 //     if (!cachedDnaExpander) cachedDnaExpander = reinterpret_cast<MonsoonSandsExpander*>(curr);
                 //     dnaExpanderCount++;
@@ -236,12 +264,29 @@ struct MonsoonExpanderManager {
                         || curr->model == modelStraitsLaneACCENT
                         || curr->model == modelStraitsLaneVARIATION
                         || curr->model == modelStraitsLaneLEGATO
-                        || curr->model == modelMonsoonShophouseMicro) {
+                        || curr->model == modelStraitsSubgatePanelRatchetRest
+                        || curr->model == modelStraitsSubgatePanelRatchetLegato
+                        || curr->model == modelStraitsSubgatePanelRatchetAccent
+                        || curr->model == modelStraitsSubgatePanelRatchetAdvance
+                        || curr->model == modelStraitsSubgatePanelGhostRest
+                        || curr->model == modelStraitsSubgatePanelGhostLegato
+                        || curr->model == modelStraitsSubgatePanelGhostAccent
+                        || curr->model == modelStraitsSubgatePanelGhostAdvance
+                        || curr->model == modelStraitsQmixOctPanel   // QMIX_OCTAVE Stage 3: the qmix-oct per-voice panel
+                                                                     //   (docks after the subgate panels — hop-through,
+                                                                     //   the same law: mid-chain it must NOT act as a
+                                                                     //   foreign boundary)
+                        || curr->model == modelSandsDistributionExpander
+                        || curr->model == modelMonsoonShophouseMicro
+                        || curr->model == modelSandsPhaseDistSubpanel
+                    ) {
                     // Hop-through modules (no cache slot): observer/follower suite modules (Lantern;
                     // Changi T3) AND lane-extension sub-modules (StraitsLaneQMIX/REST/ACCENT/
-                    // VARIATION/LEGATO) AND ShophouseMicro. These live in the chain between Monsoon
-                    // and other expanders (e.g. Monsoon → StraitsBase → StraitsLaneQMIX → EastSands),
-                    // so HOP through them instead of stopping (Rule 1). Without this, anything past a
+                    // VARIATION/LEGATO) AND the Straits subgate surfaces (SubgateBase + its two
+                    // per-voice panels — the CC_PROMPT_STRAITS_SUBGATE_KNOBS_SPEC chain, which may
+                    // dock after the lane run) AND ShophouseMicro. These live in the chain between
+                    // Monsoon and other expanders, so HOP through them instead of stopping (Rule 1).
+                    // Without this, anything past a
                     // lane expander was never cached → cachedEastSandsVisual stayed null → mmOwn null →
                     // getSpread returned 0 → polySpreadEffective written 0 → spread bars flat (the
                     // spread/QMIX-arc/de-param crash cluster — one root cause). Kept in LOCKSTEP with
@@ -282,11 +327,66 @@ struct MonsoonExpanderManager {
     /// Synchronizes data between the engine and specific expanders (Deep Straits, Visual Editors, etc.)
     void sync(SequencerEngine& engine, bool caQueueFires);
 
+    // ── RATE MANAGER (CC_PROMPT_RATE_MANAGER_START, Stage 0 / S0b) ──────────────────
+    // The MACRO-ONLY sync population — the measured Macro-only 3% (controlDiv sync
+    // 515-578 ns/sample vs 33 East+Macro; the 15×7 LOR+spread re-population ran every
+    // control cycle UNCONDITIONALLY) — is the FIRST Control-rate producer: work handed
+    // to the manager, dispatched at the population's old position in the control tick,
+    // SKIPPED while its fingerprint is unchanged. The fingerprint covers every input
+    // the population reads AND the cells it writes (self-healing: the runtime engine
+    // reset foreign-writes the LOR store; the image detects it and the producer
+    // re-asserts, exactly as the old per-tick code did — the SweepSig live-store
+    // compare, generalized). Declared ONCE (Monsoon's ctor) via declareRateProducers().
+    void declareRateProducers(redDot::RateManager& rm, Monsoon& ownerMon);
+    /// The else-if reachability guard, recomputed: the produce must be INERT exactly
+    /// when sync's chain would NOT have reached the MACRO-ONLY branch (the East branch
+    /// owns the cells then). The guard's inputs are fingerprint fields too.
+    bool macroPopulationActive_(const SequencerEngine& engine) const;
+    /// D17 compare-in-place halves (the byte-image macroPopulationFingerprint_ is
+    /// DELETED — deletion is the enforcement): compare_ walks the LIVE inputs
+    /// field-by-field against popSig_ (the typed shadow below) with early-out — no
+    /// image build, no copy through the manager; capture_ stores the post-run image
+    /// into popSig_ after a run. The compare is the capture's MIRROR — same fields,
+    /// same order, adjacent functions, one enumeration each (drift = stale state; the
+    /// RateManager R9 coverage test pins the property).
+    bool macroPopulationCompare_(const SequencerEngine& engine) const;
+    void macroPopulationCapture_(const SequencerEngine& engine);
+    /// The extracted population — VERBATIM (same writes, same order, same liveness gates).
+    void macroPopulationProduce_(SequencerEngine& engine);
+
+    // The input + produced-cells shadow (packed struct, ≈2.5 KB — the old byte-image
+    // layout, D17-typed; the compare never builds it, the capture zero-inits it).
+    // EVERY input the population reads is here — a missed input = stale cells. The
+    // produced cells are here TOO (self-healing, the SweepSig live-store compare
+    // generalized): the runtime engine reset (SequencerEngine::reset) foreign-writes
+    // the LOR store + strands; the shadow detects ANY foreign write and the producer
+    // re-asserts, exactly as the old unconditional per-tick code did. The pointer
+    // words stay FIRST so a presence flip short-circuits the walk.
+    struct PopulationSig {
+        // ── inputs ──
+        uint64_t macroVis, eastVisual, straits, monoVis;   // presence/identity
+        int32_t  effPolyVoices;
+        uint8_t  locked;
+        uint32_t scopeLiveMask;
+        std::array<std::array<float, 4>, 7> macroBase = {};  // LOR items 0-2 + spread base item 3
+        std::array<float, 7> preD3 = {};   // tappedDelta's item-3 endpoints (the spread taps read these)
+        std::array<float, 7> postD3 = {};
+        std::array<std::array<float, 5>, 15> tapPost = {};   // getMacroTap(v, lane, 1), v=1..15 × REST/MEL/OCT/ACC/QMIX
+        // ── produced cells (self-healing read-backs) ──
+        std::array<std::array<std::array<int32_t, 3>, 7>, 15> polyLOR = {};  // polyLenE/polyOffE/polyRotE, v=1..15 × 7 lanes
+        std::array<std::array<float, 5>, 15> cachedSpread = {};  // pe.cachedPolySpread, the 5 written lanes
+        std::array<std::array<float, 16>, 5> monoFinals = {};    // rhythm/accent/melody/octave/qmixRandom
+        std::array<std::array<int32_t, 3>, 7> strandLOR = {};  // the mono strands setStrand writes (reset foreign-writes these)
+        uint8_t  liveR, liveM, liveQ, spreadInited;
+    } popSig_{};
+    /// The topology build sync's head uses (shared with produce_ — one place, no drift).
+    dotModular::SandsTopology buildTopology_(const SequencerEngine& engine) const;
+
     // ── Single presence authority for SandsTopology ─────────────────────────────
     // THE one place the topology's presence/base fields are populated. Every consumer
     // (managers AND widgets) calls this instead of hand-setting eastPresent/macroPresent/
     // monoPresent/polyBaseActive — which previously diverged (widgets hard-coded their own
-    // presence as `true`, managers read the cache; polyBaseActive was defined 3 ways). The
+    // presence as true, managers read the cache; polyBaseActive was defined 3 ways). The
     // authoritative source of "is X present" is ALWAYS the expander-scan cache pointer, never
     // a widget's self-knowledge: a widget that Monsoon's scan hasn't cached is NOT topologically
     // present (this is what produced the MACRO-then-EAST strand clobber). numPolyVoices is passed

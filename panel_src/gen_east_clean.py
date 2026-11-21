@@ -5,7 +5,7 @@ red corner screws. nanosvg-safe (no masks/gradients/text-for-controls)."""
 import math, os
 S = 75.0/25.4
 def px(mm): return round(mm*S, 2)
-W_MM, H_MM = 243.84, 128.5  # 48HP (44 + 4HP for dir_mod + deleg_mod + prob_out jack columns)
+W_MM, H_MM = 264.16, 128.5  # 52HP exactly (52 x 5.08mm = 780px) — was 261.84 ("48HP + 9mm (w-level column, CC_PROMPT_04 STEP 1) + 9mm (warp-edit button column, STEP 2)"); re-widened to whole HP: Rack's ModuleWidget::setPanel rounds the widget box to WHOLE HP (773.15px art in a 780px box left a 6.85px rack-bg sliver at the seam the Distribution expander seats against — CC_PROMPT_SANDS_DISTRIBUTION_EXPANDER_SPEC "seamless abutment")
 PW, PH = px(W_MM), px(H_MM)
 
 N = 7   # 7 editor lanes (MEL/OCT/QMIX/REST/ACC/VAR/LEG), one row each
@@ -15,25 +15,36 @@ N = 7   # 7 editor lanes (MEL/OCT/QMIX/REST/ACC/VAR/LEG), one row each
 # Mirrors src/ui/SandsGrid.hpp — tabs sit ABOVE the grid (3..13mm), lane 0 starts at 14.
 TAB_TOP, TAB_ROW_H = 3.0, 5.0
 TAB_TOP_OFFSET_MM = 5.0
-ED_X, ED_Y = 88.0, 14.0
+WLEVEL_X = 88.0     # w-level knob column (CC_PROMPT_04 STEP 1) — the OLD ED_X slot, so the
+                    # left cluster keeps its 9mm rhythm (…61,70 attens, 80 spread, 88 w-level)
+ED_X, ED_Y = 97.0, 14.0   # +9mm: the w-level column sits LEFT of the grid (bars keep width/ED_W)
 ED_W = 111.0        # editor width (fixed; no longer tied to PROB_OUT_X — matches hpp)
-OWNER_X = 205.0     # owner-source cell column, right of the editor (matches hpp)
-DIR_X = 212.0       # direction cell column (Fwd/Rev/Pend/PingPong), right of owner (matches hpp)
+OWNER_X = 214.0     # owner-source cell column, right of the editor (matches hpp; +9 with ED_X)
+DIR_X = 221.0       # direction cell column (Fwd/Rev/Pend/PingPong), right of owner (matches hpp)
+WARPEDIT_X = 229.0  # CC_PROMPT_04 STEP 2: warp curve-editor trigger button column ("CRV"), right of the dir cell
 # Jack columns follow the TOGGLE order left->right (owner/delegation cell, then dir cell),
 # so each jack sits under the control it modulates instead of crossing over.
-DELEG_MOD_X = 220.0 # delegation gate-mod jack column (gate flips local/delegated)
-DIR_MOD_X = 228.0   # direction gate-mod jack column (gate cycles Fwd→Rev→Pend→PingPong)
-PROB_OUT_X = 236.0  # right-strip jack column, pushed right by the mod jack columns (matches hpp)
-ED_H = 91.0   # OPT-B: 7 lanes x 13mm — East adds Q-MIX at index 2 (MEL/OCT/QMIX/REST/ACC/VAR/LEG); editor 14->105, ~6mm above MBS
+DELEG_MOD_X = 238.0 # delegation gate-mod jack column (gate flips local/delegated; +9 for the CRV column)
+DIR_MOD_X = 246.0   # direction gate-mod jack column (gate cycles Fwd→Rev→Pend→PingPong)
+PROB_OUT_X = 254.0  # right-strip jack column, pushed right by the mod jack columns (matches hpp)
+ED_H = 96.0   # OPT-B: 7 lanes x 13mm — East adds Q-MIX at index 2 (MEL/OCT/QMIX/REST/ACC/VAR/LEG); editor 14->105, ~6mm above MBS
+              # UNIFIED ADDRESSING Stage 3: +5mm — the voice-range strip (RANGE_MM, the thin
+              # constant-block lane at the TOP of the grid). The editor BOX grows DOWN;
+              # the 7 probability lanes keep their full 13mm and start one strip lower
+              # (ED_Y+RANGE_MM). Mirrors src/ui/SandsGrid.hpp RANGE_LANE_H/monoBoxHeight().
+RANGE_MM = 5.0   # the voice-range strip height — MUST equal SandsGrid::RANGE_LANE_H
+VR_Y = ED_Y + RANGE_MM*0.5   # (B) VOICE-LOR PARITY: the voice-row CONTROL line (the strip's
+                             # own row of hardware) — MUST equal SandsGrid::RANGE_ROW_Y (16.5)
 ED_LANES = 7  # OPT-B: editor lanes drawn (Q-MIX added at index 2)
 POLY_LANES = 7  # spread/poly lanes (MEL/OCT/QMIX/REST/ACC/VAR/LEG) — all rows now carry
                 # CV/atten/spread/prob. Mirrors dotModular::SandsGrid::POLY_LANES (=7 after the
                 # sands consolidation; VAR/LEG are full poly lanes, no longer mono-only).
-ED_LANE_H = ED_H / ED_LANES
+ED_LANE_H = (ED_H - RANGE_MM) / ED_LANES   # 13mm — the LANE area below the range strip
 # Left-control rows align with the EDITOR lane centres (must match the hpp's rowY):
 # each lane's CV jacks + attens sit beside the visual lane they modulate. Row == editor lane
-# (no ESLOT remap — q-mix is a real lane, not a preview gap).
-def rowY(r): return ED_Y + (r+0.5)*ED_LANE_H
+# (no ESLOT remap — q-mix is a real lane, not a preview gap). Stage 3: lanes start below
+# the voice-range strip, so every rowY()-anchored control shifts down by RANGE_MM.
+def rowY(r): return ED_Y + RANGE_MM + (r+0.5)*ED_LANE_H
 def ctrlY(k): return rowY(k)   # control/marker row for editor lane k (identity)
 # editor row -> ENGINE/spread poly lane (REST0/MEL1/OCT2/ACC3/QMIX4). Mirrors
 # dotModular::EDITOR_TO_ENGINE_LANE_QMIX (dsp/LaneMapping.hpp). East's SPREAD knobs bind by
@@ -163,8 +174,11 @@ def gen(dark):
     # MBS watermark centred in the editor, large + faint (reads as Marina Bay)
     A(mbs(ED_X+ED_W*0.28, ED_Y+ED_H-5.0, ED_W*0.46, ED_H*0.68, t, op=0.16))
     for k in range(1,ED_LANES):   # 6 lanes → 5 dividers (was /4, a 4-lane leftover)
-        ly=ED_Y+k*ED_LANE_H
+        ly=ED_Y+RANGE_MM+k*ED_LANE_H   # Stage 3: the LANE dividers start below the voice-range strip
         A(f'<line x1="{px(ED_X+1):.1f}" y1="{px(ly):.1f}" x2="{px(ED_X+ED_W-1):.1f}" y2="{px(ly):.1f}" stroke="{t["edborder"]}" stroke-width="0.75" opacity="0.7"/>')
+    # the voice-range strip's own separator (the painted empty state shows 8 rows:
+    # 1 thin strip row + the 7 probability lanes)
+    A(f'<line x1="{px(ED_X+1):.1f}" y1="{px(ED_Y+RANGE_MM):.1f}" x2="{px(ED_X+ED_W-1):.1f}" y2="{px(ED_Y+RANGE_MM):.1f}" stroke="{t["edborder"]}" stroke-width="0.75" opacity="0.7"/>')
 
     # ── per-lane owner-source block, right of the editor before the prob-outs.
     #    The faint backing + separator + "SRC" label form the container; the LIVE
@@ -173,13 +187,20 @@ def gen(dark):
     _ed_right = ED_X + ED_W
     _lane_ys = [ctrlY(r) for r in range(N)]   # all 7 editor lanes
     _ch = ED_LANE_H * 0.9                  # match the live OwnerCell (≈ lane step cell)
+    _vr_ch = RANGE_MM * 0.9                # (B) the voice row's cell height (the live cell's size)
     _cw = (ED_W - 2*6.0) / 16.0            # one editor step wide (padding=6, 16 steps)
     _pad = 1.6
-    _by = min(_lane_ys) - _ch*0.5 - _pad
-    _bh = (max(_lane_ys)-min(_lane_ys)) + _ch + 2*_pad
+    _by = VR_Y - _vr_ch*0.5 - _pad         # (B) the box wraps the voice row's smaller cell too
+    _bh = (ctrlY(N-1) + _ch*0.5 + _pad) - _by
     A(f'<rect x="{px(OWNER_X-_cw*0.5-_pad):.1f}" y="{px(_by):.1f}" width="{px(_cw+2*_pad):.1f}" height="{px(_bh):.1f}" rx="{px(1.0):.1f}" fill="#ffffff" fill-opacity="0.05"/>')
     A(f'<line x1="{px(_ed_right+1.4):.1f}" y1="{px(_by):.1f}" x2="{px(_ed_right+1.4):.1f}" y2="{px(_by+_bh):.1f}" stroke="{t["edborder"]}" stroke-width="1.2" opacity="0.8"/>')
     A(f'<text x="{px(OWNER_X):.1f}" y="{px(_by-1.4):.1f}" font-family="sans-serif" font-size="{px(2.0):.1f}" fill="{t["edborder"]}" text-anchor="middle">SRC</text>')
+
+    # ── CC_PROMPT_04 STEP 2: the warp curve-editor ("CRV") button column — a faint
+    #    backing + header, right of the dir cell (the live WarpCurveButton draws itself).
+    _cw2 = 6.5
+    A(f'<rect x="{px(WARPEDIT_X-_cw2*0.5-_pad):.1f}" y="{px(_by):.1f}" width="{px(_cw2+2*_pad):.1f}" height="{px(_bh):.1f}" rx="{px(1.0):.1f}" fill="#ffffff" fill-opacity="0.05"/>')
+    A(f'<text x="{px(WARPEDIT_X):.1f}" y="{px(_by-1.4):.1f}" font-family="sans-serif" font-size="{px(2.0):.1f}" fill="{t["edborder"]}" text-anchor="middle">CRV</text>')
 
     # ── below the editor + footer: Marina Bay water (waves) as an integrated
     #    base band spanning the full control-to-edge width ──
@@ -188,10 +209,14 @@ def gen(dark):
     A(mbs(W_MM-66.0, 111.0, 52.0, 14.0, t, op=0.85))
 
     # ── control group recess (left) — wraps the editor-aligned rows ──
-    # box left edge clears the leftmost jack (JACK_X[0]=6, r=3.9 → left extent 2.1mm)
-    gx,gy=1.5,ctrlY(0)-ED_LANE_H*0.5-3.0
-    # recess spans all 7 control rows (5 spread lanes + VAR/LEG rows 5,6)
-    gw,gh=(SPREAD_X+6.0)-gx,(ctrlY(N-1)+ED_LANE_H*0.5+3.0)-gy
+    # box left edge clears the leftmost jack (JACK_X[0]=6, r=3.9 → left extent 2.1mm).
+    # (B) VOICE-LOR PARITY: the recess now wraps the VOICE ROW too (its 3 jacks + 3
+    # attens at VR_Y) — top = the voice row's jack (r 3.9) + 1.2mm pad, clearing the
+    # 11mm branding rule above.
+    gx,gy=1.5,VR_Y-3.9-1.2
+    # recess spans the voice row + all 7 control rows (5 spread lanes + VAR/LEG rows 5,6),
+    # wrapping the w-level column too (CC_PROMPT_04 STEP 1: SPREAD_X+6 → WLEVEL_X+6)
+    gw,gh=(WLEVEL_X+6.0)-gx,(ctrlY(N-1)+ED_LANE_H*0.5+3.0)-gy
     A(f'<rect x="{px(gx):.1f}" y="{px(gy):.1f}" width="{px(gw):.1f}" height="{px(gh):.1f}" rx="{px(2):.1f}" fill="{t["group"]}" stroke="{t["groupline"]}" stroke-width="1"/>')
     sepx=0.5*(JACK_X[-1]+ATTEN_X[0])  # separator between jack cluster and atten cluster
     A(f'<line x1="{px(sepx):.1f}" y1="{px(gy+2):.1f}" x2="{px(sepx):.1f}" y2="{px(gy+gh-2):.1f}" stroke="{t["groupline"]}" stroke-width="0.75" opacity="0.6"/>')
@@ -214,6 +239,13 @@ def gen(dark):
         for x in JACK_X:  jack(x,y)
         for x in ATTEN_X: trim(x,y,t["gold"])
         trim(SPREAD_X,y,t["teal"])
+        trim(WLEVEL_X,y,t["wellring"])   # CC_PROMPT_04: w-level (warp depth) — neutral ring, distinct from teal spread / gold attens
+
+    # (B) VOICE-LOR PARITY: the voice row's control graphics — 3 L/O/R CV jacks + 3
+    # attenuverters at VR_Y (silver trims: the voice frame is hue-neutral, the strip's
+    # palette law). NO spread/wlevel/CRV (the voice LOR has neither — the directive's cut).
+    for x in JACK_X[:3]:  jack(x,VR_Y)
+    for x in ATTEN_X[:3]: trim(x,VR_Y,t["ink"])
 
     # ── Macro/East blend controls — 3 labelled groups (REST / MELODY / OCTAVE),
     #    each a demarked box stacked as: lane-name header → owner latch (OWN) →
@@ -256,6 +288,13 @@ def gen(dark):
         for c,x in enumerate(JACK_X):  named(f"input_cv_{el}_{c}",    x, y)
         for c,x in enumerate(ATTEN_X): named(f"param_atten_{el}_{c}", x, y)
         named(f"param_spr_{el}", SPREAD_X, y)
+        # w-level knobs (param_wlevel_<editorLane>) — CC_PROMPT_04 STEP 1: per-lane warp depth,
+        # East store warpW[slot*7+lane] (slot = the selected tab's voice). EVERY lane gets one
+        # (booleans too — inert until their engine consumer warps, the -18b §3 deferral).
+        named(f"param_wlevel_{el}", WLEVEL_X, y)
+        # warp curve-editor trigger buttons (param_warpedit_<editorLane>) — CC_PROMPT_04 STEP 2:
+        # opens the popup for (this panel, lane). Same on every lane (no lane is special).
+        named(f"param_warpedit_{el}", WARPEDIT_X, y)
     # Owner cells (param_owner_<editorLane>) — 5 poly (0..4) + VAR/LEG (5,6). All editor lane.
     for el in range(ED_LANES):
         A(f'<circle id="param_owner_{el}" cx="{px(OWNER_X):.2f}" cy="{px(rowY(el)):.2f}" '
@@ -270,6 +309,15 @@ def gen(dark):
           f'r="0.5" fill="none" stroke="none"/>')
         A(f'<circle id="input_deleg_mod_{el}" cx="{px(DELEG_MOD_X):.2f}" cy="{px(rowY(el)):.2f}" '
           f'r="0.5" fill="none" stroke="none"/>')
+    # (B) VOICE-LOR PARITY: the voice-row anchors at VR_Y — the strip's own control
+    # line, the same columns as every lane: 3 L/O/R CV jacks + 3 attens + the SRC owner
+    # cell + the DIR cell + the row's dir/deleg gate-mods. NO spread/wlevel/CRV/prob-out.
+    for c,x in enumerate(JACK_X[:3]):  named(f"input_vlor_cv_{c}",    x, VR_Y)
+    for c,x in enumerate(ATTEN_X[:3]): named(f"param_vlor_atten_{c}", x, VR_Y)
+    named("param_vlor_owner",     OWNER_X,    VR_Y)
+    named("param_vlor_dir",       DIR_X,      VR_Y)
+    named("input_vlor_deleg_mod", DELEG_MOD_X, VR_Y)
+    named("input_vlor_dir_mod",   DIR_MOD_X,   VR_Y)
     # Probability-out jacks (output_prob_<editorLane>) — 7 poly prob CV outs (incl QMIX/VAR/LEG).
     for el in range(POLY_LANES):
         A(f'<circle id="output_prob_{el}" cx="{px(PROB_OUT_X):.2f}" cy="{px(rowY(el)):.2f}" '

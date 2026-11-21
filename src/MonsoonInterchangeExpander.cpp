@@ -3,7 +3,7 @@
 #include "Monsoon.hpp"
 #include "ui/RedScrew.hpp"
 #include "ui/ConnectMark.hpp"
-#include "ui/VisualExpanderHelpers.hpp"
+#include "ui/ModuleLookup.hpp"            // THE module-lookup authority: lookupMonsoon / lookupFollowed (CC_PROMPT_MODULE_LOOKUP_AUTHORITY_START)
 #include "MicroTuning.hpp"                // MicroTuningModule (pairing hub for the Follow menu)
 #include "ui/IntertropicalPairing.hpp"    // redDot::presentPairIdsT / pairColour
 
@@ -52,7 +52,7 @@ addInput(createInputCentered<PJ301MPort>(Vec(222.0f, octY), module, MonsoonIds::
     }
 }
     Monsoon* getMonsoon() {
-        return module ? redDot::findMonsoonEitherSide(module) : nullptr;
+        return module ? redDot::lookupMonsoon(module) : nullptr;
     }
     bool hostLight() {
         Monsoon* m = getMonsoon();
@@ -131,11 +131,11 @@ addInput(createInputCentered<PJ301MPort>(Vec(222.0f, octY), module, MonsoonIds::
     // guesswork. The half is only meaningful on a 24-degree Duo; on a 12-degree Colonnades half 2
     // addresses degrees that don't exist → drawn as INERT (struck) to match the DSP's "half 2 on a
     // 12-Micro is inert" rule (MicroTuning.cpp halfClaimed). Draw-only: reads followTarget/targetHalf
-    // + the resolved hub's nDegrees; no scanning here beyond the shared resolveFollowedT lookup.
+    // + the resolved hub's nDegrees; no scanning here beyond the memoized lookupFollowed resolve.
     void drawTargetBadge(NVGcontext* vg, bool light) {
         auto* mod = dynamic_cast<MonsoonInterchangeExpander*>(module);
         if (!mod) return;
-        MicroTuningModule* hub = redDot::resolveFollowedT<MicroTuningModule>(mod, mod->followTarget);
+        MicroTuningModule* hub = redDot::lookupFollowed<MicroTuningModule>(mod, mod->followTarget);
         const bool microBound = (hub && hub->pairId > 0);
         // Show the Micro badge only when this Interchange ACTUALLY drives that Micro (§16 item 1): a
         // Micro is reachable AND the target mode routes to it. In "Monsoon only" mode we suppress the
@@ -222,7 +222,7 @@ addInput(createInputCentered<PJ301MPort>(Vec(222.0f, octY), module, MonsoonIds::
             auto* it = new FollowItem();
             it->m = mod; it->target = pid;
             // Name each hub by its actual module (Colonnades / Colonnades Duo) + degree count.
-            auto* hub = redDot::resolveFollowedT<MicroTuningModule>(mod, pid);
+            auto* hub = redDot::lookupFollowed<MicroTuningModule>(mod, pid);
             std::string name = (hub && hub->model) ? hub->model->name
                                                    : std::string("Colonnades");
             it->text = "Follow: " + name + " #" + std::to_string(pid)

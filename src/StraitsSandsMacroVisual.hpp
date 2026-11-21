@@ -1,10 +1,15 @@
 #pragma once
 #include <rack.hpp>
+#include <array>   // P-B: std::array member state (ARRAY_CONTAINER_AUDIT)
 #include "ui/SandsGrid.hpp"
 #include <cmath>   // std::fabs (macroSpreadModulatesLane)
 #include "Monsoon.hpp"
 #include "ui/VisualExpanderHelpers.hpp"
 #include "ui/StoreBound.hpp"   // redDot::StoreKnob (de-parammed controls)   // redDot::findMonsoonEitherSide (MACRO field accessors)
+#include "ui/SweepSigGate.hpp"   // RESTORED: SweepSig — the prob-out sweep's input-change gate (CC_PROMPT_restore_sweepsig_gate_START)
+#include "ui/ModuleLookup.hpp"   // THE module-lookup authority: lookupMonsoon (event-driven adjacency; the monLookupDiv poll is deleted)
+#include "ui/SandsSnap.hpp"      // the Sands subpanel snap cluster (the Straits resnap pattern, family-parameterised)
+#include "ui/RateManager.hpp"    // THE compute-rate authority (CC_PROMPT_RATE_MANAGER_START, S5): the sweep is a Control producer
 
 using namespace rack;
 using namespace MonsoonIds;
@@ -14,29 +19,35 @@ namespace StraitsMacroVisualIds {
     // ── Panel ──────────────────────────────────────────────────────────────
     // Macro does the same job as the East visual (spread control) but GLOBAL
     // rather than per-lane. SANDS CONSOLIDATION Step 3: widened 48→52HP (the extra
-    // 10HP on the RIGHT carries the 6-column mix-in send row per lane); left/center column
+    // 10HP on the RIGHT carried the 6-column mix-in send row per lane); left/center column
     // geometry still matches East for consistency.
-    static constexpr float W_MM    = 294.64f;   // 58HP (48HP + 10HP for the 6-col send row per lane)
-    static constexpr float OWNER_X    = 205.f;  // owner cell column (matches East)
-    static constexpr float DIR_X      = 212.f;  // direction cell column (matches East)
-    static constexpr float DIR_MOD_X  = 220.f;  // direction gate-mod jack column
-    static constexpr float PROB_OUT_X = 230.f;  // poly prob-out jack (moved L from 236 to clear send col 0 at 240)
-    // ── RHS mix-in SEND grid (6 columns × 7 rows, row-aligned per lane). SANDS CONSOLIDATION
-    //    Step 3: single 6-knob row per lane, 9mm pitch (matches left-side mod knobs).
-    //    Cols 0..3 = LEN/OFF/ROT/SPR sends, col 4 = LOR tap, col 5 = SPR tap.
-    static constexpr float SEND_COL0_X = 240.f;   // LEN send
-    static constexpr float SEND_COL1_X = 249.f;   // OFF send
-    static constexpr float SEND_COL2_X = 258.f;   // ROT send
-    static constexpr float SEND_COL3_X = 267.f;   // SPR send
-    static constexpr float SEND_COL4_X = 276.f;   // LOR tap (PRE/POST)
-    static constexpr float SEND_COL5_X = 285.f;   // SPR tap (PRE/POST)
+    // CC_PROMPT_04: +9mm for the w-level column (ED_X 88→97) + 9mm for the warp-edit
+    // button column ("CRV", right of the dir cell).
+    // THE SEND STRIP MOVED (CC_PROMPT_SANDS_DISTRIBUTION_EXPANDER_SPEC §"MACRO
+    // PER-VOICE SENDS → their own subpanel"): the 7x4 mix-in sends + 7x2 PRE/POST
+    // taps live on the SandsMacroSendSubpanel now (the spec's "Macro is already big";
+    // one subpanel owns the whole send bus) — the panel is cut back to the width its
+    // remaining controls occupy; the stores and engine conventions are untouched
+    // (the move is UI-only).
+    static constexpr float W_MM    = 259.08f;   // 51HP exactly (the old 58HP+18mm width minus the moved send strip, re-widened from 258.0 so the drawn art fills the whole-HP box Rack's setPanel rounds to — the subpanels seat against this edge)
+    static constexpr float WLEVEL_X   = 88.f;   // w-level knob column (the OLD ED_X slot)
+    static constexpr float OWNER_X    = 214.f;  // owner cell column (matches East; +9 with ED_X)
+    static constexpr float DIR_X      = 221.f;  // direction cell column (matches East)
+    static constexpr float WARPEDIT_X = 229.f;  // CC_PROMPT_04 STEP 2: "CRV" button column
+    static constexpr float DIR_MOD_X  = 238.f;  // direction gate-mod jack column (+9 for CRV)
+    static constexpr float PROB_OUT_X = 248.f;  // poly prob-out jack (rightmost column now that the send strip moved)
     // Bound to the grid so Mono/East/Macro cannot drift (mirrors East). 7 poly lanes
     // (MEL/OCT/QMIX/REST/ACC/VAR/LEG), LANE_H=13. Was a stale hardcoded ROW_BOT=108 /
     // N_ROWS=4 (pre-QMIX "REST/MEL/OCT/ACCENT"); keep them grid-derived so the file can
     // never re-introduce a 4-/5-lane assumption.
     static constexpr float ROW_TOP = dotModular::SandsGrid::LANE_TOP;      // 14
     static constexpr float ROW_BOT = dotModular::SandsGrid::polyBottom();  // 105 (7×13)
+// P-B (ARRAY_CONTAINER_AUDIT): 2-D member alias — byte-identical to T[Rows][Cols] (Finding D).
+template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::array<T, Cols>, Rows>;
     static constexpr int   N_ROWS  = dotModular::SandsGrid::POLY_LANES;    // 7 (SANDS CONSOLIDATION Step 1)
+    // P-A (ARRAY_CONTAINER_AUDIT Finding A): the ONE spelling of the voice capacity (mono + 15
+    // poly), aliased from the VoiceResolver authority (Monsoon.hpp includes it complete).
+    static constexpr int kVoiceSlots = dotModular::VoiceResolver::kVoiceSlots;
     // Mono-style: 4 CV jacks (LEN/OFF/ROT/SPR-cv) + 4 attens + 1 spread-base trimpot per lane.
     // Column layout and ED_X=88 match SandsMonoVisual exactly.
     static constexpr float COL_J1 = 6.f;    // LEN CV in
@@ -48,7 +59,7 @@ namespace StraitsMacroVisualIds {
     static constexpr float COL_A3 = 61.f;   // ROT depth
     static constexpr float COL_A4 = 70.f;   // SPR depth
     static constexpr float SPREAD_X = 80.f; // per-lane spread base trimpot
-    static constexpr float ED_X   = 88.f;   // editor (matches SandsMonoVisual)
+    static constexpr float ED_X   = 97.f;   // editor (+9mm: the w-level column sits left of the grid)
     static constexpr float ED_W   = 111.f;  // editor width (fixed; no longer tied to PROB_OUT_X)
     // Mirror TAB_TOP_OFFSET_MM in gen_macro_mono.py (extra top margin; 0.5cm=5mm).
     // Base 18 matches the generator's editor recess (was 16 here — a small drift;
@@ -58,13 +69,18 @@ namespace StraitsMacroVisualIds {
     static constexpr float ED_Y   = dotModular::SandsGrid::LANE_TOP;   // 14 (was 23)
     // Editor holds 7 poly lanes (MEL/OCT/QMIX/REST/ACC/VAR/LEG); 13mm each. ED_LANE_H
     // drives prob-out + send-knob vertical placement and must match the gen script's ED_H/N.
-    static constexpr float ED_H      = dotModular::SandsGrid::polyHeight();  // 91 (7×13, was 65)
+    // UNIFIED ADDRESSING Stage 3: the editor BOX grows DOWN by the voice-range strip
+    // (RANGE_LANE_H) — the lanes keep their full 13mm and start one strip lower; the
+    // painted recess + every rowY()-anchored control shift with it (the gen script's
+    // RANGE_MM/rowY in lockstep).
+    static constexpr float ED_H      = dotModular::SandsGrid::polyBoxHeight();  // 96 (5mm range strip + 7×13)
     static constexpr float ED_LANE_H = dotModular::SandsGrid::LANE_H;        // 13 (Option B)
 
     // Left-control rows align with the EDITOR lane centres (not the full panel),
     // so each lane's CV jacks + attens sit beside the visual lane they modulate.
+    // Stage 3: + RANGE_LANE_H — the lanes start below the voice-range strip.
     static inline float rowY(int r) {
-        return ED_Y + (r + 0.5f) * ED_LANE_H;
+        return ED_Y + dotModular::SandsGrid::RANGE_LANE_H + (r + 0.5f) * ED_LANE_H;
     }
 
     // ── Param IDs ─────────────────────────────────────────────────────────
@@ -86,15 +102,21 @@ namespace StraitsMacroVisualIds {
         // 12 global LOR params (4 lanes x LEN/OFF/ROT), re-homed OUT of the shared
         // MonsoonIds pool so Macro can be right-sized. Deliberately ONE symbol +
         // arithmetic: individual names (GLOBAL_REST_DNA_LEN ...) would be ambiguous
-        // against the file-scope `using namespace MonsoonIds`. Lane order matches the
+        // against the file-scope using namespace MonsoonIds. Lane order matches the
         // MonsoonIds layout that was replaced: REST, MELODY, OCTAVE, ACCENT; c = 0 LEN,
         // 1 OFF, 2 ROT.
         GLOBAL_DNA_START = TAP_START + 8,       // = 48 .. 59
         NUM_SPREAD_PARAMS = GLOBAL_DNA_START + 12   // = 60
     };
-    // lane: 0 REST, 1 MELODY, 2 OCTAVE, 3 ACCENT -> block offset
+    // Global LOR/DNA param pool blocks are keyed by lane IDENTITY (fixed layout:
+    // REST=0, MELODY=3, OCTAVE=6, ACCENT=9). Lane index is the NEW order
+    // (MELODY=0, OCTAVE=1, QMIX=2, REST=3, ACCENT=4). Map new lane -> its identity block.
     static inline int globalDnaId(int lane, int c) {
-        const int blk = (lane == 0) ? 0 : (lane == 1) ? 3 : (lane == 3) ? 9 : 6;
+        const int blk = (lane == 0) ? 3   // PL_MELODY -> MELODY block
+                      : (lane == 1) ? 6   // PL_OCTAVE -> OCTAVE block
+                      : (lane == 3) ? 0   // PL_REST   -> REST block
+                      : (lane == 4) ? 9   // PL_ACCENT -> ACCENT block
+                      :               6;  // PL_QMIX (lane 2) shares OCTAVE block (as before: old 'else')
         return GLOBAL_DNA_START + blk + c;
     }
     static inline int sendDispId(int lane, int item) { return SEND_DISP_START + lane*4 + item; }
@@ -124,17 +146,29 @@ namespace StraitsMacroVisualIds {
     enum InputId {
         CV_START = 0,                    // 7 poly lanes × 4 cols (LEN/OFF/ROT/SPR) = 28 (0..27)
         DIR_MOD_START = CV_START + dotModular::SandsGrid::POLY_LANES * 4,   // = 28 — direction gate-mod (7 poly lanes)
-        NUM_INPUTS = DIR_MOD_START + dotModular::SandsGrid::POLY_LANES   // = 35
+        // (B) VOICE-LOR PARITY: the Macro tier's voice-range jacks — 3 MONO L/O/R CV
+        // (the GLOBAL row: every follow-Macro voice reads the one modulated row) + the
+        // row's direction gate-mod. NO delegation jack (Macro IS the global tier) and
+        // NO spread/warp (the directive's cut).
+        VLOR_CV_START = DIR_MOD_START + dotModular::SandsGrid::POLY_LANES,  // = 35
+        VLOR_DIR_MOD = VLOR_CV_START + 3,                                    // = 38
+        NUM_INPUTS = VLOR_DIR_MOD + 1                                        // = 39
     };
     static inline int dirModId(int lane) { return DIR_MOD_START + lane; }
     static inline int cvId(int lane, int c) { return CV_START + lane*4 + c; }
+    // The Macro voice-range row's jacks (item 0/1/2 = L/O/R; mono, the global row).
+    static inline int vlCvId(int item) { return VLOR_CV_START + item; }
+    static inline int vlorDirModId()   { return VLOR_DIR_MOD; }
 
     // ── Output IDs ────────────────────────────────────────────────────────
     // 3 poly probability CV outs (REST/MEL/OCT): ch1 reserved (future mono tab),
     // ch2..1+nVoices = per-voice ensemble.
     enum OutputId {
-        PROB_OUT_REST = 0, PROB_OUT_MEL, PROB_OUT_OCT, PROB_OUT_ACC, PROB_OUT_QMIX,
-        PROB_OUT_VAR, PROB_OUT_LEG,   // SANDS CONSOLIDATION Step 1
+        // Unified lane order (MEL=0 OCT=1 QMIX=2 REST=3 ACC=4 VAR=5 LEG=6) — matches the
+        // panel rows, the resolver writes and the labels. (Was REST-first from the OLD
+        // spread order, so every id's NAME was crossed with the data it carries.)
+        PROB_OUT_START = 0, PROB_OUT_MEL, PROB_OUT_OCT, PROB_OUT_QMIX, PROB_OUT_REST,
+        PROB_OUT_ACC, PROB_OUT_VAR, PROB_OUT_LEG,   // SANDS CONSOLIDATION Step 1
         NUM_OUTPUTS
     };
 
@@ -147,13 +181,15 @@ namespace StraitsMacroVisualIds {
     inline int lorId(int lane, int c) {
         return StraitsMacroVisualIds::globalDnaId(lane, c);   // local pool, was MonsoonIds
     }
-    // Spread: stored in SPREAD_REST/MELODY/OCTAVE display params
+    // Spread: stored in SPREAD_* display params. Lane index is the NEW visual/engine
+    // order (MELODY=0, OCTAVE=1, QMIX=2, REST=3, ACCENT=4); map each to its fixed
+    // SPREAD_* slot (enum order REST=0, MELODY=1, OCTAVE=2, ACCENT=3, QMIX=4).
     inline int sprId(int lane) {
-        if (lane == 0) return SPREAD_REST;
-        if (lane == 1) return SPREAD_MELODY;
-        if (lane == 2) return SPREAD_OCTAVE;
-        if (lane == 3) return SPREAD_ACCENT;
-        return              SPREAD_QMIX;  // lane 4
+        if (lane == 0) return SPREAD_MELODY;  // PL_MELODY
+        if (lane == 1) return SPREAD_OCTAVE;  // PL_OCTAVE
+        if (lane == 2) return SPREAD_QMIX;    // PL_QMIX
+        if (lane == 3) return SPREAD_REST;    // PL_REST
+        return              SPREAD_ACCENT;    // PL_ACCENT (lane 4)
     }
     // param 0=LEN,1=OFF,2=ROT → lorId; param 3=SPR → sprId
     inline float targetLo(int param) { return param == 0 ? 1.f : 0.f; }
@@ -180,18 +216,20 @@ namespace StraitsMacroVisualIds {
     //                      spread CV is connected. (Static blend excluded — a non-zero
     //                      send with no live CV is a constant offset, not modulation, and
     //                      gating on it raced the manual-knob turn → red residue arc.)
-    // Caller resolves `delegated` (owner storage differs per module) and `sendSlot`
+    // Caller resolves delegated (owner storage differs per module) and sendSlot
     // (mono slot 0 for V1/Mono; the voice slot for poly). macro may be null → false.
     inline bool macroSpreadModulatesLane(rack::Module* macro, int engineLane,
                                          bool delegated, int sendSlot) {
         // SANDS CONSOLIDATION: 7 poly lanes (REST/MEL/OCT/ACC/QMIX/VAR/LEG), not 4. The old
-        // `>= 4` bound silently rejected QMIX (4), VARIATION (5), LEGATO (6) so their spread
+        // >= 4 bound silently rejected QMIX (4), VARIATION (5), LEGATO (6) so their spread
         // mod-arcs never lit (a UI regression after the consolidation added the newer lanes).
         if (!macro || engineLane < 0 || engineLane >= 7) return false;
         bool sprCvLive = macro->inputs[cvId(engineLane, 3)].isConnected();
         if (delegated) return sprCvLive;
-        float send = (redDot::findMonsoonEitherSide(macro)
-            ? redDot::findMonsoonEitherSide(macro)->getMacroSend(sendSlot, engineLane, 3) : 0.f);
+        // LOOKUP AUTHORITY (CC_PROMPT_MODULE_LOOKUP_AUTHORITY_START): ONE memoized resolve
+        // (was a DOUBLE raw walk — the host was chain-walked twice per call).
+        Monsoon* mon = redDot::lookupMonsoon(macro);
+        float send = mon ? mon->getMacroSend(sendSlot, engineLane, 3) : 0.f;
         return std::fabs(send) > 1e-4f && sprCvLive;
     }
     // P9b: PRE/POST tap params re-homed to this expander's namespace (TAP_START, above):
@@ -199,6 +237,16 @@ namespace StraitsMacroVisualIds {
 }
 
 struct StraitsSandsMacroVisual : Module {
+    // (CC_PROMPT_CADENCE_C1B STAGE C) the widget-written Macro-strip gesture
+    // snapshot — a strip drag suspends the Macro row's dragged items (the followers
+    // all read the one row). The Macro LANES' store (macroLOR_) is live (un-latched),
+    // so lane gestures have nothing to suspend here.
+    bool lorGestureActive = false;
+    std::array<bool, 3> lorGestureItems = {};
+    // P-A scope fix (ARRAY_CONTAINER_AUDIT): same law as the East visual — the Ids
+    // struct's alias is a sibling scope; StepProbRow's P-B std::array member needs
+    // the name in THIS class (the real-SDK g++ sweep rejects the unqualified use).
+    static constexpr int kVoiceSlots = dotModular::VoiceResolver::kVoiceSlots;
 
     StraitsSandsMacroVisual() {
         using namespace StraitsMacroVisualIds;
@@ -210,18 +258,34 @@ struct StraitsSandsMacroVisual : Module {
         // Macro has left the host/DAW param list entirely -- the point of the de-param.
         config(0, StraitsMacroVisualIds::NUM_INPUTS,
                StraitsMacroVisualIds::NUM_OUTPUTS, 0);
-        monLookupDiv.setDivision(8);   // topology changes are control-rate
-        for (auto& a : probLastStep) for (auto& x : a) x = -1;
-        { static const char* ln[dotModular::SandsGrid::POLY_LANES] = {"REST","MEL","OCT","ACC","QMIX","VAR","LEG"};
-          for (int l = 0; l < dotModular::SandsGrid::POLY_LANES; ++l)
-            configOutput(StraitsMacroVisualIds::PROB_OUT_REST + l,
-                std::string("Probability ") + ln[l] + " (poly: ch2+ voices)"); }
+        // (the monLookupDiv /8 topology poll is DELETED — CC_PROMPT_MODULE_LOOKUP_
+        //  AUTHORITY_START: adjacency is event-driven now, onExpanderChange bumps the
+        //  topology epoch and lookupMonsoon's memo re-resolves; a static rack walks
+        //  ZERO times. See ui/ModuleLookup.hpp.)
+        // RESTORED (CC_PROMPT_restore_sweepsig_gate_START): the /32 tick the prob-CV
+        // sweep's input-change gate runs on. 70dd837 deleted it for a step-cache that
+        // resolved on step edges unconditionally — Rodney's bisect: Macro-only 0.4% →
+        // ~3%. The gate (ui/SweepSigGate.hpp) skips the whole resolve when its inputs
+        // are bit-unchanged; the /32 cadence ALONE is not the fix (e0981d5, reverted).
+        probOutDiv.setDivision(32);
+        // RATE MANAGER (S5): declare the sweep producer ONCE — the SweepSig gate IS the
+        // fingerprint (a changed-flag image), the resolve is the produce. Dispatch rides
+        // the Control tier, fed by the probOutDiv edge (the wrapper pattern — /32, same
+        // cadence + phase; the divider's internal tier source lands with the S7 deletion).
+        rateManager.declareProducer(
+            redDot::Rate::Control,
+            [this](void* dst) { return sweepFingerprint_(dst); },
+            [this]()           { sweepProduce_(); });
+        // Labels from the canonical table — the old local literal was OLD-order, so
+        // every jack tooltip named the wrong lane (id 0 carries MEL, was labelled "REST").
+        for (int l = 0; l < dotModular::SandsGrid::POLY_LANES; ++l)
+            configOutput(StraitsMacroVisualIds::PROB_OUT_START + l,
+                std::string("Probability ") + dotModular::SandsLaneNames::EDITOR[l] + " (poly: ch2+ voices)");
 
-        // SANDS CONSOLIDATION Step 1: 7 poly lanes (engine order; matches cvId(lane,c)).
-        // Was 5 initializers on a [POLY_LANES] array → lanes 5/6 were nullptr →
-        // std::string(nullptr) aborts (signal 22) during module construction — the Macro
-        // instantiation crash. All 7 must be present.
-        static const char* laneNames[dotModular::SandsGrid::POLY_LANES] = {"REST","MEL","OCT","ACC","QMIX","VAR","LEG"};
+        // SANDS CONSOLIDATION Step 1: 7 poly lanes (unified order; matches cvId(lane,c)).
+        // (Historical: a 5-initializer local literal left lanes 5/6 nullptr → the
+        // std::string(nullptr) instantiation crash. Canonical table since.)
+        static const char* const* laneNames = dotModular::SandsLaneNames::EDITOR;
         static const char* paramNames[4] = {"Len","Off","Rot","Spr"};
         for (int lane=0; lane<dotModular::SandsGrid::POLY_LANES; ++lane) {
             // P9b: TWO PRE/POST taps per lane — LOR (LEN/OFF/ROT) and SPREAD. Default
@@ -250,9 +314,8 @@ struct StraitsSandsMacroVisual : Module {
         // write the live view voice's slot directly, so no display proxy and no sync dance.
         // Ids kept declared so the enum does not renumber, matching LOR/direction/attenuverters.
         // Direction display proxies (4 poly lanes). DirCell writes 0..3 = Fwd/Rev/Pend/PingPong.
-        // SANDS CONSOLIDATION Step 1: 7 poly lanes (editor order; matches dirModId(l)).
-        // Was 5 initializers → lanes 5/6 nullptr → std::string(nullptr) abort (signal 22).
-        static const char* dirNames[dotModular::SandsGrid::POLY_LANES] = {"MEL","OCT","QMIX","REST","ACC","VAR","LEG"};
+        // SANDS CONSOLIDATION Step 1: 7 poly lanes (unified order; matches dirModId(l)).
+        static const char* const* dirNames = dotModular::SandsLaneNames::EDITOR;
         for (int l = 0; l < dotModular::SandsGrid::POLY_LANES; ++l) {
             // dirDispId is STORE-BACKED (MVC step 1: direction de-param) -- no configParam,
             // not host-exposed. Direction lives in editor.globalDir[4] (engine-read,
@@ -260,25 +323,88 @@ struct StraitsSandsMacroVisual : Module {
             // the enum does not renumber, matching the LOR/attenuverter de-param.
             configInput(dirModId(l), std::string(dirNames[l]) + " direction gate-mod");
         }
+
+        // (B) VOICE-LOR PARITY: the Macro voice-range row's jacks — the strip's control
+        // row (3 mono L/O/R CV, the GLOBAL row all follow-Macro voices read + the row's
+        // direction gate-mod). Depths: editor.voiceLorAttenMacro[3]; the fold in
+        // Monsoon::process applies them once per control block.
+        {
+            static const char* vlorCN[3] = {"Length", "Offset", "Rotation"};
+            for (int item = 0; item < 3; ++item)
+                configInput(vlCvId(item), std::string("Voice range ") + vlorCN[item] + " CV (global)");
+            configInput(vlorDirModId(), "Voice range direction gate-mod");
+        }
     }
 
-    void process(const ProcessArgs&) override;   // defined in .cpp (needs findMonsoonEitherSide)
+    void process(const ProcessArgs&) override;   // defined in .cpp (adjacency via redDot::lookupMonsoon)
+    // THE LOOKUP AUTHORITY (CC_PROMPT_MODULE_LOOKUP_AUTHORITY_START): the event bumps
+    // the global topology epoch — this module's adjacency (the lookupMonsoon memo)
+    // re-resolves on the next read, from BOTH threads (engine process + widget
+    // lambdas). The old /8 divider poll is deleted; a static rack walks zero times.
+    void onExpanderChange(const ExpanderChangeEvent& e) override {
+        redDot::bumpTopologyEpoch();
+        snap.topologyDirty.store(true, std::memory_order_relaxed);   // the subpanel fast path
+    }
+
+    // ── the Sands subpanel snap state (ui/SandsSnap.hpp): this module is a SNAP
+    // HOST — the Distribution expander (and the send subpanel when it lands) chain
+    // RIGHT of it, and the widget's step() runs the Straits resnap cluster on this
+    // state (0.1 s adjacency poll + the event fast path + the one-shot consumer).
+    redDot::SandsSnapHostState snap;
 
     // Gate edge detection state for dir_mod inputs (mono, 1 channel per jack).
-    // PERF: chain walk is control-rate work (Rodney audit item 3).
-    Monsoon* cachedMon_ = nullptr;
-    rack::dsp::ClockDivider monLookupDiv;
+    // LOOKUP AUTHORITY: cachedMon_ + the /8 monLookupDiv poll are DELETED — the host
+    // resolves through redDot::lookupMonsoon (the memoized, event-driven authority);
+    // the dir-mod edge scan reads the same accessor.
+    rack::dsp::ClockDivider probOutDiv;   // the /32 tick the SweepSig gate runs on (RESTORED — 70dd837 deleted it with the gate; Rodney's bisect put the 0.4% here)
+    // RATE MANAGER (S5): the module's OWN manager instance. The probOutDiv feeds its
+    // Control tier; the SweepSig-gated resolve is a declared producer (the gate is the
+    // fingerprint, the resolve the produce). Same /32 cadence, same phase, same skip
+    // semantics — the fold is mechanism-only. (No host sharing needed: this producer's
+    // output is the module's own prob-CV jacks — no cross-module consumer, so the
+    // design's shared-producer property doesn't bite here; the host's manager owns the
+    // cross-module quantities, e.g. publishGlobal.)
+    redDot::RateManager rateManager;
     bool dirModPrev[dotModular::SandsGrid::POLY_LANES] = {};
+    // (B) VOICE-LOR PARITY: the voice row's OWN direction gate-mod edge state (mono
+    // jack, the same law — cycles the GLOBAL voiceLorMacroDir, every follower moves).
+    bool vlorDirModPrev = false;
 
-    // S&H latch state for the poly prob outs: [lane][channel] (ch0 reserved, 1..15 voices).
-    float probHeld[dotModular::SandsGrid::POLY_LANES][16] = {};
-    int   probLastStep[dotModular::SandsGrid::POLY_LANES][16];
+    /// The sweep producer halves (S5): the gate-as-fingerprint + the verbatim resolve.
+    size_t sweepFingerprint_(void* dst);
+    void   sweepProduce_();
+
+    // ── The prob-out sweep: the input-change gate + the value cache ────────────────
+    // RESTORED (CC_PROMPT_restore_sweepsig_gate_START): WHEN the rows re-resolve is
+    // decided by the SweepSig fingerprint gate (ui/SweepSigGate.hpp) at the /32 tick —
+    // input-driven (idle ⇒ ≈ 0 resolves; playing ⇒ step-rate), replacing 70dd837's
+    // per-row step/nV trigger (keyed on the step NUMBER, it fired at every step edge
+    // and could skip nothing else — Rodney's bisect: Macro-only ~3%). The rows are the
+    // VALUE cache + the out-write epoch (CC_PROMPT_UI_TO_RESOLVER_FINISH2 — the CPU
+    // fix, KEPT): the per-channel bit-diff walk runs only when the gate re-resolved
+    // the row or the scale/channel count changed (outFresh/outScale/outCh); steady
+    // state is one compare per lane per sample. val[] is voiceSlot-indexed
+    // (val[ch] = channel ch's voice); one gate run fills ALL 7 rows.
+    struct StepProbRow {
+        bool  valid = false;
+        int   step = -1;        // the lane's Macro-lens masked playhead the row holds
+        int   nVoices = -1;     // eng.numPolyVoices when resolved (a change refreshes)
+        std::array<float, kVoiceSlots> val = {};     // [voiceSlot] — the ONE accessor's MacroOwn-lens values
+        bool  outFresh = false; // the val[] row was written to the port at outScale/outCh
+        float outScale = -1.f;  // the scaleV the last out walk used
+        int   outCh = -1;       // the channel count the last out walk covered
+    } stepProb_[dotModular::SandsGrid::POLY_LANES];
+    // The gate's shadow signature — every input the resolve reads, nothing it doesn't
+    // (the exhaustive enumeration + the deliberate drops: ui/SweepSigGate.hpp).
+    SweepSig sweepSig_;
+    // NOTE probOutSampleHold is inert on THIS module's outs now (the value between
+    // steps is held by design); the store option stays for East's outs.
 
     // CV-applied global spread per lane (0=REST,1=MEL,2=OCT). processDNA writes
     // these from base + spread CV; the display reads them so spread CV is visible
     // WITHOUT moving the base knob (the old code wrote the modulated value back to
     // the SPREAD_* param, which dragged the knob — fixed).
-    float spreadEffective[dotModular::SandsGrid::POLY_LANES] = {0.f, 0.f, 0.f, 0.f, 0.f};
+    std::array<float, dotModular::SandsGrid::POLY_LANES> spreadEffective = {0.f, 0.f, 0.f, 0.f, 0.f};
 
     // Per (lane, item) split of Macro's global contribution, published by
     // processDNA::applyGlobal for the Macro/East blend equation. item: 0=LEN
@@ -286,12 +412,30 @@ struct StraitsSandsMacroVisual : Module {
     // CV-only contribution (already scaled by Macro's own attenuverter). East's
     // sync reads these: value = base(owner) + eastCV + macroCVDelta·blendSend.
     // SANDS CONSOLIDATION Step 1: 7 poly lanes (REST/MELODY/OCTAVE/ACCENT/QMIX/VAR/LEG, engine order).
-    float macroBase[7][4]    = {};
-    float macroCVDelta[7][4] = {};
+    std::array<std::array<float, 4>, dotModular::SandsGrid::POLY_LANES> macroBase = {};
+    std::array<std::array<float, 4>, dotModular::SandsGrid::POLY_LANES> macroCVDelta = {};
     // P9: the send PRE/POST tap applies ONLY to what the sends distribute, not to
     // Macro's own LOR/spread display (which always uses the true POST macroCVDelta).
-    // macroSendDelta = the tapped CV delta the East/Mono send mix-ins read.
-    float macroSendDelta[7][4] = {};
+    // (The old single globally-tapped macroSendDelta is DELETED — the P9b per-voice fix
+    // publishes the endpoint pair below; each receiving voice selects via its own tap.)
+
+    // PER-VOICE SEND-TAP (P9b fix): the publish carries BOTH endpoints of the
+    // pre/post lerp; each receiving VOICE selects via its own macroTap (Monsoon store).
+    //   macroPreDelta  = raw cv·(hi-lo)   (tap=0, PRE the attenuverter)
+    //   macroPostDelta = cv·att·(hi-lo)   (tap=1, POST — the old tappedDelta at tap=1)
+    // A voice's delta = tappedDelta(its tap) — see the helper below. Macro's OWN display
+    // always reads macroPostDelta (Macro has no receiving voice).
+    std::array<std::array<float, 4>, dotModular::SandsGrid::POLY_LANES> macroPreDelta = {};
+    std::array<std::array<float, 4>, dotModular::SandsGrid::POLY_LANES> macroPostDelta = {};
+
+    // The delta a receiving voice gets: lerp between the published endpoints by the
+    // voice's own tap (0..1). Pure arithmetic on this visual's published arrays; the
+    // caller supplies the tap (getMacroTap(slot, lane, item==3 ? 1 : 0)).
+    float tappedDelta(float tap, int lane, int item) const {
+        const float pre  = macroPreDelta[lane][item];
+        const float post = macroPostDelta[lane][item];
+        return pre + (post - pre) * tap;
+    }
 
     json_t* dataToJson() override {
         json_t* r = json_object();

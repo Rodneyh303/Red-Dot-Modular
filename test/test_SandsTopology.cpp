@@ -64,14 +64,43 @@ int main() {
     std::printf("== EAST_PLUS_MACRO poly ownership (per voice/lane) ==\n");
     {
         auto i = base(true,true);
-        for (int v=0; v<15; ++v) for (int l=0;l<7;++l) i.eastPolyOwner[v][l] = true; // East owns all 7 poly lanes
-        i.eastPolyOwner[2][1] = false;   // voice index 2 (=V4), octave ceded to Macro
+        for (int v=1; v<16; ++v) for (int l=0;l<7;++l) i.eastPolyOwner[v][l] = true; // East owns all 7 poly lanes (voiceSlot 1..15)
+        i.eastPolyOwner[3][1] = false;   // voiceSlot 3 (=V4), octave ceded to Macro
         auto t = SandsTopology::build(i);
         CHECK(t.owner(3,1) == Role::MACRO,           "V4 octave ceded -> MACRO (voice 3 = poly idx 2)");
         CHECK(t.owner(3,0) == Role::EAST,            "V4 melody still EAST");
         CHECK(t.owner(1,0) == Role::EAST,            "V2 melody EAST");
         CHECK(t.owner(1,4) == Role::EAST,            "V2 ACCENT (lane4) is a poly lane -> EAST");
         CHECK(t.owner(1,5) == Role::EAST,            "V2 VAR (lane5) is a poly lane -> EAST (SANDS CONSOLIDATION Step 1)");
+    }
+
+    std::printf("== fillOwners — the ONE store->Inputs fill (CC_PROMPT_07, the warp-leak root fix) ==\n");
+    {
+        // A store model: V1 cedes melody (v=0,l=0); V2 owns everything; V3 cedes octave;
+        // V16 cedes everything. voiceSlot rows (0 = V1, 1..15 = V2..V16).
+        auto store = [](int v, int l) -> bool {
+            if (v == 0 && l == 0)  return false;   // V1 cedes melody
+            if (v == 1)            return true;    // V2 owns all lanes
+            if (v == 2 && l == 1)  return false;   // V3 cedes octave
+            if (v == 15)           return false;   // V16 cedes all lanes
+            return true;
+        };
+        auto i = base(true, true);
+        i.fillOwners(/*eastPresent=*/true, store);
+        auto t = SandsTopology::build(i);
+        CHECK(t.owner(0, 0) == Role::MACRO,  "fillOwners: V1 ceded melody -> MACRO");
+        CHECK(t.owner(0, 1) == Role::EAST,   "fillOwners: V1 octave not ceded -> EAST");
+        CHECK(t.owner(1, 0) == Role::EAST,   "fillOwners: V2 melody -> EAST (never Macro just for being poly)");
+        CHECK(t.owner(1, 6) == Role::EAST,   "fillOwners: V2 LEG -> EAST");
+        CHECK(t.owner(2, 1) == Role::MACRO,  "fillOwners: V3 ceded octave -> MACRO");
+        CHECK(t.owner(2, 0) == Role::EAST,   "fillOwners: V3 melody -> EAST");
+        CHECK(t.owner(15, 6) == Role::MACRO, "fillOwners: V16 ceded LEG -> MACRO (edge slot 15)");
+        // eastPresent=false leaves the defaults (MACRO_SOLE semantics) — nothing to fill.
+        auto i2 = base(false, true);
+        i2.fillOwners(/*eastPresent=*/false, store);
+        auto t2 = SandsTopology::build(i2);
+        CHECK(t2.owner(1, 0) == Role::MACRO, "fillOwners: no East -> rows stay defaulted (Macro owns poly)");
+        CHECK(t2.owner(0, 0) == Role::MACRO, "fillOwners: no East -> Macro owns V1");
     }
 
     std::printf("\n%s (%d failures)\n", failures ? "TESTS FAILED" : "ALL TESTS PASSED", failures);

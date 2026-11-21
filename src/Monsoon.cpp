@@ -27,27 +27,63 @@
 #include "MonsoonChangiT3Expander.hpp"
 #include "MonsoonShophouseExpander.hpp"
 #include "MonsoonChangeAlleyV2.hpp"   // full type needed: reseedCorrKeys/seedCorrKeysInternal called in handleRestart
+#include "dsp/VoiceResolver.hpp"   // CC_PROMPT_STRONG_TYPES: VoiceSlot minting (mono/slot)
+
+using dotModular::VoiceResolver;   // the mint authority (VoiceSlot cannot be constructed here)
 // West retired (Straits redesign): #include "MonsoonStraitWestExpander.hpp"
 //#include "MonsoonStraitsSands.hpp"            // NEW (Macro): global DNA controls
 //#include "MonsoonDeepStraitsSands.hpp"        // NEW (Deep): per-voice DNA controls
 #include "StraitsEastSandsVisual.hpp"         // Visual DNA editor (East)
 #include "StraitsSandsMacroVisual.hpp"        // Visual DNA editor (Macro)
+#include "SandsPhaseDistSubpanel.hpp"         // THE §14 STORE's owner (CC_FIX_PHASE_STORE_ON_SUBPANEL:
+                                              // full type: the snapshot reads it)
 #include "MonsoonWidget.hpp"
 #include "Monsoon.hpp"
-#include "ui/IntertropicalPairing.hpp"   // assignPairIdT<Monsoon> / resolveFollowedT (host identity + shared-CA)
+#include "ui/IntertropicalPairing.hpp"   // assignPairIdT / resolveFollowedT — host identity + shared-CA (template forms; the calls below carry the gate marker)
+#include "ui/ModuleLookup.hpp"   // THE module-lookup authority: the topology epoch (CC_PROMPT_MODULE_LOOKUP_AUTHORITY_START)
 #include "dsp/managers/MonsoonConfigurator.hpp"
 #include "dsp/engines/PatternEngine.hpp"
 #include "dsp/gates/GateState.hpp"
+#include "MonsoonProfile.hpp"   // CC_PROMPT_cpu_section_profile: MONSOON_PROFILE section timers (no-op flag-off)
 
 using namespace rack;
 using namespace MonsoonIds;
+
+#ifdef MONSOON_PROFILE
+// CC_PROMPT_cpu_section_profile — DIAGNOSTIC SCAFFOLDING (never ships; delete together with
+// the MONSOON_PROF_* call sites in Monsoon::process). Section accumulators in TSC ticks;
+// the control-rate log (every ~50000 samples) converts to ns/sample via calibrateNsPerTick.
+// Aggregate across Monsoon instances — read RELATIVE SHARES, not absolutes: the dominant
+// section is the fix target regardless of bracketing overhead (the safe pattern — the old
+// 124% was a per-sample std::chrono; now() runs only AROUND sections, LOGS at control rate).
+static uint64_t monsoonProfAcc_head = 0;         // warp-mirror wire + input fetch
+static uint64_t monsoonProfAcc_clockPhase = 0;   // clock.process + phase.process
+static uint64_t monsoonProfAcc_gatesTrig = 0;    // run/reset + gate edge detect + assignments
+static uint64_t monsoonProfAcc_shophouse = 0;    // every-frame shophouse scale-override block
+static uint64_t monsoonProfAcc_stepExec = 0;     // mode dispatch: shouldExecute -> executeMode/jump/drift (gross of the nested boundary shophouse)
+static uint64_t monsoonProfAcc_cvModeB = 0;      // CV routing + Mode-B gate-state drive
+static uint64_t monsoonProfAcc_outputGen = 0;    // outputGenerator->drive — PRIME SUSPECT B (per sample)
+static uint64_t monsoonProfAcc_lightDiv = 0;     // lightDivider block
+static uint64_t monsoonProfAcc_controlDiv = 0;   // controlDivider block
+// Finer brackets INSIDE controlDiv (this round — decompose the ~21µs/tick block; the
+// outer controlDiv accumulator stays and measures the whole block incl. the scaffolding
+// between these five). Same safe pattern: rdtsc brackets, logged only at the 50k window.
+static uint64_t monsoonProfAcc_ctrl_raf = 0;     // controlDiv: updateExpanderPointers + Raffles gate loop
+static uint64_t monsoonProfAcc_ctrl_pat = 0;     // controlDiv: modeController->updatePatternInput
+static uint64_t monsoonProfAcc_ctrl_dna = 0;     // controlDiv: spreadTargetMode mirror + dnaManager.processDNA
+static uint64_t monsoonProfAcc_ctrl_sync = 0;    // controlDiv: lockManager.tick + expanderManager.sync
+static uint64_t monsoonProfAcc_ctrl_rest = 0;    // controlDiv: cached* reads + CV logic + updateWindow + CV3/Raffles tail
+static uint64_t monsoonProfWindow = 0;           // samples since the last section log
+#endif
 
 // Plugin* pluginInstance and init(Plugin*) now live in src/plugin.cpp (Rack convention: a dedicated
 // entry-point TU). The extern declaration remains in Monsoon.hpp.
 
 void Monsoon::onSampleRateChange(const SampleRateChangeEvent& e) {
-    lightDivider.setDivision(std::max(1, (int)std::round(e.sampleRate / 90.f)));
-    controlDivider.setDivision(std::max(1, (int)std::round(e.sampleRate / 1500.f)));
+    // RATE MANAGER (S7): the SR-aware divisions live INSIDE the manager now — the old
+    // lightDivider/controlDivider setDivision pair, generalized (fixed Hz regardless
+    // of SR; the raw divider members are DELETED — deletion is the enforcement).
+    rateManager.setSampleRate(e.sampleRate);
 }
 
 Monsoon::Monsoon() {
@@ -57,24 +93,39 @@ Monsoon::Monsoon() {
         // slot and bank, matching the old per-voice configParam defaults.
         for (int slot = 0; slot < 16; ++slot)
             for (int bank = 0; bank < dotModular::SandsGrid::MONO_LANES; ++bank)
-                editor.lorBase[slot*21 + bank*3 + 0] = 16.f;  // stride 21 = 7 banks × 3
+                editor.lorBase[slot*21 + bank*3 + 0] = (float)dotModular::kPatternLengthCap;  // stride 21 = 7 banks × 3 — (bug 23) the identity length is the FULL window (the cap; was the literal 16)
+
+        // Per-voice send-tap bank: default 1.0 (POST) for every voice/lane/kind — the old
+        // single-tap behaviour at its default, so un-touched patches sound identical
+        // (MacroTapBank::kDefault; the P9b per-voice send-tap fix).
+        for (int i = 0; i < dotModular::MacroTapBank::N; ++i)
+            editor.macroTap[i] = dotModular::MacroTapBank::kDefault;
 
         // Seed RNGs with a random value — safe to call here (uses rack::random, not inputs[])
         rhythmSeedFloat = rack::random::uniform() * 10.f;
         melodySeedFloat = rack::random::uniform() * 10.f;
         engine.pe.seedRhythmPhilox(rhythmSeedFloat);
         engine.pe.seedMelodyPhilox(melodySeedFloat);
+        engine.pe.seedBridgeRhythmPhilox(rhythmSeedFloat);
+        engine.pe.seedBridgeMelodyPhilox(melodySeedFloat);
         rhythmSeedPendingFloat = rhythmSeedFloat;
         melodySeedPendingFloat = melodySeedFloat;
 
         // Initialize managers
         scaleManager = std::unique_ptr<ScaleManager>(new ScaleManager(this));
         paramManager = std::unique_ptr<ParameterManager>(new ParameterManager(this, &expanderManager.cachedScaleExpander, &expanderManager.cachedPolyVoiceExpander));
-        modeController = std::unique_ptr<ModeController>(new ModeController(this, engine, clock, *paramManager));
-        uiManager = std::unique_ptr<UIManager>(new UIManager(this, lightDivider));
+        modeController = std::unique_ptr<ModeController>(new ModeController(this, engine, clock, rateManager, *paramManager));
+        uiManager = std::unique_ptr<UIManager>(new UIManager(this));
         timingController = std::unique_ptr<TimingController>(new TimingController(this));
         cvRouter = std::unique_ptr<CVRouter>(new CVRouter());
         outputGenerator = std::unique_ptr<OutputGenerator>(new OutputGenerator());
+
+        // RATE MANAGER (CC_PROMPT_RATE_MANAGER_START): declare the Control producers
+        // ONCE. ORDER IS LOAD-BEARING — dispatch runs producers in declaration order:
+        // publishGlobal FIRST (it writes the macroBase...), then the sync-population
+        // (the measured Macro-only 3% fix), which reads it.
+        dnaManager.declareRateProducers(rateManager, *this);
+        expanderManager.declareRateProducers(rateManager, *this);
 
         // Initialize dividers
         onSampleRateChange({APP->engine->getSampleRate(), APP->engine->getSampleRate()});
@@ -103,10 +154,53 @@ void Monsoon::updateExpanderPointers() {
             }
         }
         if (pairId <= 0 || pairId > kMaxParticipatingMonsoons || clash) {
-            int cand = redDot::assignPairIdT<Monsoon>(this);   // lowest 1..N free
+            int cand = redDot::assignPairIdT<Monsoon>(this);   // lowest 1..N free  — LOOKUP-AUTHORITY (the event-driven identity settle: updateExpanderPointers runs on onExpanderChange / the epoch guard)
             pairId = (cand <= kMaxParticipatingMonsoons) ? cand : 0;   // >8 → unparticipating (no colour)
         }
         if (pairId > 0) pairChecked = true;   // latch only on success; a capped-out Monsoon keeps retrying
+    }
+
+    // ── THE PHASE-DISTORTION SOURCE (PHASE_DISTRIBUTION_SPEC §14, amended by
+    // CC_FIX_PHASE_STORE_ON_SUBPANEL — the store's owner resolved at control rate,
+    // epoch-memoized) ───────────────────────────────────────────────────────────────
+    // RACK-WIDE first-found (the LOWEST module id — deterministic under any module
+    // order, the same determinism resolveFollowedT's scan gives pairId matches): the
+    // model serves the WHOLE Monsoon network from ONE subpanel's store, so a Monsoon
+    // in another segment must still find it — the segment walk (the
+    // expanderManager's adjacency caches) is the wrong tool here. The scan is keyed
+    // to the SUBPANEL model (the phase authoring surface — the Distribution
+    // expander is no longer involved at all). If several phase subpanels exist, the
+    // lowest id wins (documented; one store, one reading). nullptr = no subpanel:
+    // both tiers run the raw path (bit-identical). Runs inside
+    // updateExpanderPointers → the epoch guard fires it ONLY on a topology event
+    // (the lookup authority's law: event-driven, never polled).
+    phaseDistPanel_ = nullptr;
+    if (APP && APP->engine) {
+        int64_t bestId = INT64_MAX;
+        for (int64_t mid : APP->engine->getModuleIds()) {
+            rack::Module* om = APP->engine->getModule(mid);
+            if (!om || om == this) continue;
+            if (auto* e = dynamic_cast<SandsPhaseDistSubpanel*>(om)) {
+                if (mid < bestId) { phaseDistPanel_ = e; bestId = mid; }
+            }
+        }
+    }
+
+    // THE DYNAMIC DEFAULT PAIRING (Task 3: "DEFAULT 2N-1 and 2N for Monsoon N"): N is
+    // the pairId (the lowest-free 1..8 identity latched above). Applied ONCE per
+    // module LIFETIME, at the latch, and ONLY on a fresh module (phaseSetsFresh_ —
+    // dataFromJson cleared it): a loaded patch keeps its authored picks ("the picks
+    // persist with that Monsoon"), and a later pairId re-assignment (an earlier
+    // Monsoon removed) never re-defaults. A capped-out Monsoon (pairId 0) reads as
+    // N=1 for the formula — the defaults are only defaults. 2N−1 / 2N can exceed the
+    // eight sets for N ≥ 5: the range clamps (the param quantity is [1,8] anyway).
+    if (phaseSetsFresh_ && pairChecked && pairId > 0) {
+        const int n = pairId;
+        const int phDef = std::min(2 * n - 1, 8);
+        const int sbDef = std::min(2 * n,     8);
+        params[PHASE_SET_PARAM].setValue((float)std::max(1, phDef));
+        params[SUBPHASE_SET_PARAM].setValue((float)std::max(1, sbDef));
+        phaseSetsFresh_ = false;
     }
     // Shared Change Alley (CA_SHARED_EXPANDER_BUILD §Step4): followCA>0 OVERRIDES the adjacency-cached
     // CA with the rack-wide pairId match, so a second (reader) Monsoon can bind a CA on another row.
@@ -114,7 +208,7 @@ void Monsoon::updateExpanderPointers() {
     // from the controlDivider block), so the rack-wide scan in resolveFollowedT is not per-sample.
     if (followCA > 0) {
         expanderManager.cachedChangeAlleyV2 =
-            redDot::resolveFollowedT<MonsoonChangeAlleyV2>(this, followCA);  // nullptr if no match present
+            redDot::resolveFollowedT<MonsoonChangeAlleyV2>(this, followCA);  // nullptr if no match present  — LOOKUP-AUTHORITY (event-driven)
     }
 
     // ── Tuning-source resolution (microtonal Phase 1 Sikit + Phase 2 Micro-12) ───────────────────
@@ -173,12 +267,17 @@ void Monsoon::updateExpanderPointers() {
   
     void Monsoon::dataFromJson(json_t* root) {
         PersistenceManager::fromJson(this, root);
+        // THE §14 PICKS: a loaded patch carries its own authored values — the dynamic
+        // 2N−1/2N default (a FRESH module's pairing) must never overwrite them.
+        phaseSetsFresh_ = false;
     // Finalize state. Seeding re-keys Philox and ZEROES the draw counter — so snapshot
     // the counter the persistence layer restored, seed, then put it back, then regenerate
     // candidate B at that exact stream position (Option 3: A restored, B regenerated).
     int64_t savedR = engine.pe.rhythmDrawCtr, savedM = engine.pe.melodyDrawCtr;
     engine.pe.seedRhythmPhilox(rhythmSeedFloat);
     engine.pe.seedMelodyPhilox(melodySeedFloat);
+    engine.pe.seedBridgeRhythmPhilox(rhythmSeedFloat);
+    engine.pe.seedBridgeMelodyPhilox(melodySeedFloat);
     if (pendingRegenB) {
         engine.pe.rhythmDrawCtr = savedR;
         engine.pe.melodyDrawCtr = savedM;
@@ -256,7 +355,7 @@ float Monsoon::getEffectivePolyRest(int voiceIdx) {
     float base = getBasePolyRest(voiceIdx);
     auto* cway = expanderManager.cachedCausewayPolyExpander;
     if (cway && voiceIdx >= 0 && voiceIdx < 15) {
-        const int ch = voiceIdx + 1;   // poly voice → poly-cable channel (ch0 = mono)
+        const int ch = voiceIdx + 1;   // INTENTIONAL cable-boundary +1 (not debt): voiceIdx is 0-based poly (0=V2, 14=V16); cable ch0 = mono/V1, so poly voice k → channel k+1
         auto& in = cway->inputs[CausewayIds::REST_CV_INPUT];
         if (in.isConnected()) {
             float att = cway->params[CausewayIds::POLY_REST_ATT_START + voiceIdx].getValue()
@@ -270,7 +369,7 @@ float Monsoon::getEffectivePolyAccent(int voiceIdx) {
     float base = getBasePolyAccent(voiceIdx);
     auto* cway = expanderManager.cachedCausewayPolyExpander;
     if (cway && voiceIdx >= 0 && voiceIdx < 15) {
-        const int ch = voiceIdx + 1;
+        const int ch = voiceIdx + 1;   // INTENTIONAL cable-boundary +1 (not debt): voiceIdx is 0-based poly (0=V2, 14=V16); cable ch0 = mono/V1, so poly voice k → channel k+1
         auto& in = cway->inputs[CausewayIds::ACCENT_CV_INPUT];
         if (in.isConnected()) {
             float att = cway->params[CausewayIds::POLY_ACCENT_ATT_START + voiceIdx].getValue()
@@ -280,19 +379,27 @@ float Monsoon::getEffectivePolyAccent(int voiceIdx) {
     }
     return math::clamp(base, 0.f, 1.f);
 }
+// [QMIX-ARC] interaction log (interaction-gated diagnostic — fires only with expanders
+// attached). ONE shared line counter for BOTH sites: getEffectivePolyQmix CALLS
+// getBasePolyQmix, so the old per-site 20-caps double-logged every effective call and
+// together allowed up to 40 lines (two bursts, 2 lines/voice) — not the "first 20" the
+// old code claimed; function-local statics never reset, so the caps were simply
+// per-site. One counter = a hard 20-line cap: a single burst, then silent for the
+// process lifetime.
+static int qmixArcLogLines = 0;
+
 // Per-voice q-mix LEVEL — mirrors rest/accent. The Causeway q-mix CV (QMIX_CV_INPUT, 16ch poly) is
 // attenuated by the per-voice + global q-mix attenuators and added to the Straits knob (the
 // threshold the engine compares against the q-mix probability draw from Sands). Exactly the rest/
 // accent pattern: base = Straits knob; effective = base + Causeway CV × att, clamped to [0,1].
 float Monsoon::getBasePolyQmix(int voiceIdx) {
-    static int logCount = 0;
     float base = paramManager ? paramManager->getPolyQmixLevel(voiceIdx) : 0.f;
-    if (logCount < 20) {
+    if (qmixArcLogLines < 20) {
         auto* s = expanderManager.cachedPolyVoiceExpander;
         bool qc = s && s->inputs[StraitsIds::QUANT_CV_INPUT].isConnected();
         INFO("[QMIX-ARC] base v=%d knob=%.3f straits=%p quantCv=%d cv2=%d",
              voiceIdx, base, (void*)s, (int)qc, (int)cachedCv2Connected);
-        logCount++;
+        ++qmixArcLogLines;
     }
     // Apply the SAME patched-detection as getEffectivePolyQmix, so base == effective
     // at rest (no Causeway modulation). Without this, the mod-arc shows on poly QMIX
@@ -301,23 +408,22 @@ float Monsoon::getBasePolyQmix(int voiceIdx) {
     auto* straits = expanderManager.cachedPolyVoiceExpander;
     if (straits && straits->inputs[StraitsIds::QUANT_CV_INPUT].isConnected()) {
         int n = std::max(1, straits->inputs[StraitsIds::QUANT_CV_INPUT].getChannels());
-        int ch = voiceIdx + 1;                       // ch0 = mono; poly voice i → ch i+1
+        int ch = voiceIdx + 1;                       // INTENTIONAL cable-boundary +1 (not debt): ch0 = mono/V1; poly voice i (0=V2) → channel i+1
         return (ch < n) ? base : 0.f;                 // beyond source channels → generate
     }
     if (cachedCv2Connected) return base;              // CV2 is mono → broadcasts to all voices
     return 0.f;                                       // nothing patched → generate
 }
 float Monsoon::getEffectivePolyQmix(int voiceIdx) {
-    static int logCount2 = 0;
     float base = getBasePolyQmix(voiceIdx);
-    if (logCount2 < 20) {
+    if (qmixArcLogLines < 20) {
         INFO("[QMIX-ARC] eff  v=%d base=%.3f cway=%p",
              voiceIdx, base, (void*)expanderManager.cachedCausewayPolyExpander);
-        logCount2++;
+        ++qmixArcLogLines;
     }
     auto* cway = expanderManager.cachedCausewayPolyExpander;
     if (cway && voiceIdx >= 0 && voiceIdx < 15) {
-        const int ch = voiceIdx + 1;   // poly voice → poly-cable channel (ch0 = mono)
+        const int ch = voiceIdx + 1;   // INTENTIONAL cable-boundary +1 (not debt): voiceIdx is 0-based poly (0=V2, 14=V16); cable ch0 = mono/V1, so poly voice k → channel k+1
         auto& in = cway->inputs[CausewayIds::QMIX_CV_INPUT];
         if (in.isConnected()) {
             float att = cway->params[CausewayIds::POLY_QMIX_ATT_START + voiceIdx].getValue()
@@ -334,7 +440,7 @@ float Monsoon::getEffectivePolyQmix(int voiceIdx) {
     auto* straits = expanderManager.cachedPolyVoiceExpander;
     if (straits && straits->inputs[StraitsIds::QUANT_CV_INPUT].isConnected()) {
         int n = std::max(1, straits->inputs[StraitsIds::QUANT_CV_INPUT].getChannels());
-        int ch = voiceIdx + 1;                       // ch0 = mono; poly voice i → ch i+1
+        int ch = voiceIdx + 1;                       // INTENTIONAL cable-boundary +1 (not debt): ch0 = mono/V1; poly voice i (0=V2) → channel i+1
         return (ch < n) ? eff : 0.f;                 // beyond source channels → generate
     }
     if (cachedCv2Connected) return eff;              // CV2 is mono → broadcasts to all voices
@@ -404,8 +510,14 @@ float Monsoon::getBasePolyLegato(int voiceIdx) {
     return paramManager ? paramManager->getPolyLegato(voiceIdx) : 0.0f;
 }
 float Monsoon::getEffectivePolyVariation(int voiceIdx) {
-    // No Causeway VAR CV input yet — effective = base, clamped.
-    return math::clamp(getBasePolyVariation(voiceIdx), 0.f, 1.f);
+    // BIPOLAR — CC_FIX_PER_VOICE_ADVANCE_WANDER: unipolar poly VAR was a mono/poly
+    // special case (the mono gate-mode write is (2*knob - 1) + CV2 + Junction under
+    // ONE clamp [-1,+1]; poly could only go forward). SAME formula shape per voice:
+    // the knob maps bipolar (centre = 0 = stutter, down = backward). No Causeway poly
+    // VAR CV input yet — when one lands it joins the sum here exactly as the mono
+    // write adds CV2/Junction, under the same clamp. getBasePolyLegato stays
+    // unipolar (LEGATO is a probability, not the advance value).
+    return math::clamp(2.f * getBasePolyVariation(voiceIdx) - 1.f, -1.f, +1.f);
 }
 float Monsoon::getEffectivePolyLegato(int voiceIdx) {
     // No Causeway LEG CV input yet — effective = base, clamped.
@@ -413,10 +525,13 @@ float Monsoon::getEffectivePolyLegato(int voiceIdx) {
 }
 
 // --- switch melody/rhythm mode (dice/realtime), caching/restoring state as needed ---
-void Monsoon::switchMelodyMode() { engine.pe.switchMelodyMode(stepIndex, lastStepIndex); }
+void Monsoon::switchMelodyMode() { engine.pe.switchMelodyMode(); }
 
 // --- switch melody/rhythm mode (dice/realtime), caching/restoring state as needed ---
-void Monsoon::switchRhythmMode() { engine.pe.switchRhythmMode(stepIndex, lastStepIndex); }
+void Monsoon::switchRhythmMode() { engine.pe.switchRhythmMode(); }
+
+// --- switch q-mix mode (dice/realtime), caching/restoring state as needed ---
+void Monsoon::switchQmixMode() { engine.pe.switchQmixMode(); }
 
 
 // pick a semitone (0..11) using weighted random, or -1 if no semitone is selected
@@ -426,7 +541,9 @@ int Monsoon::pickSemitoneWeighted() {
     float w[12];
     for(int i=0; i<12; ++i) w[i] = getSemitoneParam(i);
     int idx = engine.getMelodyStep();
-    return engine.pe.pickSemitone(w, 12, melodyRandom[idx]);   // Monsoon's own 12 faders → n=12
+    // Warp mirror (CC_PROMPT_03): the degree map reads the effective w-mixture — the
+    // faderMap∘F⁻¹ seam where melody warp lands (no raw melody/octave OUTPUT reads).
+    return engine.pe.pickSemitone(w, 12, engine.pe.warpRow(VoiceResolver::mono(), dotModular::LaneId{PatternEngine::PL_MELODY})[idx]);   // Monsoon's own 12 faders → n=12 (mono ROLE, typed)
 }
 
 // generate a pitch V in 1V/oct format, returnh semitone via out parameter
@@ -435,7 +552,10 @@ int Monsoon::pickSemitoneWeighted() {
 // returns 0V and -1 semitone if no semitone is selected
 // (should be rare, only if all semitone weights are zero)
 float Monsoon::genPitchV(int& outSemitone) {
-    return engine.pe.genPitchLive(outSemitone, modeController->currentPatternInput, melodyRandom[engine.getMelodyStep()], octaveRandom[engine.getOctaveStep()]);
+    // Warp mirror (CC_PROMPT_03): same consumer contract as pickSemitoneWeighted.
+    return engine.pe.genPitchLive(outSemitone, modeController->currentPatternInput,
+                                  engine.pe.warpRow(VoiceResolver::mono(), dotModular::LaneId{PatternEngine::PL_MELODY})[engine.getMelodyStep()],
+                                  engine.pe.warpRow(VoiceResolver::mono(), dotModular::LaneId{PatternEngine::PL_OCTAVE})[engine.getOctaveStep()]);
 }
 
     // allowed note lengths depend on noteVariationMask - note we defined NoteLength enum and allowednoteLengths function
@@ -485,16 +605,18 @@ float Monsoon::semitoneToVolts(int semitone) {
     // handle manual restart: place index so next increment lands on startStep, optionally redraw realtime patterns
     // If there are pending seeds and resetImmediate==true, apply them immediately (for RESET triggered reseed)
     void Monsoon::handleRestart(bool manual, bool resetImmediate) {
-        // stepIndex = -1 (stopped) so the UI shows no playhead until the first clock edge.
-        // advancePlayhead() handles -1 correctly: it seeds to (startStep-1) then increments
-        // to startStep — same result as the old pre-increment, but without the visual flash
-        // of step 16 (stepIndex=15) between reset and the first edge.
-        stepIndex = -1;
-        engine.totalStepsElapsed = 0; // Sync polymeters to "Beat 1" on hard reset
-        // Under the stateless model the lanes follow this for free (each is a pure function
-        // of totalStepsElapsed), so Beat 1 sync is automatic. resetLaneWalk() is belt-and-braces:
-        // redundant now, but it was MISSING when lanes had their own accumulators — RESET zeroed
-        // the master clock while every lane walked on, and polymeters silently stopped syncing.
+        // (STEP 4-final) the bare-alias park write (stepIndex = -1) is DELETED with the
+        // field — the engine reset below (resetLaneWalk -> pos_.reset) parks the played
+        // column at -1, so the UI shows no playhead until the first clock edge, and
+        // advancePlayhead() seeds to (startStep-1) then increments to startStep — same
+        // result as the old pre-increment, without the visual flash of step 16 between
+        // reset and the first edge.
+        // POSITION_HOLDER_MODEL: there is no counter to zero. resetLaneWalk() below
+        // ANCHORS the holders to Beat 1 (the t=0 congruence — every walk back at its own
+        // start), so Beat-1 sync is automatic. The old belt-and-braces note: when the
+        // lanes had their own ACCUMULATORS, RESET zeroed the master clock while every
+        // lane walked on, and polymeters silently stopped syncing — the anchor law
+        // closes that class of bug by construction: the anchors ARE the reset.
         engine.resetLaneWalk();
         engine.gs.reset();          // clears gate, hold, pitch, pulse, semiPlayRemain
         prevExtGate = false;
@@ -588,9 +710,12 @@ float Monsoon::semitoneToVolts(int semitone) {
             case DA_REDICE_R:      diceRhythm(); break;
             case DA_REDICE_M:      diceMelody(); break;
             case DA_REDICE_Q:      diceQmix(); break;
-            case DA_LIVESTATIC_R:  rhythmMode = 1 - rhythmMode; break;
-            case DA_LIVESTATIC_M:  melodyMode = 1 - melodyMode; break;
-            case DA_LIVESTATIC_Q:  qmixMode = 1 - qmixMode; break;
+            // (switch-qmix-mode) ONE path for every live/static toggle — the LOSSLESS
+            // switch (cache + restore), not a bare flag flip: Gate 3's assignable and
+            // Raffles's dedicated gates now behave identically to the context menu.
+            case DA_LIVESTATIC_R:  switchRhythmMode(); break;
+            case DA_LIVESTATIC_M:  switchMelodyMode(); break;
+            case DA_LIVESTATIC_Q:  switchQmixMode(); break;
             case DA_RESEED_RESTART:reseedOnRestart = !reseedOnRestart; break;
             case DA_LASTDICE_R:    rhythmMode = 0; engine.pe.setPendingRhythmLastRoll();  break;
             case DA_LASTDICE_M:    melodyMode = 0; engine.pe.setPendingMelodyLastRoll();  break;
@@ -640,12 +765,19 @@ void Monsoon::onPhraseBoundary_() {
 // and is reached by walking one step further.  If no DNA is present,
 // PolyVoice may attach directly to Monsoon's right.
 void Monsoon::onExpanderChange(const ExpanderChangeEvent& e) {
-    static uint64_t n=0, ns=0;
-    auto t0 = std::chrono::high_resolution_clock::now();
-    updateExpanderPointers();
-     auto t1 = std::chrono::high_resolution_clock::now();
-    ns += std::chrono::duration_cast<std::chrono::nanoseconds>(t1-t0).count();
-    if (++n % 50000 == 0) INFO("blockEXP(594): avgNs=%llu", (unsigned long long)(ns/n));
+    // THE LOOKUP AUTHORITY (CC_PROMPT_MODULE_LOOKUP_AUTHORITY_START): the event is
+    // the sole trigger — it bumps the global topology epoch (every consumer's memo
+    // re-resolves on its next read).
+    redDot::bumpTopologyEpoch();
+    // DO NOT scan here. Rack fires onExpanderChange UNDER the engine mutex during module removal, and
+    // updateExpanderPointers() calls getModuleIds(), which re-locks that non-recursive mutex → deadlock
+    // (Rack hangs when a Monsoon neighbour is deleted — and when Monsoon itself is deleted next to a
+    // neighbour, since the detach fires this handler too). The eager call was only a latency
+    // optimisation: process() re-resolves on the next Control tick via lookupEpochStale() (see the
+    // Control block, ~line 1749), the deferred pattern EVERY other family handler already uses
+    // (MonsoonStraitsExpander / StraitsLaneExpander etc. only bump the epoch here). getModuleIds() is
+    // documented elsewhere as the re-lock hazard (Intertropical.cpp "process() is the safe place").
+    (void)e;
 }
 
 // ---------------- Helper: reset hook -----------------------------------------
@@ -653,6 +785,8 @@ void Monsoon::onReset() {
     Module::onReset();
     initialize();   // resets all module state to defaults
     clock.reset();  // resets ClockEngine timing
+    phaseDistHold_[0].reset();   // the PPQN-cell holds re-seed on the next Mode-E sample (CC_FIX_PHASE_DISTORT_AT_PPQN)
+    phaseDistHold_[1].reset();
 }
 
 
@@ -667,9 +801,6 @@ int Monsoon::computeNoteLengthIdx(int requestedIdx, int ppqnMask) { return engin
 // Calls helper functions as needed
 void Monsoon::process(const ProcessArgs& args) {
 
-     static uint64_t n=0, ns=0;
-    auto t0 = std::chrono::high_resolution_clock::now();
-    
     // Flush denormals to zero on the audio thread. Decaying float state (pulses,
     // smoothing, pitch CV) can drift into the denormal range, where FPU ops cost
     // ~10-100x normal — a classic cause of sudden CPU spikes that scale with the
@@ -679,6 +810,68 @@ void Monsoon::process(const ProcessArgs& args) {
     _MM_SET_FLUSH_ZERO_MODE(_MM_FLUSH_ZERO_ON);
     _MM_SET_DENORMALS_ZERO_MODE(_MM_DENORMALS_ZERO_ON);
 #endif
+
+    MONSOON_PROF_BEGIN(head);   // head: warp-mirror wire + input fetch
+    // Warp mirror (CC_PROMPT_03 STEP 4): wire the editor's warp bank into the engine
+    // BEFORE any draw/consumer this block. Per-block pointer compare — a no-op after
+    // the first block; the first wire triggers the initial full mirror rebuild (the
+    // 02 defaults are all-Identity + w=0, so this is a byte-identical no-op today —
+    // pinned by test_warp_mirror S7). Patch loads mutate the bank in place (same
+    // address) and are covered by pendingRegenB → recomputeEffective* → rebuild.
+    engine.pe.setWarpBank(&editor.warp);
+
+    // CC_PROMPT_04 (warp UI): consume any pending UI warp-edit scope — the East/Macro
+    // panel StoreKnobs + curve popup bumped it after writing the warp stores. The
+    // audio thread performs the scoped rebuildWarpMirror* here, so warped_ keeps a
+    // single writer; ≤1 block of latency reads as an immediate display refresh.
+    switch (warpUiScope_) {
+        case WarpUiScope::VOICE_LANE:
+            engine.pe.rebuildWarpMirrorVoiceLane(warpUiV_, warpUiLane_); break;
+        case WarpUiScope::LANE_DELEGATING:
+            engine.pe.rebuildWarpMirrorLaneDelegating(warpUiLane_); break;
+        case WarpUiScope::ALL:
+            engine.pe.rebuildWarpMirrorAll(); break;
+        default: break;
+    }
+    warpUiScope_ = WarpUiScope::NONE;
+
+    // The distribution send-bus watchdog (see the state comment in Monsoon.hpp): the
+    // SandsDistributionExpander republishes its deltas + bumps its role's heartbeat
+    // every block; a frozen heartbeat with deltas live means that publisher is gone
+    // (deleted / bypassed) — drop its plane so nothing latches. Audio thread, same
+    // writer discipline as the rebuild switch above.
+    for (int pi = 0; pi < 2; ++pi) {
+        if (editor.warp.distPublishSeq[pi] != distWatchSeq_[pi]) {
+            distWatchSeq_[pi]  = editor.warp.distPublishSeq[pi];
+            distWatchIdle_[pi] = 0.f;
+        } else if (editor.warp.distDeltasActive) {
+            distWatchIdle_[pi] += args.sampleTime;
+            if (distWatchIdle_[pi] >= 0.5f) {
+                distWatchIdle_[pi] = 0.f;
+                if (pi == 0) clearDistGlobalDeltas();   // the cross-voice publisher died
+                else         clearDistOwnDeltas();      // the per-voice publisher died
+            }
+        }
+    }
+
+    // The SUBGATE watchdog (the same law, the Straits subgate publishers): the
+    // subgate BASE bumps editor.subgate.publishSeq[0] every block it lives
+    // (global deltas); the SUBPANELS share slot 1 (per-voice deltas). A frozen
+    // heartbeat with deltas live drops that plane — a deleted/unplugged surface
+    // must not leave its mod component latched.
+    for (int pi = 0; pi < 2; ++pi) {
+        if (editor.subgate.publishSeq[pi] != subgateWatchSeq_[pi]) {
+            subgateWatchSeq_[pi]  = editor.subgate.publishSeq[pi];
+            subgateWatchIdle_[pi] = 0.f;
+        } else if (editor.subgate.deltasActive) {
+            subgateWatchIdle_[pi] += args.sampleTime;
+            if (subgateWatchIdle_[pi] >= 0.5f) {
+                subgateWatchIdle_[pi] = 0.f;
+                if (pi == 0) clearSubgateGlobalDeltas();   // the base (globals) died
+                else         clearSubgateOwnDeltas();      // the subpanels (per-voice) died
+            }
+        }
+    }
 
     // --- Audio-rate Input Fetching ---
     InputState input;
@@ -692,12 +885,18 @@ void Monsoon::process(const ProcessArgs& args) {
     // q-mix axis: CV2 is the quantise pitch source for ANY mode (collapse: pitch origin is no
     // longer a mode). Read it whenever patched; beginQuantiserSource_ consumes it per step.
     input.cv2   = cachedCv2Connected ? inputs[CV2_INPUT].getVoltage() : 0.f;
+    // PHASE TIER Stage 2: CV3 at audio rate — the SUBPHASE input in the phase origin
+    // (modeSelect == 2; Rodney: "Lets use cv3 in for subphase"). Outside Mode E the
+    // assignable path below reads CV3 on its own throttled cadence and this fetch is inert.
+    input.cv3   = cachedCv3Connected ? inputs[CV3_MOD_INPUT].getVoltage() : 0.f;
 
     // Logic References (Eliminate pointer indirection in hot path)
     TimingController& tc = *timingController;
     ModeController& mc = *modeController;
     CVRouter& cvr = *cvRouter;
 
+    MONSOON_PROF_END(head);
+    MONSOON_PROF_BEGIN(clockPhase);
     // ── Centralised clock tick (processes CLK IN once, before all mode handlers) ──
     // Derives bpm from external clock period or BPM knob, emits sixteenthEdge + quarterEdge.
     clock.process(
@@ -728,14 +927,134 @@ void Monsoon::process(const ProcessArgs& args) {
             phaseVolt   = params[PHASE_PARAM].getValue() * phase.phaseInMax;
             phaseDriven = true;
         }
-        phase.process(phaseVolt, phaseDriven, args.sampleTime, ppqnSetting);
-        if (phaseDriven) bpm = phase.bpm;   // tempo follows the ramp's velocity (knob or CV)
-        modeController->setPhaseReverse(phase.reverse);
-        engine.pe.setReverseActive(phase.reverse);
+        // PHASE TIER Stage 1: the phase span follows the ACTIVE pattern length (phase
+        // 0→1 = patternLength steps — one bar at 16, two bars at 32). Default in the
+        // engine is 16; this feed is what makes the span live. One block of latency
+        // behind updateWindow (the throttled control block) — the same cadence every
+        // other length-change consumer rides, absorbed by the snap/drift machinery.
+        phase.patternLength = engine.cachedLength;
+
+        // ── §14 TASK 3: THE PHASE TIER THROUGH ITS SET (the shared primitive) ──────
+        // CC_PROMPT_PHASE_DISTORTION_EXPANDER: "Apply the shared primitive to the
+        // phase and to the subphase with the selected sets." The snapshot's identity
+        // flag (computed at the Control-tier snapshot) is the Stage-1 gate's bypass:
+        // an identity set — or no expander at all — runs the RAW path VERBATIM (the
+        // bit-identity gate holds because the voltage never round-trips through the
+        // normalised domain: the original variable is handed to the engine as-is).
+        // Non-identity: distort in the normalised domain [0,1) — the primitive is the
+        // ONE implementation (dotModular::phaseDistort, the same composed chain + mix
+        // the lane draws run) — and hand the engine the distorted voltage. The
+        // quantise-to-pulses step is NOT repeated here: the existing machinery below
+        // (PhaseEngine's pulse-grid mapping, snapToPhaseStep, the drift check) IS the
+        // quantise ("as the existing snap does" — a second copy would break the §14
+        // single-implementation gate). An ATOM on the path freezes the playhead
+        // naturally: the distorted ramp sits still on the plateau, the engine sees no
+        // motion, the escape is modulating warp/atom position/size (the decided edge
+        // case); a GAP crossing is a single-sample jump over the grid — the EXISTING
+        // jump contract (jumpSteps replay + snap) handles it, no new jump class.
+        if (!phaseDistIdentity_[0]) {
+            const double uT = phase.normPhase(phaseVolt);
+            // CC_FIX_PHASE_DISTORT_AT_PPQN steps 1-2 (docs tip 9b900695): the transform
+            // is evaluated ONCE PER PPQN CELL of the input and held until the next cell —
+            // the input cell from the EXISTING quantisation (the plain path's own probe,
+            // llround, the CC_FIX_PHASE_RUN_AT_PPQN adjudication), the fire at the cell's
+            // OWN grid point (bit-identical to a per-sample evaluation there), the held
+            // value reused between cells — no other per-sample transform call. The grid
+            // mirrors the engine's own PPB (PULSES_PER_STEP·plen — the same expression
+            // PhaseEngine::process derives from the same two feeds; CC_PROMPT_PPQN_48:
+            // the STEP grid, 96 cells at any PPQN for a 16-step pattern). Steep stretches and
+            // atom/gap edges narrower than a cell land on the next evaluation point —
+            // the spec's PPQN-landing rule applied to the transform (the doc's WHAT
+            // CHANGES). Identity keeps the raw path verbatim (step 3; the hold resets so
+            // no stale set's value rides an identity episode). The DISPLAY path (the
+            // curve widget + the phase markers) keeps its own video-rate evaluation —
+            // step 4 — the two never cross.
+            const long plen = (long)(phase.patternLength > 0 ? phase.patternLength : 16);
+            // CC_PROMPT_PPQN_48: the held-cell grid is the SPAN's STEP grid —
+            // PULSES_PER_STEP·plen (a step is 6 pulses, FIXED) — the same 96-cell
+            // grid at 24 and at 48, and the SAME grid the standalone PhaseDistortion
+            // runs (PhaseDistCore's kSpan) — the two consumers agree at every PPQN
+            // (the doc's stage-5 held-cell gate). At 24 this is the old p16·plen
+            // bit-for-bit (6 = PULSES_PER_STEP there).
+            phaseVolt = phaseDistHold_[0].processTransport(uT, (long)PULSES_PER_STEP * plen,
+                                                           phaseDistSnap_[0].cell(), phase.phaseInMax);
+        } else {
+            phaseDistHold_[0].reset();   // step 3: the raw path needs no held value
+        }
+
+        // ── PHASE TIER Stage 2: the SUBPHASE TIER via CV3 ──────────────────────────
+        // In Mode E, CV3 is EXCLUSIVELY the subphase input (the exact mirror of Mode E
+        // taking over CV1; Rodney: "Lets use cv3 in for subphase"). UNPATCHED = Stage 1 exactly (the bit-identical gate).
+        // PATCHED: the quotient/remainder — the transport phase is QUANTISED to select
+        // the region (regionSize = the SUBPHASE CALIBRATION knob, quarter .. bar), the
+        // subphase positions WITHIN it. Inside PhaseEngine::processTiers; the same jump/
+        // replay/snap/drift machinery consumes the composed position.
+        bool effReverse;
+        if (cachedCv3Connected) {
+            // THE CALIBRATION SNAPS TO PULSES (Rodney, decided — the tier branch's
+            // CC_PROMPT_PHASE_TIER CALIBRATION section: "The calibration snap-to-pulses
+            // fix above is small and can ride with it"). The knob is a DETENT picker
+            // over the straight 24-PPQN pulse list — bar/half/quarter/eighth/16th =
+            // {96,48,24,12,6} pulses = {16,8,4,2,1} sixteenths — so the region index
+            // and the within-region position always come from an INTEGER pulse count
+            // (no fractional regions can return), region boundaries always fall on
+            // pulse positions, and the list tiles the 96-pulse bar exactly. Knob 1.0
+            // = bar (the shipped default unchanged); a persisted continuous value
+            // lands on the NEAREST detent.
+            static constexpr int kCalSixteenths[5] = {16, 8, 4, 2, 1};   // bar, half, quarter, eighth, 16th
+            const float calV = params[SUBPHASE_CAL_PARAM].getValue();
+            const int det = std::clamp((int)std::lround((1.0 - (double)calV) * 4.0), 0, 4);
+            const double regionSixteenths = (double)kCalSixteenths[det];
+
+            // ── §14 TASK 3: the SUBPHASE through ITS set (the same primitive; the
+            // unpatched case never reaches here — the unpatched branch IS the
+            // identity, "the Monsoon behaves exactly as today") ─────────────────────
+            float subVolt = input.cv3;
+            if (!phaseDistIdentity_[1]) {
+                const double uS = phase.normPhase(subVolt);
+                // CC_FIX_PHASE_DISTORT_AT_PPQN step 5: the subphase follows the same
+                // rule with its OWN cell, on the REGION-RELATIVE grid — the fine term's
+                // own quantisation (floor of s·regionPulses inside tierPulseFor; the
+                // engine's within-region law — llround would leak one pulse across the
+                // region boundary at s → 1⁻). regionPulses = rF·PPB =
+                // regionSixteenths·pulsesPer16th — exactly the engine's fine-term scale
+                // (the same detent list the calibration snaps to, times the pulse grid).
+                const long regionPulses =
+                    (long)kCalSixteenths[det] * (long)redDot::PhaseEngine::pulsesPer16th(ppqnSetting);
+                subVolt = phaseDistHold_[1].processSubphase(uS, regionPulses,
+                                                            phaseDistSnap_[1].cell(), phase.phaseInMax);
+            } else {
+                phaseDistHold_[1].reset();   // step 3: the raw path needs no held value
+            }
+            phase.processTiers(phaseVolt, subVolt, true, regionSixteenths,
+                               args.sampleTime, ppqnSetting);
+            // THE SIGN PRODUCT (the semantic direction, decided — "the same sign-product
+            // composition as voice and lane direction (playhead × voice × lane)"):
+            // dirT · dirS, and a FLAT tier carries NO direction ("no memory; decided") —
+            // a neutral factor contributes no flip, the product degenerates to the other
+            // tier's sign. Neutral maps forward, matching the stalled-ramp reading the
+            // transport-only path has always had (reverse = (step < 0)). Unpatched, this
+            // expression IS phase.reverse — the bit-identical bridge.
+            int tDir = (phase.dirT == 0) ? 1 : phase.dirT;
+            int sDir = (phase.dirS == 0) ? 1 : phase.dirS;
+            effReverse = (tDir * sDir) < 0;
+        } else {
+            phaseDistHold_[1].reset();   // CV3 unpatched IS the identity — no held value rides an unpatched gap
+            phase.process(phaseVolt, phaseDriven, args.sampleTime, ppqnSetting);
+            effReverse = phase.reverse;
+        }
+        // (CC_FIX_PHASE_DERIVED_BPM: the sync that read the phase engine's derived bpm
+        // into the module-level mirror is GONE — it was the ONLY reader of that
+        // derivation, and the mirror itself has no readers of its own: a dead chain.
+        // The internal clock's own mirror sync (bpm = clock.bpm, above) is untouched.)
+        modeController->setPhaseReverse(effReverse);
+        engine.pe.setReverseActive(effReverse);
     } else {
         engine.pe.setReverseActive(false);
     }
 
+    MONSOON_PROF_END(clockPhase);
+    MONSOON_PROF_BEGIN(gatesTrig);
     // ── Run/Reset Gate Processing ──
     runGateActive = tc.processRunGate(
         runGateActive,
@@ -820,6 +1139,8 @@ void Monsoon::process(const ProcessArgs& args) {
         tc.handleGate2Assignment(gate2Assign, input.gate2Rise, tc.getGate2High(), invertMuteLogic);
     }
 
+    MONSOON_PROF_END(gatesTrig);
+    MONSOON_PROF_BEGIN(shophouse);
     // --- Shophouse scale expander: sync + apply the ACTIVE front's scale EVERY process frame,
     //     independent of the clock (so editing a scale knob dims the faders immediately, and it
     //     works even when the sequencer is stopped). The boundary-quantised FRONT SWITCH (CV) is
@@ -865,42 +1186,53 @@ void Monsoon::process(const ProcessArgs& args) {
         shopScaleChangePending_ = false;
     }
 
+    MONSOON_PROF_END(shophouse);
+    MONSOON_PROF_BEGIN(stepExec);
     // --- Mode dispatch (only if running) ---
     if (runGateActive) {
-        // Gate-close on the PPQN grid pulse. In Mode E the pulse source is the phase
-        // ramp; otherwise the internal/external clock.
-        bool gridPulse = (modeSelect == 2) ? phase.pulseEdge : clock.pulseEdge;   // phase origin vs clock
-        if (gridPulse) {
-            engine.gs.tickPulse();
-            engine.gsStep.tickPulse();
-            for (int i = 0; i < engine.numPolyVoices; ++i) {
-                engine.voices[i].gs.tickPulse();
-                engine.voices[i].gsStep.tickPulse();
-            }
-        }
-        // Optimization: Only execute mode logic if a relevant trigger/state is active.
-        // This avoids calling executeMode and its internal switch every sample for Modes A, B, C.
+        // RATE MANAGER (CC_PROMPT_RATE_MANAGER_START, S3): the PPQN + Step tiers, fed by the
+        // EXISTING per-mode edges — a pure wrapper, behaviour-identical. Step's source is the
+        // sixteenth edge in clock/phase modes and the composite gate-edge stream in gate mode
+        // (the per-mode chains are declared in ONE place: ui/RateManager.hpp). The PPQN grid
+        // pulse serves gate-width counting in EVERY mode (tickPulse below), so its feed is the
+        // same phase-vs-clock ternary as before.
         bool gate1High = tc.getGate1SchmittHigh();   // hysteresis-filtered (robust vs noisy gates)
         // GATE modes (B + D): three edge streams — main (Gate 1) always wins; ratchet (Gate 2)
         //   drives in-gate; ghost (Gate 3) drives in-gap.  Other modes: their usual clock/phase edges.
         // B and D share the SAME shouldExecute gate (§421 mode-agnostic invariant): only the pitch
-        // source differs (D quantises CV2), handled downstream in executeModeD — NOT here. One branch
-        // for both PREVENTS the B/D drift bug (a205093 left D on the old `: true` continuous logic,
-        // which called executeMode every sample and jammed gate state — see
-        // plans/fix_gate_output_regression_a205093.md).
-        bool shouldExecute;
-        if (modeSelect == 1) {   // gate origin: event-driven (was B/D)
-            const bool inGate = gate1High;
-            shouldExecute = input.gate1Rise || (gate1High && engine.stepIndex == -1)              // main onset / held-at-start
-                          || (inGate && input.subGateRise)                                        // ratchet in-gate (Gate 2)
-                          || (!inGate && input.ghostRise);                                        // ghost in-gap (Gate 3)
-        } else {
-            shouldExecute = false;
-            if (modeSelect == 0) shouldExecute = clock.sixteenthEdge;       // clock origin (was A/C)
-            else if (modeSelect == 2) shouldExecute = phase.sixteenthEdge;  // phase origin (was E/F)
+        //   source differs (D quantises CV2), handled downstream in executeModeD — NOT here. One branch
+        //   for both PREVENTS the B/D drift bug (a205093 left D on the old : true continuous logic,
+        //   which called executeMode every sample and jammed gate state — see
+        //   plans/fix_gate_output_regression_a205093.md).
+        const bool stepEdge = [&]{
+            if (modeSelect == 1) {   // gate origin: event-driven (was B/D)
+                const bool inGate = gate1High;
+                return input.gate1Rise || (gate1High && !engine.started())               // main onset / held-at-start
+                    || (inGate && input.subGateRise)                                     // ratchet in-gate (Gate 2)
+                    || (!inGate && input.ghostRise);                                     // ghost in-gap (Gate 3)
+            }
+            // CC_PROMPT_PPQN_48: the STEP source is the 6-pulse step edge (a step is
+            // PULSES_PER_STEP pulses, FIXED — decision 1), not the musical 1/16 edge.
+            // At 24 the two coincide bit-for-bit (p16 = 6 there); at 48 the step rate
+            // doubles at the same BPM (a step is a 1/32 of the 48 grid).
+            if (modeSelect == 0) return clock.stepEdge;            // clock origin (was A/C)
+            return phase.stepEdge;                                 // phase origin (was E/F)
+        }();
+        rateManager.advance(redDot::Rate::PPQN,
+                            (modeSelect == 2) ? phase.pulseEdge : clock.pulseEdge);   // phase origin vs clock
+        rateManager.advance(redDot::Rate::Step, stepEdge);
+
+        if (rateManager.ticked(redDot::Rate::PPQN)) {
+            engine.gs.tickPulse();
+            engine.gsStep.tickPulse();
+            for (int i = 1; i <= engine.numPolyVoices; ++i) {
+                const auto vs = VoiceResolver::slot(i + 1);   // i = voiceSlot; slot(V) takes the VOICE number
+                engine.voices[vs].gs.tickPulse();
+                engine.voices[vs].gsStep.tickPulse();
+            }
         }
 
-        if (shouldExecute) {
+        if (rateManager.ticked(redDot::Rate::Step)) {
             mc.executeMode(modeSelect, input, tc.getGate2High());
 
             // Latch each poly voice's sounding decision (Mode B poly gate-width follow).  In Mode B
@@ -910,8 +1242,8 @@ void Monsoon::process(const ProcessArgs& args) {
             // onsets; the IMPL 2b gate driver ANDs it with the mono envelope so poly gate WIDTH
             // follows Gate 1 / ghost (not a 1-step internal hold).  Mode B only.
             if (modeSelect == 1) {
-                for (int i = 0; i < engine.numPolyVoices; ++i)
-                    polyVoiceActive[i] = engine.voices[i].gs.gateHeld;
+                for (int i = 1; i <= engine.numPolyVoices; ++i)
+                    polyVoiceActive[i] = engine.voices[VoiceResolver::slot(i + 1)].gs.gateHeld;
             }
 
             // ── Shophouse scale expander: boundary-quantised scale/root ──
@@ -940,56 +1272,64 @@ void Monsoon::process(const ProcessArgs& args) {
             }
         }
 
-        // ── Mode E jump/scrub: replay the event chain over the jumped 1/16 steps ──
+        // ── Mode E jump/scrub: replay the event chain over the jumped STEPS ──
         // A jump moved the phase by >1 step in one sample. We replay executeModeE for
-        // each crossed 1/16 in the jump direction, reusing the verified real-time path.
-        // Modulation is frozen automatically (whole replay is one process() call).
-        // WITHIN-DRAW: bounded to the current phrase (cap at 16 steps); a jump that
-        // would cross the phrase boundary is clamped — cross-draw regeneration is a
+        // each crossed STEP in the jump direction, reusing the verified real-time path
+        // (the replay unit is the STEP — PULSES_PER_STEP pulses at any PPQN; at 24 the
+        // old 1/16 replay, the same numbers). Modulation is frozen automatically (whole
+        // replay is one process() call).
+        // WITHIN-DRAW: bounded to the current phrase (cap at the active length); a jump
+        // that would cross the phrase boundary is clamped — cross-draw regeneration is a
         // later refinement.
-        if (modeSelect == 2 && phase.jumped && phase.jumpSixteenths != 0) {
-            bool jumpReverse = (phase.jumpSixteenths < 0);
+        if (modeSelect == 2 && phase.jumped && phase.jumpSteps != 0) {
+            bool jumpReverse = (phase.jumpSteps < 0);
             mc.setPhaseReverse(jumpReverse);
             // Bridge the jump DIRECTION to the draw-index direction: a boundary crossed
             // mid-jump fires onPhraseBoundary_ (inside executeModeE→postExecute_), which
             // for a reversible stream steps the index +1/-1 per reverseActive. Set it
             // from the jump sign for the replay, restore after. Live mode always rolls
             // at the crossing; armed dice rolls once; unarmed = reuse — all handled by
-            // the existing boundary path. (Cap = 16 steps = at most one boundary.)
+            // the existing boundary path. (Cap = the active phrase — at most one boundary,
+            // PHASE TIER Stage 1.)
             bool savedReverse = engine.pe.reverseActive;
             engine.pe.setReverseActive(jumpReverse);
-            int steps = jumpReverse ? -phase.jumpSixteenths : phase.jumpSixteenths;
-            if (steps > 16) steps = 16;                 // within-draw cap (one phrase)
-            int p16 = ClockEngine::pulsesPer16th(ppqnSetting);
+            int steps = jumpReverse ? -phase.jumpSteps : phase.jumpSteps;
+            // PHASE TIER Stage 1: the within-draw cap is the ACTIVE phrase (the pattern
+            // length), not a hardcoded 16 — "the replay is bounded to the current phrase".
+            // At length 16 the number is the same (bit-identical); at 32 a full-pattern
+            // scrub replays the whole 32.
+            if (steps > engine.cachedLength) steps = engine.cachedLength;   // within-draw cap (one phrase)
             for (int s = 0; s < steps; ++s) {
                 mc.executeMode(modeSelect, input, tc.getGate2High());   // Mode E or F — replay this mode's phase step
                 // executeModeA advances holdRemain (step decisions) internally, but the
                 // gate-CLOSE counter (gatePulseRemain) is normally driven by the pulse
-                // burst we skip on a jump. Tick it p16 times per replayed 1/16 so a gate
+                // burst we skip on a jump. Tick it PULSES_PER_STEP times per replayed
+                // STEP (the grid pulses the jump skipped — 6 at any PPQN) so a gate
                 // that should have closed during the jumped region does so, keeping the
                 // post-jump gate state aligned with the landing position.
-                for (int pu = 0; pu < p16; ++pu) {
+                for (int pu = 0; pu < PULSES_PER_STEP; ++pu) {
                     engine.gs.tickPulse();
                     engine.gsStep.tickPulse();
-                    for (int i = 0; i < engine.numPolyVoices; ++i) {
-                        engine.voices[i].gs.tickPulse();
-                        engine.voices[i].gsStep.tickPulse();
+                    for (int i = 1; i <= engine.numPolyVoices; ++i) {
+                        const auto vs = VoiceResolver::slot(i + 1);   // i = voiceSlot; slot(V) takes the VOICE number
+                        engine.voices[vs].gs.tickPulse();
+                        engine.voices[vs].gsStep.tickPulse();
                     }
                 }
             }
             // ── Snap transport to the phase-derived position ──────────────────────
-            // The replay above advanced stepIndex/totalStepsElapsed by the ROUNDED
-            // jumpSixteenths (nearest whole 1/16). But the actual phase position is
-            // at pulsePos/p16, which is fractional. Without this snap, the rounding
+            // The replay above advanced stepIndex and the holder congruences by the ROUNDED
+            // step count. But the actual phase position is at pulsePos/PULSES_PER_STEP,
+            // which is fractional. Without this snap, the rounding
             // error accumulates across jumps — each sweep of the phase knob lands on
             // a different step (non-deterministic, because frame-rate timing varies).
             // In Mode E the phase IS the transport, so we override with the exact
             // phase-derived position and recompute lane ticks from it.
-            engine.snapToPhaseStep(phase.pulsePos, p16);
+            engine.snapToPhaseStep(phase.pulsePos, PULSES_PER_STEP);
             engine.pe.setReverseActive(savedReverse);
         }
 
-        // ── Continuous drift correction (every sample in Mode E) ───────────────
+        // ── Continuous drift correction (on PULSE CHANGES in Mode E) ───────────────
         // The jump snap above only fires on discontinuities. But the phase knob
         // updates at frame rate (60Hz), and per-frame phase deltas can cross
         // 1/16 boundaries via the continuous-motion path (not jumps). Over many
@@ -997,20 +1337,43 @@ void Monsoon::process(const ProcessArgs& args) {
         // and the transport drifts (e.g., 0% knob lands on step 16 instead of 1).
         // This lightweight check snaps only when stepIndex != pulsePos/p16,
         // so the expensive recomputeLaneTicks() runs ONLY on actual drift.
+        // CC_FIX_PHASE_RUN_AT_PPQN (step 3, docs tip 4cb1a749): the check now runs
+        // ONLY on the engine's pulse-change signal (phase.pulseChanged). Nothing
+        // moves between pulses — the engine holds pulsePos and the edges low, the
+        // accumulator is the only thing living — so a per-sample re-check could
+        // only re-read an unchanged (absStep, stepIndex) pair; at the pulse rate
+        // the correction still lands the sample the position actually moves, and
+        // the jump snap above rides the same signal (jumped ⟹ pulseChanged).
         // CRITICAL: gated by modeSelect == 2 — in clock/gate modes, phase.pulsePos
         // is stale (PhaseEngine not processing), so phaseStep=0 would snap stepIndex
-        // to 0 every sample, freezing the sequencer.
-        if (modeSelect == 2) {
-            int p16d = ClockEngine::pulsesPer16th(ppqnSetting);
-            long absStep = phase.pulsePos / p16d;
-            int phaseStep = (int)(((absStep % 16) + 16) % 16);
-            if (phaseStep != engine.stepIndex) {
-                engine.snapToPhaseStep(phase.pulsePos, p16d);
+        // to 0 every sample, freezing the sequencer. (pulseChanged is likewise
+        // stale there — the conjunction keeps the old guard load-bearing.)
+        if (modeSelect == 2 && phase.pulseChanged) {
+            // CC_PROMPT_PPQN_48: the STEP-indexed division is PULSES_PER_STEP (6,
+            // fixed) — the drift check asks the phase-STEP rule at the step grid, at
+            // any PPQN (at 24 the old p16d, bit-identical).
+            long absStep = phase.pulsePos / PULSES_PER_STEP;
+            // PHASE TIER Stage 1: the drift check asks THE PHASE-STEP RULE — the SAME
+            // resolution snapToPhaseStep lands through (the musical cycle position
+            // seated in the window), so the two sites can never disagree. The pre-Stage-1
+            // pair disagreed structurally at bar 2+: the snap reduced mod kMaskRing
+            // (the steps-32 flip) while the drift check reduced mod 16, and with
+            // pulsePos UNWRAPPED (prevContPhase grows across span wraps) any bar-2+
+            // jump parked the landing at startStep (out of a 16-window) while the
+            // drift check expected the musical step — an endless per-sample re-snap
+            // strobe (positions stayed correct; anchorTransport + deriveHolders +
+            // recomputeLaneTicks per sample were pure waste). The rule closes the loop:
+            // at the default window this == absStep % 16 (bit-identical to the old
+            // check), at 32 it cycles 0..31 with the full-span sweep.
+            if (engine.phaseStepFor(absStep) != engine.playedColumn()) {
+                engine.snapToPhaseStep(phase.pulsePos, PULSES_PER_STEP);
             }
         }
 
     }
 
+    MONSOON_PROF_END(stepExec);
+    MONSOON_PROF_BEGIN(cvModeB);
     // --- CV Routing (via CVRouter) ---
     // In Mode E, CV1 is EXCLUSIVELY the phase input (handled above), so its normal
     // pitch/BPM routing is suppressed — mirrors Mode B fully repurposing gate1.
@@ -1051,7 +1414,7 @@ void Monsoon::process(const ProcessArgs& args) {
     //                for the Lantern/SLEG either way; only its gate-bridging differs by mode.
     if (modeSelect == 1 && runGateActive) {   // gate origin (was B/D)
         const bool gate1High = tc.getGate1SchmittHigh();   // hysteresis-filtered (robust vs noisy gates)
-        const bool isRest    = (engine.lastStepResult.decision == MonoDecision::Rest);
+        const bool isRest    = restClose(engine.monoParentView());   // C2: the container rested
         // Ghost tie-through-rise (GATE_SUBDIVISION_STEP_GATE.md §352/§368): a ghost still high when
         // the main gate rises MAY continue with no re-attack (a ghost-led pickup; the output gate may
         // start before the main-gate rise) — but ONLY if the ghost committed slurForward at its own
@@ -1074,8 +1437,8 @@ void Monsoon::process(const ProcessArgs& args) {
         // next rise then plays that step without a second advance. One-shot (only on the fall
         // transition; gated by slurForward so a non-slurring note's fall does nothing).
         if (prevGate1SchmittHigh && !gate1High && engine.gs.slurForward &&
-            engine.tieAcrossRests && engine.advanceOnTieIntoRest && !engine.pendingCheckpointArrival) {
-            engine.legatoCheckpointOnFall(engine.lastLegatoProb_);
+            engine.tieAcrossRests && engine.advanceOnTieIntoRest && !engine.pendingCheckpointArrivalV_[0]) {
+            engine.legatoCheckpointOnFall();
         }
         prevGate1SchmittHigh = gate1High;   // refresh per-sample (Mode B); used next sample for the 1-sample hold
         engine.gs.gateHeld     = gateOpen;
@@ -1095,22 +1458,71 @@ void Monsoon::process(const ProcessArgs& args) {
             engine.gsStep.gatePulseRemain = -1;   // ADD: STEP mirror
         }
 
-        // ── Poly gate-width follow (Phase 5 roll-out) ──────────────────────────────────────
-        // Each poly voice's gate rides the SAME mono envelope (Gate 1 width / ghost / slurForward
-        // bridge) ANDed with its latched sounding decision (polyVoiceActive[], set after the last
-        // executePolyVoices).  So poly ghost / ratchet notes match the mono envelope instead of a
-        // 1-step internal hold.  gsStep is left to executePolyVoice's per-onset retrigger (the STEP
-        // output re-articulates by design); only the fused GATE width is driven here.  A voice whose
-        // gate closes also gets its holdRemain zeroed (Lantern sounding-test parity with the mono).
-        for (int i = 0; i < engine.numPolyVoices; ++i) {
-            const bool vOpen = gateOpen && polyVoiceActive[i];
-            engine.voices[i].gs.gateHeld = vOpen;
+        // ── Forest gate-width follow (Phase 5 roll-out; F-3: the mono voice INSIDE the algebra) ──
+        // Each voice's gate rides the INTERSECTION of its containers' envelope cells (C5, D1),
+        // ANDed with its own envelope term — for the poly voices that is the latched sounding
+        // decision (polyVoiceActive[], set after the last executePolyVoices); for the MONO voice
+        // it is the own term written just above (gateOpen: !isRest && gate1/ghost/gapBridge).
+        // D7 RULED (plan §3.6: "V1 inside the algebra, no privilege — all voices could be
+        // contained in voice 2 to 16 as well"): the mono drive ANDs its materialized containers'
+        // envelopes into its output gate — the same per-parent ∧ the poly drive performs,
+        // applied to the root path. A PARENTLESS V1 (the star, the empty graph) takes no AND —
+        // bit-identical to the pre-F-3 drive (the differential goldens pin it). The V1-as-leaf
+        // graphs INVERT produces are first-class (D7).
+        // Per D8 ("forest mod on phrase boundary, no per-sample work") NOTHING is derived here:
+        // the container lists and the visit order are the RDM's MATERIALIZED state (refreshed
+        // only at graph-change boundaries — the publish point per block, and per edge in
+        // executePolyVoices). The per-sample shape and cost are today's: one ∧ per container
+        // read off the materialized list, visited in the materialized topological order so a
+        // container's gate is COMPLETE before its children read it (V1's position included).
+        ParentView monoP = engine.monoParentView();   // C5 parent read: captured AFTER the
+        // mono envelope write above, so monoP.gateHeld == gateOpen exactly; re-captured in the
+        // V1 branch below when containers bound the root (children then read the BOUNDED
+        // envelope — E(v) = Own(v) ∧ ∧ E(u) closed transitively). Once per sample (twice max).
+        for (int k = 0; k < engine.rdm.topoCount; ++k) {
+            const int i = engine.rdm.topoOrder[k];
+            if (i == 0) {
+                // D7: the mono voice inside the algebra. Own envelope term ∧ its containers.
+                // An INERT container — a poly voice beyond numPolyVoices, which no poly
+                // machinery drives — cannot bound the mono voice: skipped, symmetric with the
+                // visit's own inert-voice guard below (a never-executed voice's stale gate
+                // state must not silence the root).
+                if (engine.rdm.parentCount[0] == 0) continue;   // parentless V1: the write above IS the envelope
+                bool monoOpen = gateOpen;
+                for (int p = 0; p < engine.rdm.parentCount[0]; ++p) {
+                    const int u = engine.rdm.parentSlot[0][p];
+                    if (u > engine.numPolyVoices) continue;     // inert container: cannot bound V1
+                    monoOpen = monoOpen && engine.voices[VoiceResolver::slot(u + 1)].gs.gateHeld;
+                }
+                engine.gs.gateHeld = monoOpen;
+                if (!monoOpen) {
+                    // The container cut: the same zero-on-close the poly drive applies (the
+                    // Lantern-read state matches the output; a cut note re-strikes at the next
+                    // permission edge instead of resuming — the poly-voice treatment, D7).
+                    engine.gs.holdRemain          = 0.f;
+                    engine.gs.gatePulseRemain     = -1;
+                    engine.gsStep.holdRemain      = 0.f;
+                    engine.gsStep.gatePulseRemain = -1;
+                }
+                monoP = engine.monoParentView();   // re-capture: gateHeld == monoOpen exactly
+                continue;
+            }
+            if (i > engine.numPolyVoices || engine.rdm.parentCount[i] == 0) continue;   // free voice: own envelope (D8)
+            bool vOpen = polyVoiceActive[i];                            // the voice's own latch
+            for (int p = 0; p < engine.rdm.parentCount[i]; ++p) {       // C5: ∧ containers (D1)
+                const int u = engine.rdm.parentSlot[i][p];
+                vOpen = vOpen && (u == 0 ? envelopeAnd(monoP)                     // V1, the mono voice
+                                         : engine.voices[VoiceResolver::slot(u + 1)].gs.gateHeld);
+            }
+            const auto vs = VoiceResolver::slot(i + 1);   // i = voiceSlot; slot(V) takes the VOICE number
+            engine.voices[vs].gs.gateHeld = vOpen;
             if (!vOpen) {
-                engine.voices[i].gs.holdRemain      = 0.f;
-                engine.voices[i].gs.gatePulseRemain = -1;
+                engine.voices[vs].gs.holdRemain      = 0.f;
+                engine.voices[vs].gs.gatePulseRemain = -1;
             }
         }
     }
+    MONSOON_PROF_END(cvModeB);   // cv/modeB = CV routing + Mode-B gate-state drive (outputGen is its own section below)
 
     {
     //static uint64_t n = 0, ns = 0;
@@ -1119,7 +1531,9 @@ void Monsoon::process(const ProcessArgs& args) {
     // Mode B gate state was set from Gate 1 just above; generateOutputs' gs.process()/gsStep.process()
     // now emit the Gate-1-driven gate (the old post-drive GATE_OUTPUT override is removed — it could
     // not fix the Lantern, which reads engine state, and risked output/state divergence).
+    MONSOON_PROF_BEGIN(outputGen);   // PRIME SUSPECT B: runs PER SAMPLE, outside the dividers
     outputGenerator->drive(engine, outputs.data(), expanderManager, args.sampleTime);
+    MONSOON_PROF_END(outputGen);
 
      // auto t1 = std::chrono::high_resolution_clock::now();
     // ns += std::chrono::duration_cast<std::chrono::nanoseconds>(t1 - t0).count();
@@ -1143,11 +1557,18 @@ void Monsoon::process(const ProcessArgs& args) {
     // drew a transient arc each frame that read as a red "trail" — even with no
     // modulator attached. Cheap (~17 scalar getters/sample).
 
+    MONSOON_PROF_BEGIN(lightDiv);
     // ── Throttle UI and Light processing ──
-    if (lightDivider.process()) {
+    // RATE MANAGER (S7): tickClocks() — ONCE per sample, at the earliest consumer —
+    // advances the internal SR-aware Control (~1500 Hz) + Frame (~90 Hz) tier sources
+    // (the deleted lightDivider/controlDivider pair's divisions, generalized INTO the
+    // manager). This block guards on ticked(Frame); the control block below reads
+    // ticked(Control) (level-within-sample — the order of the two blocks is free).
+    rateManager.tickClocks();
+    if (rateManager.ticked(redDot::Rate::Frame)) {
         // ── modViz: DISPLAY-ONLY modulation visualisation ────────────────────────────
         // Moved inside lightDivider. It was running EVERY SAMPLE, gated only on the
-        // always-true `if (paramManager)`, resolving ~35 modulated values per call purely
+        // always-true if (paramManager), resolving ~35 modulated values per call purely
         // to fill a struct that ONLY MonsoonWidget reads. Audio-rate updates were pure
         // waste; frame rate is the correct rate for a visualisation.
         if (paramManager) {
@@ -1275,9 +1696,10 @@ void Monsoon::process(const ProcessArgs& args) {
                 if (!micro) {
                     b = engine.gs.semiLedBrightness(i);
                     q = engine.gs.semiQuantLedBrightness(i);
-                    for (int v = 0; v < engine.numPolyVoices; ++v) {
-                        b = std::max(b, engine.voices[v].gs.semiLedBrightness(i));
-                        q = std::max(q, engine.voices[v].gs.semiQuantLedBrightness(i));
+                    for (int v = 1; v <= engine.numPolyVoices; ++v) {
+                        const auto vs = VoiceResolver::slot(v + 1);   // v = voiceSlot; slot(V) takes the VOICE number
+                        b = std::max(b, engine.voices[vs].gs.semiLedBrightness(i));
+                        q = std::max(q, engine.voices[vs].gs.semiQuantLedBrightness(i));
                     }
                 }
                 semiLedBrightness[i] = b;
@@ -1287,6 +1709,11 @@ void Monsoon::process(const ProcessArgs& args) {
             // Update both via UIManager
             if (uiManager) {
                 uiManager->updateStepLights(stepBrightness, 16);
+                // BAR 1/BAR 2 (the inner-disc bar indicator, D10 (2) as amended by D15):
+                // read in the SAME block that feeds the ring, from the playhead's own
+                // gate and variable inside the engine — one gate, two surfaces.
+                uiManager->updateBarLights(engine.getBarLightBrightness(0),
+                                           engine.getBarLightBrightness(1));
                 uiManager->updateSemitoneFlashLights(semiLedBrightness, semiQuantLedBrightness, 12);
             }
         }
@@ -1313,9 +1740,46 @@ void Monsoon::process(const ProcessArgs& args) {
         engine.pe.refreshVisualCache(modeController->currentPatternInput);
     }
 
+    MONSOON_PROF_END(lightDiv);
+    MONSOON_PROF_BEGIN(controlDiv);
     // ── Control-Rate DNA and Window Updates (Optimized CPU) ──
-    if (controlDivider.process()) {
-        updateExpanderPointers();
+    // RATE MANAGER (S7): the Control tier's tick comes from the manager's INTERNAL
+    // SR-aware source (tickClocks, above — the deleted controlDivider's division,
+    // generalized). This block guards on ticked(Control); the Control producers
+    // (publishGlobal, the Macro sync population) dispatch from this position.
+    if (rateManager.ticked(redDot::Rate::Control)) {
+        MONSOON_PROF_BEGIN(ctrl_raf);   // rafExp: expander-scan + Raffles gate edge loop
+        // LOOKUP AUTHORITY: the expander scan re-runs ONLY when the topology epoch
+        // moved (an onExpanderChange fired somewhere — the multi-hop fan-out; the
+        // handler already resolved eagerly). The old control-rate poll re-walked
+        // every tick even on a static rack.
+        if (redDot::lookupEpochStale(lookupEpoch_))
+            updateExpanderPointers();
+
+        // ── §14 TASK 1: THE READER'S PER-BLOCK SNAPSHOT (the consistency mechanism's
+        // reader half) ──────────────────────────────────────────────────────────────
+        // ONCE per Control-tier tick (the block start), under the store's mutex: copy
+        // THIS Monsoon's two sets (the phase tier's index, the subphase tier's) into
+        // the private working copies the per-sample Mode E path reads. The mechanism
+        // (dsp/PhaseDistStore.hpp): a write between blocks is picked up by every
+        // reader at its same-indexed next boundary — never one before the other; a
+        // mid-block write becomes visible at the boundary, never mid-block; the mutex
+        // makes each set's multi-field write atomic (no torn set is ever copyable).
+        // The identity flags ride the snapshot (the Stage-1 bypass's condition is
+        // BLOCK-CONSISTENT with the values it guards). No expander → both flags
+        // identity → the raw path. The index params round+clamp here too: an index
+        // change lands at a block boundary like every set change.
+        if (phaseDistPanel_) {
+            const int phIdx = std::clamp((int)std::lround(params[PHASE_SET_PARAM].getValue()), 1, 8) - 1;
+            const int sbIdx = std::clamp((int)std::lround(params[SUBPHASE_SET_PARAM].getValue()), 1, 8) - 1;
+            phaseDistPanel_->phaseDistStore.snapshotSet(phIdx, phaseDistSnap_[0]);
+            phaseDistPanel_->phaseDistStore.snapshotSet(sbIdx, phaseDistSnap_[1]);
+            phaseDistIdentity_[0] = phaseDistSnap_[0].isIdentity();
+            phaseDistIdentity_[1] = phaseDistSnap_[1].isIdentity();
+        } else {
+            phaseDistIdentity_[0] = true;
+            phaseDistIdentity_[1] = true;
+        }
 
         if (expanderManager.cachedRafflesExpander) {
             rack::Module* cw = expanderManager.cachedRafflesExpander;
@@ -1332,29 +1796,52 @@ void Monsoon::process(const ProcessArgs& args) {
                 }
             }
         }
+        MONSOON_PROF_END(ctrl_raf);
 
+        MONSOON_PROF_BEGIN(ctrl_pat);   // patIn: throttled knob/CV sampling
         // Refresh Sequencer Parameters (Throttled sampling of all knobs/CV)
         modeController->updatePatternInput();
+        MONSOON_PROF_END(ctrl_pat);
         // ACCENT now assembled inside updatePatternInput() as currentPatternInput.accentProb (single
         // writer, latches with the other Big-5). The control-rate engine.accentProb write + its
         // WriteLedger A1 tripwire are gone — the multi-writer hazard they policed is designed out.
 
         // Check for expander changes and update cached pointers
+        MONSOON_PROF_BEGIN(ctrl_dna);   // dna: spreadTargetMode mirror + Sands pipeline
         // Mirror the per-lane spread target mode onto the engine so the spread path
         // (which only has PatternEngine&) can read it without a Monsoon pointer.
         for (int l = 0; l < 5; ++l)
             engine.pe.spreadTargetMode[l] = getSpreadTargetMode(l);
         engine.beginStrandWriteBlock();   // debug-only: reset the per-block strand-writer ledger
+        // Back-pointer set BEFORE processDNA: the SandsManager gMon null-walk rescue
+        // reads it (see MonsoonSandsManager.cpp hardening). Idempotent — sync() below
+        // uses the same pointer instead of findMonsoonEitherSide.
+        expanderManager.owner = this;
         dnaManager.processDNA(expanderManager);
+        MONSOON_PROF_END(ctrl_dna);
 
         // ── Deep Straits Sands Expanders (Control Rate Orchestration) ──
         // Tick lock-manager boundary/unlock detection BEFORE expander sync so the CA QUEUE
-        // trigger inside sync() reads this cycle's edges. Uses engine.stepIndex (transport
-        // authority) -- replaces the old caV2PrevStep_/caV2PrevLocked_ shadow state.
-        lockManager.tick(engine.stepIndex);
-        expanderManager.owner = this;   // back-pointer: sync() uses this instead of findMonsoonEitherSide
+        // trigger inside sync() reads this cycle's edges. Uses engine.pos_.playedColumn()
+        // (the ONE position authority; == stepIndex by the identity harness -- SLICE 3's
+        // consumer migration) -- replaces the old caV2PrevStep_/caV2PrevLocked_ shadow state.
+        MONSOON_PROF_BEGIN(ctrl_sync);  // sync: lock boundary detect + expander sync
+        lockManager.tick(engine.pos_.playedColumn());
+        // RATE::PHRASE tier feed: the boundary edge (stepIndex wrap — the TickCount source per the
+        // per-mode chains in ui/RateManager.hpp) advances the first-class Phrase tier. Containment's
+        // pending machinery commits on THIS edge (fired from expanderManager.sync below — the CA
+        // pattern: the module never owns a clock). Declaring the tier here makes the phrase
+        // boundary a RateManager citizen for the producers that follow, not a CA-private shadow.
+        rateManager.advance(redDot::Rate::Phrase, lockManager.boundaryNow());
+        // RATE MANAGER (S0b): dispatch the Control producers at the population's old
+        // position in the tick — after processDNA published macroBase + lockManager.tick,
+        // before sync's remaining work (the extracted block ran at the tail of sync).
+        // The Macro sync-population producer skips on unchanged inputs (the 3% fix).
+        rateManager.dispatch(redDot::Rate::Control);
         expanderManager.sync(engine, lockManager.queueFires());
-        
+        MONSOON_PROF_END(ctrl_sync);
+
+        MONSOON_PROF_BEGIN(ctrl_rest);  // rest: cached* + CV logic + updateWindow + CV3 tail
         // Refresh Audio-Rate Caches (Throttled)
         cachedBpmParam = params[BPM_PARAM].getValue();
         cachedClkConnected = inputs[CLK_INPUT].isConnected();
@@ -1400,6 +1887,141 @@ void Monsoon::process(const ProcessArgs& args) {
             params[PATTERN_OFFSET_PARAM].getValue(), inputs[OFFSET_INPUT].getVoltage(), inputs[OFFSET_INPUT].isConnected()
         );
 
+        // UNIFIED ADDRESSING Stage 2b: the voice-range authoring rows (editor stores,
+        // the Macro/East surfaces author them) -> the engine's voice LOR store, ONE
+        // push per control block — the same one-block cadence every authored LOR uses.
+        // Identity defaults are byte-neutral (pass-through holds; the Stage-1/2a
+        // goldens read the same store values). Runs here — the control-div block —
+        // so the authoring works with or without any expander attached.
+        // (CC_PROMPT_CADENCE_C1B STAGE B) the BASE push is live-when-unlocked and
+        // PENDS under lock (the doc's answer 1A — the mono readStrand's existing
+        // law): the editor state IS the pending; the next ungated block commits it.
+        // The voice range rides the RHYTHM axis (the engine's Stage A family gate).
+        if (dotModular::LockManager::liveNow(dotModular::Control::Lor, engine.locked, engine.scopeLiveMask, /*melodyAxis=*/false))
+            engine.pushVoiceLorEditor(
+                editor.voiceLorMacro, editor.voiceLorMacroDir,
+                editor.voiceLorEast, editor.voiceLorEastDir, editor.voiceLorLocalEast);
+
+        // UNIFIED ADDRESSING Stage 4: the OUTPUT-MASK rows (the one output layer) ->
+        // the engine's mask store, the same one-block cadence. Runs AFTER the LOR push
+        // so the anchor law re-pins against the CURRENT base rotation (the mask's
+        // mask-step-1 pinned to the row's R). All-cycle defaults are byte-neutral: no
+        // gating anywhere, the output path is untouched at defaults.
+        engine.pushMaskEditor(
+            &editor.maskMacroPatternBits, editor.maskMacroKind, editor.maskMacroFollowR,
+            editor.maskEastPatternBits, editor.maskEastKind, editor.maskEastFollowR,
+            editor.maskLocalEastMask);
+
+        // (B) VOICE-LOR PARITY: the L/O/R CV fold — the voice range's mod jacks, applied
+        // ON TOP of the pushed base (redDot::resolveVlorCv — the lanes' eastLorVal law,
+        // ONE definition). ORDERING LAW: this runs AFTER both pushes — the mask's anchor
+        // change-detection must re-pin against the UNMODULATED base R (the doc's rule:
+        // rotation modulation offsets relative to the anchor, it never re-pins), and the
+        // fold then lands base+cv on the store for every read (the voice map, the abs1
+        // window, the strips — all track CV live, the UAS "shows LOR modulation live").
+        // The MACRO row is GLOBAL (Macro's 3 mono jacks — every follow-Macro voice reads
+        // the one modulated row); the EAST rows are per voice (East's 3 poly jacks,
+        // channel == voiceSlot, per-voice depth — the macroAtten law, one axis over).
+        // BOTH modes: the control block is mode-independent and the voice frame is
+        // per-voice (mono = slot 0 = East's V1 tab). A tier with no jacks connected is
+        // skipped — the pushed base stands (the byte-neutral default).
+        // (CC_PROMPT_CADENCE_C1B STAGE C) THE EDIT-SUSPEND — the per-block push of
+        // the active gesture's scope: a MACRO strip gesture suspends the Macro row's
+        // dragged items (the followers all read the one row — "that lane across ALL
+        // macro-following voices"); an EAST gesture suspends the ONE edited voice's
+        // row items (the strip) or the lane's items (the lane strip). The committed
+        // CV holds the pre-gesture sample through the gesture; on release the
+        // suspend clears and the CV resumes at the NEXT boundary (the ordinary
+        // commit gate). The zone→items law is SandsRangeGestureCore::lorGestureItemsFor
+        // (THE ONE map, mirroring the reducer's per-zone writes: Z_WINDOW→offset,
+        // Z_START→offset+length, Z_END→length, Z_ROTATION→rotation — the widgets'
+        // snapshots are its output).
+        {
+            std::array<bool, 3> macS = {false, false, false};
+            int voiceIdx = -1;
+            std::array<bool, 3> vS = {false, false, false};
+            int laneIdx = -1;
+            std::array<bool, 3> lS = {false, false, false};
+            auto* mVisS = expanderManager.cachedMacroSandsVisual;
+            auto* eVisS = expanderManager.cachedEastSandsVisual;
+            if (mVisS && mVisS->lorGestureActive) macS = mVisS->lorGestureItems;
+            if (eVisS && eVisS->lorGestureActive) {
+                voiceIdx = eVisS->lorGestureVoice;
+                if (eVisS->lorGestureOwner == 2 && eVisS->lorGestureLane >= 0) { laneIdx = eVisS->lorGestureLane; lS = eVisS->lorGestureItems; }
+                else vS = eVisS->lorGestureItems;
+            }
+            engine.setLorCvSuspend(macS.data(), voiceIdx, vS.data(), laneIdx, lS.data());
+        }
+
+        {
+            auto* eVis = expanderManager.cachedEastSandsVisual;
+            auto* mVis = expanderManager.cachedMacroSandsVisual;
+            // The fold's CALIBRATION spans — the recorded knob/CV decision (L 1..16,
+            // O/R 0..15), deliberately NOT the push's authoring clamps (L 1..kLaneLengthMax,
+            // O 0..kLaneOffsetMax, R 0..L-1; the R row is re-clamped to L-1 right below
+            // either way). Recorded in the §F audit as the one window-path literal kept
+            // BY DECISION — the VOICE-LOR CV fold, outside the doc's lane-path site list.
+            static const float VL_LO[3] = {1.f, 0.f, 0.f};
+            static const float VL_HI[3] = {16.f, 15.f, 15.f};
+            // CC_FIX_VOICE_WINDOW_CYCLE_AND_ROTATION (Bug 2 fix 3): the CV fold is an
+            // AUTHORING path — the R it writes clamps to 0..L-1 exactly like the push
+            // (the lanes' convention hi = max(0, L-1)), against the LEN this same fold
+            // wrote one item earlier (item order L,O,R — LEN lands first), so a CV-
+            // modulated window shrink re-clamps R in the same block and the store's
+            // invariant (no voice R outside its window) holds on EVERY write path.
+            auto rotHiOf = [&](int len) { return std::max(0, len - 1); };
+            bool anyMacro = false, anyEast = false;
+            for (int item = 0; item < 3; ++item) {
+                if (mVis && mVis->inputs[StraitsMacroVisualIds::vlCvId(item)].isConnected()) anyMacro = true;
+                if (eVis && eVis->inputs[StraitsEastVisualIds::vlCvId(item)].isConnected())  anyEast = true;
+            }
+            // (CC_PROMPT_CADENCE_C1B STAGE B) the fold no longer OVERWRITES the store
+            // (that was the pre-combining) — the store keeps the pushed BASE row and
+            // the fold's total contribution goes to the engine's pending CV push as
+            // delta = combined − base (the same resolveVlorCv law, the same spans,
+            // the same R clamp against the store's LEN). effective = base_live +
+            // cv_committed reproduces today's folded row exactly when the commit gate
+            // is open; with no jack patched the delta is 0 and the base stands (the
+            // byte-neutral default). The pending pushes EVERY block (overwriting —
+            // a disconnected jack's row reads 0 delta, today's revert-to-base law).
+            std::array<int, 3> macroD = {0, 0, 0};
+            std::array<int, SequencerEngine::kVoiceSlots * 3> eastD = {0};
+            if (anyMacro) {
+                for (int item = 0; item < 3; ++item) {
+                    auto& in = mVis->inputs[StraitsMacroVisualIds::vlCvId(item)];
+                    const int baseRow = engine.macroVoiceLorRef(item);
+                    const float v = in.isConnected()
+                        ? redDot::resolveVlorCv(editor.voiceLorMacro[item],
+                                                in.getVoltage() / 10.f,
+                                                getVoiceLorAttenMacro(item),
+                                                VL_LO[item], VL_HI[item])
+                        : editor.voiceLorMacro[item];
+                    int row = (int)std::lround(v);
+                    if (item == SequencerEngine::LOR_ROT) row = std::clamp(row, 0, rotHiOf(engine.macroVoiceLorRef(SequencerEngine::LOR_LEN)));
+                    macroD[item] = row - baseRow;
+                }
+            }
+            if (anyEast) {
+                for (const auto vs : dotModular::VoiceResolver::allSlots()) {
+                    for (int item = 0; item < 3; ++item) {
+                        auto& in = eVis->inputs[StraitsEastVisualIds::vlCvId(item)];
+                        const int baseRow = engine.voiceLorRef(vs, item);
+                        const float base = editor.voiceLorEast[vs.v * 3 + item];
+                        const float val = in.isConnected()
+                            ? redDot::resolveVlorCv(base,
+                                                    in.getPolyVoltage(vs.v) / 10.f,
+                                                    getVoiceLorAttenEast(vs.v, item),
+                                                    VL_LO[item], VL_HI[item])
+                            : base;
+                        int row = (int)std::lround(val);
+                        if (item == SequencerEngine::LOR_ROT) row = std::clamp(row, 0, rotHiOf(engine.voiceLorRef(vs, SequencerEngine::LOR_LEN)));
+                        eastD[vs.v * 3 + item] = row - baseRow;
+                    }
+                }
+            }
+            engine.pushVoiceLorCv(macroD.data(), eastD.data());
+        }
+
         // Update CV2 modulation offsets (Throttled)
         paramManager->clearCv2Offsets();
         // CV2 as a Big-5 modulation source (cv2Mode 0..4) in the clock/gate origins (modeSelect < 2).
@@ -1417,41 +2039,105 @@ void Monsoon::process(const ProcessArgs& args) {
         }
 
         // ── Assignable CV3 & Raffles Modulation (Throttled) ──
-        float cv3Mods[5] = {0.f, 0.f, 0.f, 0.f, 0.f};  // 5 poly lanes: REST/MEL/QMIX/OCT/ACC
-        
+        // cv3Mods indices match ParameterManager::cv3Offsets:
+        //   0=R slew, 1=M slew, 2=R mix, 3=M mix, 4=Q slew, 5=Q mix
+        float cv3Mods[6] = {0.f, 0.f, 0.f, 0.f, 0.f, 0.f};
+
         // 1. Main Panel CV3 (bipolar offset to selected target; was unipolar 0..5
         //    which rectified the negative half — an attenuverter implies bipolar).
-        if (cachedCv3Connected) {
+        //    PHASE TIER Stage 2: NOT in the phase origin — there CV3 is EXCLUSIVELY the
+        //    subphase input (the mirror of Mode E owning CV1); its assignable role is
+        //    suppressed for the whole mode, unpatched CV3 = no subphase (Stage 1).
+        if (cachedCv3Connected && modeSelect != 2) {
             float v = inputs[CV3_MOD_INPUT].getVoltage();
             cv3Mods[cv3Target] = clampv<float>(v, -5.f, 5.f) / 5.f;
         }
 
         // 2. Raffles Expander (Summing bipolar attenuverted CVs)
+        //    Raffles input/param order: SLEW_R(0), SLEW_M(1), SLEW_Q(2), MIX_R(3), MIX_M(4), MIX_Q(5)
+        //    cv3Offsets order:           R slew(0), M slew(1), R mix(2), M mix(3), Q slew(4), Q mix(5)
+        //    These DIFFER from index 2 — the old linear cv3Mods[i] mapping sent SLEW_Q → Rhythm Mix
+        //    (cross-wiring qmix slew CV into rhythm mix, which triggers recomputeEffectiveRhythm at
+        //    control rate → CPU spike + rhythm bars changing). Map explicitly.
         if (expanderManager.cachedRafflesExpander) {
             rack::Module* cw = expanderManager.cachedRafflesExpander;
-            for (int i = 0; i < 4; ++i) {
+            static constexpr int rafflesToCv3[6] = {
+                0,  // SLEW_R → Rhythm slew
+                1,  // SLEW_M → Melody slew
+                4,  // SLEW_Q → Qmix slew
+                2,  // MIX_R  → Rhythm mix
+                3,  // MIX_M  → Melody mix
+                5,  // MIX_Q  → Qmix mix
+            };
+            for (int i = 0; i < 6; ++i) {
                 if (cw->inputs[RAFFLES_SLEW_R_CV + i].isConnected()) {
                     float v = cw->inputs[RAFFLES_SLEW_R_CV + i].getVoltage();
                     float att = cw->params[RAFFLES_SLEW_R_ATT + i].getValue();
-                    cv3Mods[i] += (v / 5.f) * att;
+                    cv3Mods[rafflesToCv3[i]] += (v / 5.f) * att;
                 }
             }
         }
 
         // Apply final summed offsets to ParameterManager
-        for (int i = 0; i < 5; ++i) {   // CV3 = 5 Big-5 targets (not POLY_LANES)
+        for (int i = 0; i < 6; ++i) {   // 6 slew/mix targets (R/M/Q × slew/mix)
             paramManager->setCv3Offset(i, clampv<float>(cv3Mods[i], -1.f, 1.f));
         }
+        MONSOON_PROF_END(ctrl_rest);
     }
-    auto t1 = std::chrono::high_resolution_clock::now();
-    ns += std::chrono::duration_cast<std::chrono::nanoseconds>(t1-t0).count();
-    if (++n % 50000 == 0) INFO("process TOTAL avgNs=%llu", (unsigned long long)(ns/n));
+    MONSOON_PROF_END(controlDiv);
+#ifdef MONSOON_PROFILE
+    // CC_PROMPT_cpu_section_profile: the section log — every ~50000 samples (~1 s @ 48k).
+    // ns/sample per section, RELATIVE SHARES only (bracketing's own rdtsc cost is inside
+    // the numbers; the DOMINANT section is the target). stepExec is GROSS of the nested
+    // boundary-quantised shophouse commit (rare; runs only on wrapped steps). The prompt's
+    // "tail" section is empty in the current code (nothing follows controlDivider); the
+    // pre-clock region is bracketed as "head" so the whole function is accounted.
+    if (++monsoonProfWindow >= 50000) {
+        monsoonProfWindow = 0;
+        const double npt = monsoonProfile::calibrateNsPerTick(monsoonProfile::now());
+        if (npt > 0.0) {
+            const double n = 50000.0;
+            const double sHead  = monsoonProfAcc_head       * npt / n;
+            const double sClock = monsoonProfAcc_clockPhase * npt / n;
+            const double sGates = monsoonProfAcc_gatesTrig  * npt / n;
+            const double sShop  = monsoonProfAcc_shophouse  * npt / n;
+            const double sStep  = monsoonProfAcc_stepExec   * npt / n;
+            const double sCv    = monsoonProfAcc_cvModeB    * npt / n;
+            const double sOut   = monsoonProfAcc_outputGen  * npt / n;
+            const double sLight = monsoonProfAcc_lightDiv   * npt / n;
+            const double sCtrl  = monsoonProfAcc_controlDiv * npt / n;
+            // Finer controlDiv decomposition (this round): the five inner brackets. Each is
+            // per-sample ns like the outer sections (the /32 control tick cost shows as
+            // 32× a single tick's ns — read RELATIVE shares to find the fire).
+            const double sRaf   = monsoonProfAcc_ctrl_raf   * npt / n;
+            const double sPat   = monsoonProfAcc_ctrl_pat   * npt / n;
+            const double sDna   = monsoonProfAcc_ctrl_dna   * npt / n;
+            const double sSync  = monsoonProfAcc_ctrl_sync  * npt / n;
+            const double sRest  = monsoonProfAcc_ctrl_rest  * npt / n;
+            INFO("[MONSOON PROFILE] Monsoon ns/sample: head=%.0f clock/phase=%.0f gates/trig=%.0f "
+                 "shophouse=%.0f step-exec=%.0f cv/modeB=%.0f outputGen=%.0f lightDiv=%.0f "
+                 "controlDiv=%.0f | sum=%.0f",
+                 sHead, sClock, sGates, sShop, sStep, sCv, sOut, sLight, sCtrl,
+                 sHead + sClock + sGates + sShop + sStep + sCv + sOut + sLight + sCtrl);
+            INFO("[MONSOON PROFILE] controlDiv ns/sample: rafExp=%.0f patIn=%.0f dna=%.0f "
+                 "sync=%.0f rest=%.0f | innerSum=%.0f",
+                 sRaf, sPat, sDna, sSync, sRest, sRaf + sPat + sDna + sSync + sRest);
+        } else {
+            INFO("[MONSOON PROFILE] Monsoon: TSC calibrating, ns/sample from the next window");
+        }
+        monsoonProfAcc_head = monsoonProfAcc_clockPhase = monsoonProfAcc_gatesTrig =
+        monsoonProfAcc_shophouse = monsoonProfAcc_stepExec = monsoonProfAcc_cvModeB =
+        monsoonProfAcc_outputGen = monsoonProfAcc_lightDiv = monsoonProfAcc_controlDiv = 0;
+        monsoonProfAcc_ctrl_raf = monsoonProfAcc_ctrl_pat = monsoonProfAcc_ctrl_dna =
+        monsoonProfAcc_ctrl_sync = monsoonProfAcc_ctrl_rest = 0;
+    }
+#endif
 }
 
 
 Model* modelMonsoon = createModel<Monsoon, MonsoonWidget>("Monsoon");
 
-// init(Plugin*) and `Plugin* pluginInstance` now live in src/plugin.cpp (Rack convention: a
-// dedicated entry-point TU, picked up by the Makefile's `SOURCES += $(wildcard src/*.cpp)`).
+// init(Plugin*) and Plugin* pluginInstance now live in src/plugin.cpp (Rack convention: a
+// dedicated entry-point TU, picked up by the Makefile's SOURCES += $(wildcard src/*.cpp)).
 // The extern declarations remain in Monsoon.hpp (pluginInstance at line 47, modelMonsoon etc.
 // at 1121+).

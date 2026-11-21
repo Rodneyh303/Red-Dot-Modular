@@ -27,6 +27,13 @@ inline constexpr double U_EPS = 1e-12;
 /// NOT used in the slew readout (applyZ) — that uses PhiLUT (see below).
 inline double Phi(double z) { return 0.5 * std::erfc(-z * 0.70710678118654752440); }
 
+/// Standard normal PDF. Companion to Phi/PhiInv for distribution work that needs the density
+/// (logit-normal and truncated-normal in the Distribution layer) — same exact, stateless,
+/// pure-function contract.
+inline double phi(double z) {
+    return std::exp(-0.5 * z * z) * 0.398942280401432677939946059934;   // 1/sqrt(2*pi)
+}
+
 /// Interpolated lookup-table Phi for UNCACHEABLE, hot, float-precision callers (the slew readout's
 /// final Phi in applyZ, and spread's mix2). Splits from the exact Phi by the caching structure:
 /// cached callers (PhiInv, once per new draw) can afford the exact erfc Phi; uncacheable callers
@@ -42,8 +49,8 @@ struct PhiLUT {
     static constexpr double ZMAX = 6.0;
     static constexpr double STEP = ZMAX / N;
     static constexpr double INV_STEP = N / ZMAX;     // multiply (not divide) in the hot path
-    // Built once, then read-only. A function-local static initialiser avoids a per-call `built`
-    // branch (the lazy `if(!built)` check was the cause of a 2× slowdown in an earlier version).
+    // Built once, then read-only. A function-local static initialiser avoids a per-call built
+    // branch (the lazy if(!built) check was the cause of a 2× slowdown in an earlier version).
     struct Table { float v[N + 1]; };
     static const Table& table() {
         static const Table t = []() {
@@ -169,9 +176,9 @@ inline double combine(const double* u, const double* w, std::size_t n) {
     return PhiFast(z);
 }
 
-/// Two-source copula mix used by SPREAD: result correlates with `leader` at exactly rho and keeps
+/// Two-source copula mix used by SPREAD: result correlates with leader at exactly rho and keeps
 /// a uniform marginal. rho < 0 gives the mirror (rho = -1 => exactly 1 - leader), so the legacy
-/// "1 - p" special case disappears. `own` is the voice's own (independent) draw.
+/// "1 - p" special case disappears. own is the voice's own (independent) draw.
 inline double mix2(double own, double leader, double rho) {
     if (rho > 0.9999) return leader;
     if (rho < -0.9999) return 1.0 - leader;

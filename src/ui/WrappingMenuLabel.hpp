@@ -72,7 +72,7 @@ struct WrappingMenuLabel : rack::ui::MenuLabel {
     }
 };
 
-// Convenience: build a wrapping label carrying `str`, ready to menu->addChild().
+// Convenience: build a wrapping label carrying str, ready to menu->addChild().
 inline WrappingMenuLabel* makeWrappingMenuLabel(const std::string& str, float maxWidth = 220.f) {
     auto* w = new WrappingMenuLabel();
     w->text = str;

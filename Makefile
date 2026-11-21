@@ -2,6 +2,17 @@ RACK_DIR ?= ../..
 
 FLAGS += -Idep/include
 
+# The Rack SDK's headers (rack.hpp, helpers.hpp) are THIRD-PARTY: include them as SYSTEM
+# headers so THEIR diagnostics don't flood the build. Under C++20 the SDK's own [=]-implicit-
+# this captures in helpers.hpp deprecation-warn for every TU, and each such TU then ALSO gets
+# GCC's "unrecognized -Wno-vla-extension" note (the SDK passes that clang-only flag; GCC only
+# prints the note when the TU produced other diagnostics) — one -isystem kills both families.
+# Our own sources keep full -Wall -Wextra. This must come BEFORE `include $(RACK_DIR)/plugin.mk`:
+# the SDK's compile.mk later adds plain -I on the same dirs, and the EARLIER -isystem copy wins
+# header resolution (search order), so the headers are found as system headers.
+FLAGS += -isystem $(RACK_DIR)/include
+FLAGS += -isystem $(RACK_DIR)/dep/include
+
 
 # Link Time Optimization (LTO) can significantly improve performance
 # by optimizing across your separate manager/engine files.
@@ -32,11 +43,12 @@ DISTRIBUTABLES += $(wildcard presets)
 
 include $(RACK_DIR)/plugin.mk
 
-# C++17 (overrides Rack's default -std=c++11; lands after it so it wins).
+# C++20 (confirmed CI-green on lin/mac/win 2026-10 via test/cpp20-probe: full engine+SIMD+simde+libRack link all clean). Overrides Rack SDK default (c++17). Enables concepts (SandsModifierResolver policy contracts) + the SvgPanelKit fold expr.
 # Required by the fold expression in src/ui/SvgPanelKit.hpp.
-CXXFLAGS += -std=c++17
+CXXFLAGS += -std=c++20
 
-# FIX: Silences the specific diagnostic warning about fold-expressions
+# FIX: silences the fold-expr c++17-extension warning. Under C++20 fold exprs are standard so this
+# MAY be removable now (C++20 move 2026-10) — left in (harmless) pending a CI-green confirmation without it.
 CXXFLAGS += -Wno-c++17-extensions
 
 # ── Deterministic floating point for the copula / draw pipeline ──────────────────────────────
@@ -70,7 +82,17 @@ CXXFLAGS += -Wno-c++17-extensions
 #   -ffp-contract=off              : no FMA contraction (the cross-platform mechanism above)
 # Cost, measured: ~35% on the window readout (11.2us -> 15.2us), i.e. ~67us -> ~91us per frame while
 # scrub-dragging — under 1% of a 60Hz budget.
-DETERMINISTIC_FP := -fno-unsafe-math-optimizations -fno-associative-math -ffp-contract=off
+DETERMINISTIC_FP := -ffp-contract=off   # DECIDED: dropped the reassociation guard (-fno-unsafe-math-optimizations -fno-associative-math) — ~nil measured value (~1 in 1e15), ~most of the cost; validated green on all 3 platforms. Keep -ffp-contract=off: cross-platform FMA determinism, which CI cannot verify per-platform. See docs/design/DETERMINISTIC_FP_COST_NOTE.md.
 
-$(BUILD)/src/dsp/engines/PatternEngine.cpp.o: CXXFLAGS += $(DETERMINISTIC_FP)
+$(BUILD)/src/dsp/engines/PatternEngine.cpp.o: CXXFLAGS += $(DETERMINISTIC_FP) -mavx
 $(BUILD)/src/Monsoon.cpp.o:                   CXXFLAGS += $(DETERMINISTIC_FP)
+
+
+# NOTE on SIMD: the x86_64 slice gets SSE4.1 from Rack's own -march=nehalem (compile.mk,
+# ARCH_X64) — Nehalem includes SSE4.1/4.2 — so NO extra -msse4.1 is needed for Philox.
+# -mavx is added TARGET-SPECIFICALLY to PatternEngine.cpp.o above: it enables the AVX1
+# 4-wide double (_mm256_mul/add/load/store) path in MovingAverageCopula::sumZ. AVX1 is
+# Sandy Bridge (2011+) — the same baseline as Rack's own -march=nehalem targets (Nehalem
+# is 2008; AVX is one generation later, but all x86_64 VCV Rack users have AVX). The arm64
+# slice uses SIMDe NEON emulation (no x86 flag). AVX-512 path auto-activates if the compiler
+# supports -mavx512f (future; not enabled by default).

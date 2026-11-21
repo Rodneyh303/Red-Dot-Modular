@@ -79,7 +79,7 @@ mutable std::array<std::array<float, 16>, 5> avgCache_ = {};
 it would OOB. Need to check the caller.
 **Fix**: Widen to 7 or add guard.
 
-### 7. SpreadManager.hpp:409 — MacroSpreadManager setSpread lane < 5
+### 7. SpreadManager.hpp:409 — Macro wrapper setSpread lane < 5 (class since deleted, Phase 3d; fan-out is now SandsParameterManager::setSpreadAll, guard lane < 7)
 ```
 void setSpread(int lane, float value) {
     if (lane >= 0 && lane < 5) { ... }

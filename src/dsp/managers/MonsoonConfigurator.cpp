@@ -8,11 +8,15 @@ void MonsoonConfigurator::setup(Monsoon* m) {
     m->config(NUM_PARAMS, NUM_INPUTS, NUM_OUTPUTS, NUM_LIGHTS);
 
     // Main controls — labels come from the single source of truth in NoteValues.hpp
+    // The NOTE_VALUE PARAM stores the DIAL SLOT: the switch's labels (and the knob's
+    // detents) walk the DIAL_ORDER grouped reading; the engine index is derived at
+    // ParameterManager::getNoteValue (the ONE seam).
     std::vector<std::string> noteValueLabels;
     for (int i = 0; i < NUM_NOTE_VALUES; ++i)
-        noteValueLabels.push_back(NOTE_VALUES[i].label);
-    m->configSwitch(NOTE_VALUE_PARAM, 0.f, (float)(NUM_NOTE_VALUES - 1), 4.f,
+        noteValueLabels.push_back(NOTE_VALUES[DIAL_ORDER[i]].label);
+    m->configSwitch(NOTE_VALUE_PARAM, 0.f, (float)(NUM_NOTE_VALUES - 1), 7.f,
         "Note value", noteValueLabels);
+    // (default slot 7 = 1/8 — the SAME value the pre-dotted default index 4 named)
     m->configParam(VARIATION_PARAM,   0.f, 1.f, 0.5f, "Variation (longer–shorter)");
     m->configParam(LEGATO_PARAM,      0.f, 1.f, 0.00f, "Legato probability");
     m->configParam(REST_PARAM,        0.f, 1.f, 0.00f, "Rest probability");
@@ -23,8 +27,15 @@ void MonsoonConfigurator::setup(Monsoon* m) {
     m->configParam(TRANSPOSE_PARAM,  -12.f, 12.f, 0.f, "Transpose (semitones)");
     
     // Main window controls (Always present)
-    m->configParam(PATTERN_LENGTH_PARAM, 1.f, 16.f, 16.f, "Pattern length");
-    m->configParam(PATTERN_OFFSET_PARAM, 0.f, 15.f, 0.f, "Pattern offset");
+    // STEPS_32 Stage 1 close-out (Rodney's PR #310 review): the length control's range derives
+    // from kPatternLengthCap — the USABLE bound — not the ceiling, so the knob never offers an
+    // undeliverable length and Stage 2's cap flip moves the range with it (one constant).
+    // Defaults stay 16 (the MODE LAW). STEPS_32 Stage 2b: the offset param rides the cap too
+    // (0..cap-1, derived not literal — the class-B item the revised Stage 2 plan resolves here:
+    // "The offset param: 0..15 becomes 0..(cap-1), derived not literal"); the default 0 and the
+    // wrap semantics are unchanged.
+    m->configParam(PATTERN_LENGTH_PARAM, 1.f, (float)dotModular::kPatternLengthCap, 16.f, "Pattern length");
+    m->configParam(PATTERN_OFFSET_PARAM, 0.f, (float)(dotModular::kPatternLengthCap - 1), 0.f, "Pattern offset");
 
     // DNA Action Buttons (Main module only configures these if no expander)
 
@@ -63,6 +74,25 @@ void MonsoonConfigurator::setup(Monsoon* m) {
     // Mode E manual phase (full range = one upward ramp = one bar). Fallback when CV1
     // is unpatched; automatable by a host to drive Mode E from a DAW phase modulator.
     m->configParam(PHASE_PARAM, 0.f, 1.f, 0.f, "Mode E phase (when CV1 unpatched)", "%", 0.f, 100.f);
+    // PHASE TIER Stage 2: the SUBPHASE CALIBRATION — the regionSize the transport phase is
+    // quantised to when CV3 (the subphase input) is patched. Quarter .. bar, CONTINUOUS
+    // (the design doc: "anything between (quarter-note → bar)"). Knob 0..1 →
+    // regionSixteenths = 4 + 12·v; default 1.0 = one bar. Unpatched CV3 ignores it (Stage 1).
+    m->configParam(SUBPHASE_CAL_PARAM, 0.f, 1.f, 1.f, "Subphase calibration (region: quarter .. bar)", "%", 0.f, 100.f);
+    // ── THE PHASE-DISTORTION EXPANDER MODEL (PHASE_DISTRIBUTION_SPEC §14, Task 3) —
+    // the TWO INDICES: which of the distribution expander's EIGHT parameter sets this
+    // Monsoon's phase tier reads, which its subphase tier reads. 1..8, the DEFAULTS
+    // (2N−1 / 2N for Monsoon N = the pairId) are applied DYNAMICALLY on a fresh
+    // module at the pairId latch (updateExpanderPointers) — the static config default
+    // below is the N=1 case (sets 1 and 2, "a single Monsoon uses channels 1 and 2
+    // with no setup"). Integer picks: the read site rounds+clamps. NO PANEL KNOBS
+    // (Rodney: "No new knobs on monsoon. Context menu choice for index only.") —
+    // the params are INVISIBLE (no widget binds): the pick lives in MonsoonWidget's
+    // context menu, which sets the param directly; Rack auto-persists params, so
+    // the picks save with the patch. snapEnabled keeps menu-written values integer
+    // too (harmless, and any future quantity-driven writer stays on the 1..8 grid).
+    m->configParam(PHASE_SET_PARAM,    1.f, 8.f, 1.f, "Phase set (which distribution set distorts the phase tier)")   ->snapEnabled = true;
+    m->configParam(SUBPHASE_SET_PARAM, 1.f, 8.f, 2.f, "Subphase set (which distribution set distorts the subphase tier)")->snapEnabled = true;
     m->configButton(LOCK_PARAM,   "Lock");
     m->configButton(MUTE_PARAM,   "Mute");
     m->configButton(MODE_PARAM,   "Mode (Cycle Clock-Gate-Phase)");

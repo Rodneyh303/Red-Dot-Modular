@@ -4,9 +4,11 @@
 
 #include "Intertropical.hpp"
 #include "Monsoon.hpp"
+#include "dsp/VoiceResolver.hpp"   // CC_PROMPT_STRONG_TYPES: VoiceSlot minting (slot)
 #include "MonsoonStraitsExpander.hpp"   // complete type for cachedPolyVoiceExpander->outputs
 #include "MonsoonChangeAlleyV2.hpp"      // complete type for cachedChangeAlleyV2->outputs (EXPR_OUT)
 #include "ui/IntertropicalPairing.hpp"  // assignPairId (shared pairing mechanism)
+#include "ui/ModuleLookup.hpp"   // THE module-lookup authority: lookupMonsoon — memoized, event-driven (CC_PROMPT_MODULE_LOOKUP_AUTHORITY_START)
 #include "ui/SvgPanelKit.hpp"
 #include "ui/GoldPolyPort.hpp"
 #include "ui/DimmableTrimpot.hpp"
@@ -27,7 +29,8 @@ Intertropical::Intertropical() {
     for (int s = 0; s < Ids::MAX_VOICES_PER_SCENE; ++s)
         effectiveTranspose[s] = 0.f;
     config(Ids::NUM_PARAMS, Ids::NUM_INPUTS, Ids::NUM_OUTPUTS, Ids::NUM_LIGHTS);
-    hostLookupDiv_.setDivision(512);   // host chain-walk at ~94 Hz @ 48k (control rate)
+    // (hostLookupDiv_ DELETED — CC_PROMPT_MODULE_LOOKUP_AUTHORITY_START: the host resolve is the
+    //  memoized lookupMonsoon, event-driven; nothing to throttle.)
     // 8 per-output transpose knobs: -24..+24 semitones, integer-detented (snap), default 0.
     for (int o = 0; o < 8; ++o) {
         configParam(Ids::TRANSPOSE_FIRST + o, -24.f, 24.f, 0.f,
@@ -54,6 +57,16 @@ Intertropical::Intertropical() {
     }
 }
 
+// LOOKUP AUTHORITY (CC_PROMPT_MODULE_LOOKUP_AUTHORITY_START): the host accessor resolves through
+// the memoized redDot::lookupMonsoon — event-driven (onExpanderChange bumps the topology epoch),
+// one walk per topology generation; a static rack walks zero times. Was: the cachedHost member
+// refreshed on the /512 hostLookupDiv_ poll (a walk every ~10 ms even when idle). Defined here,
+// NOT in the header: ui/ModuleLookup.hpp includes ui/IntertropicalPairing.hpp, which includes
+// Intertropical.hpp (include cycle).
+Monsoon* Intertropical::getHost() {
+    return redDot::lookupMonsoon(this);
+}
+
 void Intertropical::process(const ProcessArgs& args) {
     // ── One-shot pair-id resolution (runs here, NOT onAdd) ───────────────────────
     // onAdd() executes while Rack holds the engine mutex during module insertion;
@@ -72,15 +85,14 @@ void Intertropical::process(const ProcessArgs& args) {
                     if (it->pairId == pairId) { clash = true; break; }
             }
         }
-        if (pairId <= 0 || clash) pairId = redDot::assignPairId(this);
+        if (pairId <= 0 || clash) pairId = redDot::assignPairId(this);   // LOOKUP-AUTHORITY (one-shot identity settle — runs once per lifetime behind pairChecked, mirrors Monsoon/CA; not a hot-path walk)
     }
 
-    // Refresh the host pointer at control rate (chain walk; topology is not audio-rate). cachedHost
-    // is also read by transitive consumers (Lantern via getHost()). First divider tick fires after
-    // ~one division (~10 ms) — imperceptible on load.
-    if (hostLookupDiv_.process())
-        cachedHost = redDot::findMonsoonEitherSide(this);
-    Monsoon* host = cachedHost;
+    // LOOKUP AUTHORITY: the host resolves through the memoized redDot::lookupMonsoon — event-driven
+    // (onExpanderChange bumps the topology epoch), ONE walk per topology generation; a static rack
+    // walks zero times. Was: cachedHost refreshed on the /512 hostLookupDiv_ poll. Transitive
+    // consumers (Lantern via getHost()) ride the same memo.
+    Monsoon* host = redDot::lookupMonsoon(this);
     if (!host) {
         for (int o = 0; o < Ids::NUM_OUTPUTS; ++o) outputs[o].setChannels(0);
         return;
@@ -89,7 +101,7 @@ void Intertropical::process(const ProcessArgs& args) {
 
     // ---- RESET: sync back to scene 1 repeat 1 when Monsoon resets ----
     // Read the RESET_TRIGGER_OUTPUT pulse jack directly from the host. This fires only on a
-    // genuine reset (button or gate input), NOT on phrase wraps or DNA_LCM counter wraps.
+    // genuine reset (button or gate input), NOT on phrase wraps.
     // Check every process() call (not just on step edges) so a mid-step reset isn't missed.
     if (host->outputs[MonsoonIds::RESET_TRIGGER_OUTPUT].getVoltage() >= 1.f) {
         activeScene = 0;
@@ -102,7 +114,7 @@ void Intertropical::process(const ProcessArgs& args) {
     // step where the pattern wraps (accounts for modulated start/endStep correctly).
     // We track the stepIndex to detect when a new step result is available.
     // ---- boundary-crossing advance (phrase-boundary, direction-agnostic) ----
-    const int si = eng.stepIndex;
+    const int si = eng.playedColumn();   // (step 3b) the resolver's played column
     if (lastStepIndex >= 0 && si != lastStepIndex) {
         // A new step was processed. Check if the engine reported a phrase boundary wrap.
         if (eng.lastStepResult.wrapped) {
@@ -163,12 +175,13 @@ void Intertropical::process(const ProcessArgs& args) {
         const float leg  = straits->outputs[1].getVoltage(v);
         const float sleg = straits->outputs[2].getVoltage(v);
         // Tie vs legato for the transpose rule. Read the SAME articulation Lantern reads: global
-        // voice v -> mono/V1 uses eng.gs, poly uses eng.voices[v-1].gs. lastNoteType is Single/Tie/
+        // voice v -> mono/V1 uses eng.gs, poly uses the voiceSlot v (V(v+1)). lastNoteType is Single/Tie/
         // Legato. TRUE TIE = one sustained note, pitch must NOT move, so hold transpose from the
         // tie's onset. LEGATO = a connected note allowed to glide, so transpose reads LIVE (worst
         // case a legato with unchanged transpose just looks like a tie -- a valid note). Single =
         // fresh onset, live. Rule: hold while lastNoteType==Tie, else re-capture the live knob.
-        const GateState& vgs = (v == 0) ? eng.gs : eng.voices[v - 1].gs;
+        const GateState& vgs = (v == 0) ? eng.gs
+                                         : eng.voices[dotModular::VoiceResolver::slot(v + 1)].gs;   // v = voiceSlot
         const bool tieHold = (vgs.lastNoteType == GateState::NoteType::Tie);
         for (int ch = 0; ch < Ids::MAX_VOICES_PER_SCENE; ++ch) {
             if (!((mask >> ch) & 1u)) continue;    // this slot doesn't drive output ch
@@ -629,7 +642,7 @@ struct IntertropicalWidget : ModuleWidget,
             // (can we see a Monsoon/Straits system?) not isConnectedAndClaimed (which requires
             // a claim slot that doesn't exist for observers and can't scale to N pairs).
             cm->connected = [module]() {
-                return module && redDot::findMonsoonEitherSide(module) != nullptr;
+                return module && redDot::lookupMonsoon(module) != nullptr;
             };
             addChild(cm);
         }

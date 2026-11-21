@@ -5,8 +5,8 @@
 Three parameter managers handle wiring the visual editor to the DNA sequencer:
 
 1. **MonoSandsParameterManager** - MonsoonSandsExpander (6 lanes, 1 voice)
-2. **PolySandsParameterManager** - Global poly DNA (3 lanes, all voices)
-3. **PolyVoiceSandsParameterManager** - Per-voice poly DNA (3 lanes × 7-8 voices)
+2. **SandsParameterManager** - Poly DNA, both scopes (the former global and
+   per-voice parameter managers were merged into it — ERADICATION Phase 3d)
 
 All three managers:
 - Keep existing knob controls intact (length/offset/rotation)
@@ -135,12 +135,12 @@ float melodySpread = params[SPREAD_MELODY_PARAM].getValue();
 ### Expander Widget Setup
 
 ```cpp
-#include "managers/PolySandsParameterManager.hpp"
+#include "managers/SandsParameterManager.hpp"
 
 struct MonsoonStraitSandsExpanderWidget : rack::ModuleWidget {
   MonsoonStraitSandsExpander* module;
   SandsVisualEditorV4* visualEditor;
-  PolySandsParameterManager* paramManager;
+  SandsParameterManager* paramManager;
   
   MonsoonStraitSandsExpanderWidget(MonsoonStraitSandsExpander* mod) : module(mod) {
     setModule(module);
@@ -154,7 +154,7 @@ struct MonsoonStraitSandsExpanderWidget : rack::ModuleWidget {
     // Create parameter manager
     rack::Module* monsoonMod = module->rightExpander.module;
     auto* patternEngine = /* get from monsoonMod */;
-    paramManager = new PolySandsParameterManager(patternEngine, module);
+    paramManager = new SandsParameterManager(patternEngine, nullptr, 7, 0, /*monoContext=*/true);
   }
   
   void step() override {
@@ -221,12 +221,12 @@ enum ParamId {
 ### Expander Widget Setup (StraitsEastSands or StraitsWestSands)
 
 ```cpp
-#include "managers/PolyVoiceSandsParameterManager.hpp"
+#include "managers/SandsParameterManager.hpp"
 
 struct StraitsEastSandsWidget : rack::ModuleWidget {
   StraitsEastSands* module;
   std::array<SandsVisualEditorV4*, 7> visualEditors;  // 7 voices
-  PolyVoiceSandsParameterManager* paramManager;
+  SandsParameterManager* paramManager;
   
   int selectedVoice = 0;
   
@@ -245,7 +245,7 @@ struct StraitsEastSandsWidget : rack::ModuleWidget {
     // Create parameter manager
     rack::Module* monsoonMod = module->rightExpander.module;
     auto* patternEngine = /* get from monsoonMod */;
-    paramManager = new PolyVoiceSandsParameterManager(patternEngine, 7);  // 7 voices
+    paramManager = new SandsParameterManager(patternEngine, 7);  // 7 voices
   }
   
   void step() override {
@@ -393,7 +393,7 @@ paramManager->syncEditorToPatternEngine(...);
 
 ### Poly Sands - Global
 - [ ] Create visual editor widget
-- [ ] Create PolySandsParameterManager
+- [ ] Create SandsParameterManager (global scope)
 - [ ] Wire sync calls in step()
 - [ ] Add spread knobs (3, one per lane)
 - [ ] Test all voices respond to global changes
@@ -401,7 +401,7 @@ paramManager->syncEditorToPatternEngine(...);
 
 ### Poly Sands - Per-Voice
 - [ ] Create 7-8 visual editor widgets (tabbed)
-- [ ] Create PolyVoiceSandsParameterManager
+- [ ] Create SandsParameterManager (per-voice scope)
 - [ ] Implement voice tab switching
 - [ ] Wire sync calls in step()
 - [ ] Add spread knobs (21 total, per voice per lane)

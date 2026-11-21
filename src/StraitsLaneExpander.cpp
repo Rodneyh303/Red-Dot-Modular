@@ -11,7 +11,7 @@
 #include <cmath>
 #include "Monsoon.hpp"
 #include "StraitsLaneExpander.hpp"
-#include "ui/VisualExpanderHelpers.hpp"
+#include "ui/ModuleLookup.hpp"   // THE module-lookup authority: lookupMonsoon — memoized, event-driven (CC_PROMPT_MODULE_LOOKUP_AUTHORITY_START)
 #include "ui/SvgPanelKit.hpp"
 #include "ui/ConnectMark.hpp"
 #include "ui/ModArcOverlay.hpp"
@@ -21,6 +21,9 @@
 using namespace rack;
 
 // Helper: is this module a compatible StraitsR panel (for seam detection)?
+// SUBGATE MERGE (CC_PROMPT_SUBGATE_MERGE_ONTO_STRAITS_BASE): the subgate
+// per-voice panels joined the chain family — they dock after the lane run, so
+// a lane's right neighbour can be one.
 static bool isStraitsRPanel(rack::Module* m) {
     if (!m) return false;
     return m->model == modelStraitsBase
@@ -28,7 +31,15 @@ static bool isStraitsRPanel(rack::Module* m) {
         || m->model == modelStraitsLaneREST
         || m->model == modelStraitsLaneACCENT
         || m->model == modelStraitsLaneVARIATION
-        || m->model == modelStraitsLaneLEGATO;
+        || m->model == modelStraitsLaneLEGATO
+        || m->model == modelStraitsSubgatePanelRatchetRest
+        || m->model == modelStraitsSubgatePanelRatchetLegato
+        || m->model == modelStraitsSubgatePanelRatchetAccent
+        || m->model == modelStraitsSubgatePanelRatchetAdvance
+        || m->model == modelStraitsSubgatePanelGhostRest
+        || m->model == modelStraitsSubgatePanelGhostLegato
+        || m->model == modelStraitsSubgatePanelGhostAccent
+        || m->model == modelStraitsSubgatePanelGhostAdvance;
 }
 using namespace MonsoonIds;
 
@@ -138,21 +149,25 @@ struct StraitsLaneExpanderWidget : ModuleWidget,
                     case 0: return m->getEffectivePolyRest(voice);
                     case 1: return m->getEffectivePolyAccent(voice);
                     case 2: return m->getEffectivePolyQmix(voice);
-                    case 5: return m->getEffectivePolyVariation(voice);
+                    // VAR is BIPOLAR [-1,+1] (CC_FIX_PER_VOICE_ADVANCE_WANDER) — the
+                    // mod arc + isActive compare against the [0,1] base, so present the
+                    // resolved value in the KNOB's scale ((v+1)/2: bipolar -0.5 == knob
+                    // 0.25). A future poly VAR CV shows as the deflection from the knob.
+                    case 5: return (m->getEffectivePolyVariation(voice) + 1.f) * 0.5f;
                     case 6: return m->getEffectivePolyLegato(voice);
                     default: return 0.f;
                 }
             };
             arc->getSetNorm = [self, voice, setOf]() -> float {
-                Monsoon* m = redDot::findMonsoonEitherSide(self->module);
+                Monsoon* m = redDot::lookupMonsoon(self->module);
                 return m ? setOf(m, voice) : 0.f;
             };
             arc->getModNorm = [self, voice, modOf]() -> float {
-                Monsoon* m = redDot::findMonsoonEitherSide(self->module);
+                Monsoon* m = redDot::lookupMonsoon(self->module);
                 return m ? modOf(m, voice) : 0.f;
             };
             arc->isActive = [self, voice, setOf, modOf]() -> bool {
-                Monsoon* m = redDot::findMonsoonEitherSide(self->module);
+                Monsoon* m = redDot::lookupMonsoon(self->module);
                 if (!m || !m->modVizEast) return false;
                 if (voice >= 0 && self->activeVoices_ >= 0 && voice >= self->activeVoices_) return false;
                 if (voice >= 0 && (voice < 0 || voice >= 15)) return false;
@@ -186,14 +201,15 @@ struct StraitsLaneExpanderWidget : ModuleWidget,
         addChild(createWidget<ScrewSilver>(Vec(box.size.x - 2 * RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
 
         // ── Voice 0 = mono: LOCKED knob that MIRRORS Monsoon's mono param ──────
-        // COPIED from MonsoonStraitsExpanderWidget — only the param ID and anchor
-        // are parameterised by desc.
-        bindParam<redDot::Themed_Compact_Cog_Dim>(std::string(desc->anchorPrefix) + "0", desc->monoParamId,
+        // COPIED from MonsoonStraitsExpanderWidget — the anchor is parameterised by
+        // desc; the param id is the lane's LOCAL mirror slot (the right-size fix).
+        // (displayValueFn below reads MONSOON's own mono param — not this slot.)
+        bindParam<redDot::Themed_Compact_Cog_Dim>(std::string(desc->anchorPrefix) + "0", StraitsLaneIds::MONO_MIRROR_PARAM,
             std::function<void(redDot::Themed_Compact_Cog_Dim*)>([this](redDot::Themed_Compact_Cog_Dim* k){
                 k->lightWhen = [this](){ return themeLight_; };
                 k->lockWhen = [](){ return true; };
                 k->displayValueFn = [this]() -> float {
-                    Monsoon* m = redDot::findMonsoonEitherSide(module);
+                    Monsoon* m = redDot::lookupMonsoon(module);
                     return m ? m->params[desc->monoParamId].getValue() : NAN;
                 };
                 queueArc(k, -1, desc->arcLane);
@@ -201,7 +217,8 @@ struct StraitsLaneExpanderWidget : ModuleWidget,
 
         // ── Voices 1..15 = poly: editable per-voice knobs ──────────────────────
         // COPIED from MonsoonStraitsExpanderWidget — the loop body is identical
-        // except param IDs and anchors are parameterised by desc.
+        // except the anchor is parameterised by desc; the param ids are the lane's
+        // LOCAL slots (the right-size fix; the base's sync remaps to MonsoonIds).
         for (int i = 1; i < 16; i++) {
             std::string r = std::to_string(i);
             int polyIdx = i - 1;
@@ -210,7 +227,7 @@ struct StraitsLaneExpanderWidget : ModuleWidget,
                 return activeVoices_ >= 0 && voiceNum > activeVoices_;
             };
             bindParam<redDot::Themed_Compact_Cog_Dim>(std::string(desc->anchorPrefix) + r,
-                desc->polyParamIdBase + polyIdx,
+                StraitsLaneIds::POLY_PARAM_1 + polyIdx,
                 std::function<void(redDot::Themed_Compact_Cog_Dim*)>([this, polyIdx, dimIfInactive](redDot::Themed_Compact_Cog_Dim* k){
                     k->lightWhen = [this](){ return themeLight_; };
                     k->dimWhen   = dimIfInactive;
@@ -260,12 +277,12 @@ struct StraitsLaneExpanderWidget : ModuleWidget,
     void step() override {
         // COPIED from MonsoonStraitsExpanderWidget — theme + active-voice tracking.
         // The lane expander finds the BASE (leftExpander) for voice count, and
-        // Monsoon (findMonsoonEitherSide) for theme + mod-arc values.
+        // Monsoon (the memoized lookupMonsoon) for theme + mod-arc values.
         if (module) {
             // Voice count: read from the base (leftExpander), which owns it.
             // The base is a MonsoonStraitsExpander; its VOICE_COUNT_PARAM drives
             // Monsoon's numPolyVoices. We read activeVoices_ from Monsoon directly.
-            Monsoon* mm = redDot::findMonsoonEitherSide(module);
+            Monsoon* mm = redDot::lookupMonsoon(module);
             themeLight_ = (mm && mm->lightTheme);
             // ── Seam filler: toggle based on neighbour detection ──
             NVGcolor bg = themeLight_ ? nvgRGB(0xdc, 0xdc, 0xdc) : nvgRGB(0x14, 0x17, 0x1b);
@@ -280,7 +297,7 @@ struct StraitsLaneExpanderWidget : ModuleWidget,
         ModuleWidget::step();
         kitStep();
         if (!module) return;
-        Monsoon* m = redDot::findMonsoonEitherSide(module);
+        Monsoon* m = redDot::lookupMonsoon(module);
         int wantLight = (m && m->lightTheme) ? 1 : 0;
         if (wantLight != lastThemeLight) {
             lastThemeLight = wantLight;

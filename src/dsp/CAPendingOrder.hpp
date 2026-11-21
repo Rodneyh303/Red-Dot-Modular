@@ -26,8 +26,8 @@
 namespace redDot {
 
 struct CAPendingOrder {
-    // Fill `out[]` with the indices of every armed row, in ascending-stamp order, ties by
-    // ascending row index. Returns the count. `armed[r]` and `stamp[r]` are per-row over
+    // Fill out[] with the indices of every armed row, in ascending-stamp order, ties by
+    // ascending row index. Returns the count. armed[r] and stamp[r] are per-row over
     // [0, nRows). Collection is in ascending row order and the sort is STABLE, so equal stamps
     // retain row-index order = today's verb-major behaviour.
     //

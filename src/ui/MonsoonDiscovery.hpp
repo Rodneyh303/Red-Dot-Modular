@@ -36,6 +36,10 @@ inline bool isSuiteChainModel(const rack::Model* m) {
         || m == modelMonsoonRafflesExpander
         || m == modelMonsoonJunctionExpander
         || m == modelMonsoonChangeAlleyV2
+        || m == modelCantonment          // CA sibling (containment DAG; claimed via the manager's
+                                          //   cachedCantonment) — hop-through, same fix class as
+                                          //   ChangiT2/Intertropical: mid-chain it must NOT act as
+                                          //   a foreign boundary and un-bind everything past it
         || m == modelMonsoonStraitsExpander
         || m == modelStraitsBase          // lane-extension base (replaces Straits in the new model)
         || m == modelStraitsLaneQMIX     // lane expander (base-spawned, hidden, hop-through)
@@ -43,6 +47,18 @@ inline bool isSuiteChainModel(const rack::Model* m) {
         || m == modelStraitsLaneACCENT   // ACCENT lane expander
         || m == modelStraitsLaneVARIATION // VARIATION lane expander
         || m == modelStraitsLaneLEGATO   // LEGATO lane expander
+        || m == modelStraitsSubgatePanelRatchetRest    // subgate per-voice panels — ONE per (level x decision)
+                                                       //   (dock after the lane run; the global tier is on StraitsBase)
+        || m == modelStraitsSubgatePanelRatchetLegato  //   (base-spawned, hidden; option (a) — the lane law)
+        || m == modelStraitsSubgatePanelRatchetAccent
+        || m == modelStraitsSubgatePanelRatchetAdvance
+        || m == modelStraitsSubgatePanelGhostRest
+        || m == modelStraitsSubgatePanelGhostLegato
+        || m == modelStraitsSubgatePanelGhostAccent
+        || m == modelStraitsSubgatePanelGhostAdvance
+        || m == modelStraitsQmixOctPanel   // QMIX_OCTAVE Stage 3: the qmix-octave per-voice panel
+                                           //   (docks after the subgate panels — hop-through, LOCKSTEP with
+                                           //   MonsoonExpanderManager's scan recognised-model set)
         || m == modelMonsoonCausewayPolyExpander
         || m == modelMonsoonChangiExpander
         || m == modelMonsoonChangiT2Expander   // claimed expander (manager caches it) — was MISSING here,
@@ -59,16 +75,24 @@ inline bool isSuiteChainModel(const rack::Model* m) {
         || m == modelMonsoonSandsVisualExpander
         || m == modelStraitsEastSandsVisual
         || m == modelStraitsSandsMacroVisual
+        || m == modelSandsDistributionExpander  // the Sands subpanel (hop-through — a foreign
+                                                //   boundary here would un-bind everything past it;
+                                                //   the CONNECTION_UI_MODEL §4 bug class)
+        || m == modelSandsMacroSendSubpanel     // the Macro send subpanel (hop-through — the
+                                                //   Distribution expander may sit RIGHT of it:
+                                                //   [Macro][Send][Dist] must resolve CROSS-VOICE)
         || m == modelLantern       // observer — hop-only (never a boundary, never a host)
-        || m == modelIntertropical;// arranger/observer (Model C: reads via findMonsoonEitherSide/
+        || m == modelIntertropical// arranger/observer (Model C: reads via findMonsoonEitherSide/
                                    //   getHost, has no claim slot). Was MISSING → a standalone
                                    //   Intertropical mid-chain acted as a foreign boundary and
                                    //   un-bound everything past it (e.g. M-Lantern-IT-Straits
                                    //   dimmed Straits; M-Lantern-IT-IT dimmed the 2nd IT). Hop-only.
+        || m == modelSandsPhaseDistSubpanel;  // hop-only (never a boundary, never a host)                          
 }
 
+
 // ── Templated one-direction segment walk ────────────────────────────────────────────────────────
-// Walk from `start` following NextFn (left or right expander) up to maxDepth hops. Return the first
+// Walk from start following NextFn (left or right expander) up to maxDepth hops. Return the first
 // node for which IsHostFn(node) is true. STOP (return null) at the first node that is neither a host
 // nor a recognised suite member (IsSuiteFn) — that node is a foreign boundary. A host is itself a
 // boundary in the sense that the walk returns it (we never walk PAST a host looking for a farther one).
@@ -91,7 +115,7 @@ inline Node* walkSegmentForHost(Node* start, NextFn next, IsHostFn isHost, IsSui
 // ── Both-sides host search (the order-independent replacement for findMonsoonEitherSide) ──────────
 // Walk right, then left, each side bounded by the segment rule. Returns the first host found. Because
 // each side stops at the first foreign module AND the walk returns the first host it reaches, a Monsoon
-// separated from `self` by a foreign module is correctly NOT returned (different segment). A SECOND
+// separated from self by a foreign module is correctly NOT returned (different segment). A SECOND
 // Monsoon farther out never "wins" over a foreign boundary nearer in — order-independent by construction.
 template <class Node, class LeftFn, class RightFn, class IsHostFn, class IsSuiteFn>
 inline Node* findHostBothSides(Node* self, LeftFn left, RightFn right,

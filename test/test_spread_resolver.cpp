@@ -68,16 +68,19 @@ int main() {
         EXPECT_NEAR(SpreadResolver::effective(in), 0.6f);
     });
 
-    SUITE("Macro send add (tapped delta, only when Macro present)");
-    TEST("macro send adds macroSendDelta·send when present", {
+    SUITE("Macro send add (per-voice tapped delta, only when Macro present)");
+    TEST("macro send adds tappedDelta·send when present", {
+        // P9b migration: the old single macroSendDelta is now the pre/post endpoint pair +
+        // the voice's tap. pre == post ⟹ the lerp is that value at ANY tap (the old
+        // semantics exactly).
         SpreadResolver::Inputs in; in.base = 0.2f; in.macroPresent = true;
-        in.macroSendDelta = 0.5f; in.macroSend = 0.4f;
+        in.macroPreDelta = 0.5f; in.macroPostDelta = 0.5f; in.macroSend = 0.4f;
         // 0.2 + 0.5*0.4 = 0.4
         EXPECT_NEAR(SpreadResolver::effective(in), 0.4f);
     });
     TEST("macro send ignored when macro absent (even if delta/send set)", {
         SpreadResolver::Inputs in; in.base = 0.2f; in.macroPresent = false;
-        in.macroSendDelta = 0.5f; in.macroSend = 0.4f;
+        in.macroPreDelta = 0.5f; in.macroPostDelta = 0.5f; in.macroSend = 0.4f;
         EXPECT_NEAR(SpreadResolver::effective(in), 0.2f);
     });
 
@@ -100,16 +103,16 @@ int main() {
     });
 
     SUITE("Delegation override (lane ceded to Macro → mirror Macro, ignore own base/CV)");
-    TEST("delegated lane returns clamp(macroBase + macroSendDelta), ignoring base & CV", {
+    TEST("delegated lane returns clamp(macroBase + tappedDelta), ignoring base & CV", {
         SpreadResolver::Inputs in;
         in.delegated = true; in.base = 0.9f;           // own base must be IGNORED
         in.ownCv = cv(true, 0.5f, 1.f);                 // own CV must be IGNORED
-        in.macroBase = 0.3f; in.macroSendDelta = 0.2f;  // → 0.5
+        in.macroBase = 0.3f; in.macroPreDelta = 0.2f; in.macroPostDelta = 0.2f;  // → 0.5
         EXPECT_NEAR(SpreadResolver::effective(in), 0.5f);
     });
     TEST("delegated result is clamped", {
         SpreadResolver::Inputs in;
-        in.delegated = true; in.macroBase = 0.8f; in.macroSendDelta = 0.6f;  // 1.4 → 1.0
+        in.delegated = true; in.macroBase = 0.8f; in.macroPreDelta = 0.6f; in.macroPostDelta = 0.6f;  // 1.4 → 1.0
         EXPECT_NEAR(SpreadResolver::effective(in), 1.f);
     });
 
@@ -119,7 +122,7 @@ int main() {
         in.base = 0.1f;
         in.ownCv  = cv(true, 0.05f, 1.f);   // +0.1
         in.eastCv = cv(true, 0.05f, 1.f);   // +0.1
-        in.macroPresent = true; in.macroSendDelta = 0.4f; in.macroSend = 0.5f;  // +0.2
+        in.macroPresent = true; in.macroPreDelta = 0.4f; in.macroPostDelta = 0.4f; in.macroSend = 0.5f;  // +0.2
         // 0.1 + 0.1 + 0.1 + 0.2 = 0.5
         EXPECT_NEAR(SpreadResolver::effective(in), 0.5f);
     });

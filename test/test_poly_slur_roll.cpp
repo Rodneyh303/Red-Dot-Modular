@@ -1,9 +1,10 @@
 // EAST_EXTRA_LANES Stage 3 — Rule 2 per-voice leading-edge slur ROLL (step 2).
 //
 // Pins the design claim the roll rests on (EAST_EXTRA_LANES.md §4d): the slur
-// commitment is mono's LEAD formula run PER VOICE, and the ONLY per-voice input
+// commitment is V1's LEAD formula run PER VOICE, and the ONLY per-voice input
 // is the reading CELL, selected by delegation. Everything else — the legatoRandom
-// array and the legatoProb threshold — stays global/mono, exactly like VARIATION.
+// array and the per-voice legatoProb threshold (Phase A: V1's threshold is
+// voices[0].legatoProb; poly voices have their own v.legatoProb) — mirrors V1.
 //
 // Consequences proved here (the real engine's roll at SequencerEngine.cpp mirrors
 // this formula line-for-line; this validates the DESIGN, the engine binding is a
@@ -51,7 +52,7 @@ int main() {
     for (int i = 0; i < 16; ++i) legatoRandom[i] = (float)((i * 5 + 2) % 16) / 16.f;
 
     const float prob = 0.5f;   // mono legatoProb (global threshold)
-    const int   monoNv = 4;    // 1/8 = 2 steps → whole → CAN lead
+    const int   monoNv = 7;    // 1/8 = 2 steps → whole → CAN lead (DOTTED BUILD: was idx 4)
 
     // ── 1. Fully-delegated voice commits the SAME slur as mono, every step ──
     // Delegated ⇒ voice reads mono's legato cell AND mono's variation (so same nvIdx):
@@ -94,8 +95,8 @@ int main() {
     // ── 4. A non-leading (fractional) note can never lead a slur ──
     // 1/4T (idx 3) and 1/32 (idx 7) end off-grid → noteCanLeadLegato false.
     {
-        check(!noteCanLeadLegato(3) && !noteCanLeadLegato(7), "fractional notes cannot lead (table)");
-        bool s = rollSlur(true, /*nvIdx=*/3, /*prob=*/1.0f, /*r=*/0.f);   // even with forced prob
+        check(!noteCanLeadLegato(6) && !noteCanLeadLegato(12), "fractional notes cannot lead (table)");
+        bool s = rollSlur(true, /*nvIdx=*/6, /*prob=*/1.0f, /*r=*/0.f);   // even with forced prob
         check(s == false, "non-leading note commits no slur even at prob=1");
     }
 
@@ -104,7 +105,7 @@ int main() {
         bool s = rollSlur(true, monoNv, /*prob=*/1.0f, /*r=*/0.99f);   // r high, but LegatoMax
         check(s == true, "LegatoMax (prob>=0.999) forces slur regardless of r");
         // …but still respects noteCanLeadLegato:
-        bool sFrac = rollSlur(true, /*1/4T*/3, 1.0f, 0.f);
+        bool sFrac = rollSlur(true, /*1/4T*/6, 1.0f, 0.f);
         check(sFrac == false, "LegatoMax still cannot force a fractional note to lead");
     }
 

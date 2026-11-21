@@ -1,4 +1,5 @@
 #pragma once
+#include "ui/ModuleLookupCore.hpp"   // THE lookup authority: the topology epoch (CC_PROMPT_MODULE_LOOKUP_AUTHORITY_START)
 // ── Shophouse Micro — tuning+scale SCENE modulation for the Colonnades family (SHOPHOUSE_MICRO_SPEC) ─
 // The microtonal generalisation of Shophouse: instead of (scale, root) slots within 12-TET, it holds
 // FOUR (12-mode) / TWO (24-mode) full-.dmtune tuning+scale FRONTS; a CV input sampled AT THE PHRASE
@@ -35,6 +36,12 @@ namespace ShophouseMicroIds {
 }
 
 struct MonsoonShophouseMicro : Module {
+    // THE LOOKUP AUTHORITY: the event bumps the global topology epoch — adjacency
+    // (the lookup* memos) re-resolves on the next read.
+    void onExpanderChange(const ExpanderChangeEvent& e) override {
+        redDot::bumpTopologyEpoch();
+    }
+
     // The tuning-slot street. degrees() = 12/24 mode; front count = 4 at 12, 2 at 24.
     TuningList list{4, 12};
     bool  modeConflict = false;    // host N != loaded-slot N (flagged, never auto-wiped). Runtime-only.
@@ -42,7 +49,7 @@ struct MonsoonShophouseMicro : Module {
     // Host resolution (spec §91-100): Shophouse Micro attaches to a Colonnades / Colonnades Duo
     // (a MicroTuningModule), NOT to Monsoon directly — it reads THAT module's fixed degree count for
     // its mode (deterministic; tt.N is 12 until the Micro claims). Cached each process() for the widget
-    // (ConnectMark + host-name readout). Runtime-only. `rack::Module*` to avoid a header cycle.
+    // (ConnectMark + host-name readout). Runtime-only. rack::Module* to avoid a header cycle.
     rack::Module* hostMicro_ = nullptr;
     bool attachedToMicro() const { return hostMicro_ != nullptr; }
 
@@ -50,7 +57,7 @@ struct MonsoonShophouseMicro : Module {
         using namespace ShophouseMicroIds;
         // Fully-qualify these two: once this header is pulled into a TU that also sees another Ids
         // namespace (e.g. via MicroTuning/Interchange), the unqualified NUM_PARAMS/NUM_INPUTS become
-        // ambiguous. The rest of the ctor uses distinctly-named enums, so they stay on the `using`.
+        // ambiguous. The rest of the ctor uses distinctly-named enums, so they stay on the using.
         config(ShophouseMicroIds::NUM_PARAMS, ShophouseMicroIds::NUM_INPUTS, 0, 0);
         configSwitch(CONSERVATION_PARAM, 0.f, 1.f, 0.f, "Conservation", {"Guide", "Enforce"});
         configParam(INDEX_CV_ATT_PARAM, -1.f, 1.f, 1.f, "Index CV attenuverter");

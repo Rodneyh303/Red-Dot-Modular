@@ -13,8 +13,10 @@ When using AVERAGE_POLY as the interpolation target, the spread manager calculat
 SpreadManager requires a reference to **SequencerEngine** to determine how many voices are currently active:
 
 ```cpp
-PolyVoiceSandsParameterManager mgr(patternEngine, sequencerEngine, 7);
-//                                  pattern    sequencer     numVoices
+SandsParameterManager mgr(patternEngine, sequencerEngine, 7);
+//                       pattern    sequencer     numVoices
+// (SandsParameterManager since the ERADICATION Phase 3d merge — the former
+//  per-voice and global parameter managers are one class now.)
 
 mgr.spreadMgr.setSequencerEngine(sequencerEngine);  // Enable active voice tracking
 ```
@@ -132,7 +134,7 @@ Only includes voices within the current polyphony setting.
 
 ```cpp
 struct StraitsEastSandsWidget : ModuleWidget {
-  PolyVoiceSandsParameterManager* paramMgr;
+  SandsParameterManager* paramMgr;
   
   StraitsEastSandsWidget(StraitsEastSands* mod) {
     // Create parameter manager
@@ -140,7 +142,7 @@ struct StraitsEastSandsWidget : ModuleWidget {
     auto monsoon = mod->rightExpander.module;
     auto seqEngine = &(dynamic_cast<Monsoon*>(monsoon)->sequencerEngine);
     
-    paramMgr = new PolyVoiceSandsParameterManager(
+    paramMgr = new SandsParameterManager(
       &seqEngine->patternEngine,
       seqEngine,
       7,  // 7 voices for East
@@ -162,7 +164,7 @@ struct StraitsEastSandsWidget : ModuleWidget {
 
 ```cpp
 struct MonsoonStraitSandsWidget : ModuleWidget {
-  PolySandsParameterManager* paramMgr;
+  SandsParameterManager* paramMgr;
   
   MonsoonStraitSandsWidget(MonsoonStraitSandsExpander* mod) {
     // Create parameter manager
@@ -170,7 +172,7 @@ struct MonsoonStraitSandsWidget : ModuleWidget {
     auto monsoon = mod->rightExpander.module;
     auto seqEngine = &(dynamic_cast<Monsoon*>(monsoon)->sequencerEngine);
     
-    paramMgr = new PolySandsParameterManager(
+    paramMgr = new SandsParameterManager(
       &seqEngine->patternEngine,
       seqEngine,
       mod,
@@ -218,8 +220,8 @@ No discontinuity, but values shift as polyphony changes
 If SequencerEngine is not provided:
 
 ```cpp
-PolyVoiceSandsParameterManager mgr(patternEngine, nullptr, 7);
-//                                  pattern       null   numVoices
+SandsParameterManager mgr(patternEngine, nullptr, 7);
+//                       pattern       null   numVoices
 
 // Falls back to using numVoices for average
 Average = sum of all 7 voices / 7

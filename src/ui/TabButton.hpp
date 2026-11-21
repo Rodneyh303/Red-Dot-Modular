@@ -129,8 +129,8 @@ struct TabButtonGroup : rack::Widget {
     selectTab(0);
   }
 
-  // Multi-row layout: tabs wrap across `numRows`, sized to fill `totalWidthPx`
-  // and `totalHeightPx`. Use for large voice counts (e.g. 15) where a single
+  // Multi-row layout: tabs wrap across numRows, sized to fill totalWidthPx
+  // and totalHeightPx. Use for large voice counts (e.g. 15) where a single
   // row would be too cramped. Build with TabButtonGroup(numTabs, start, rows, w, h).
   TabButtonGroup(int numTabs, int startVoiceNumber, int numRows,
                  float totalWidthPx, float totalHeightPx) {

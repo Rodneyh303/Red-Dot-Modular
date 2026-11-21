@@ -3,14 +3,17 @@
 #include "../SpreadInterp.hpp"
 #include "../VoiceResolver.hpp"   // read-only shadow (step 1)
 #include "../SandsTopology.hpp"   // step 3: solo/none write-guard migration
+#include "../SandsModifierResolver.hpp"   // resolver step 3 (LorPolicy): combineLOR's delegation algebra — redDot::resolveLorItem; step 4 (DirPolicy): BOTH direction pushes — redDot::resolveDirItem
+#include "../SpreadResolver.hpp"         // UI-to-resolver step 1: combineSpread rides SpreadResolver (SpreadPolicy) — the ONE spread delegation algebra
 #include "../../Monsoon.hpp"
 #include <cassert>
 //#include "../../MonsoonDeepStraitsSands.hpp"
 #include "../../StraitsEastSandsVisual.hpp"
-#include "../../ui/VisualExpanderHelpers.hpp"   // redDot::findMonsoonEitherSide (LANE_DIR field reads)
+#include "../../ui/VisualExpanderHelpers.hpp"   // legacy include (transitive Monsoon complete type); no walk helpers used here anymore — adjacency reads ride the memoized lookupMonsoon
 #include "../../StraitsSandsMacroVisual.hpp"
 #include "../../MonsoonSandsVisualExpander.hpp"   // SandsMonoVisualIds::dirDispId for mono direction push
 #include "../../MonsoonChangeAlleyV2.hpp"           // single-module transforms
+#include "../../MonsoonCantonment.hpp"             // containment boundary apply (the CA-sibling driver)
 #include "../ChangeAlleyTransforms.hpp"           // restructure verbs (§10)
 
 // LOCK_SCOPE_MENU: this file hard-codes SB_CA_R/M bit values (1<<4 / 1<<5) in the scatter-scope fire
@@ -20,25 +23,23 @@ static_assert((uint32_t)dotModular::SB_CA_M == (1u << 5), "CA_M bit out of sync 
 
 using namespace rack;
 
-// Who owns V1/mono direction on `lane`? The ONE place that decides — see the header.
-// Precedence:
-//   Mono present and owns the lane  -> Mono's cell   (Mono always owns VAR/LEG)
-//   otherwise Macro present         -> Macro's cell  (lanes 0..3 only; Macro has no VAR/LEG)
-//   otherwise East present          -> East's V1 slot (East is the mono editor)
-//   otherwise                       -> nothing (caller leaves the lane Forward)
+// Who owns V1/mono direction on lane? The ONE place that decides — see the header.
+// Precedence (CC_PROMPT_UI_TO_RESOLVER_SPEC step 2, direction — the stale pre-QMIX
+// `lane >= 4` carve-out DELETED, resolving the flagged CC_PROMPT_08 artifact):
+//   Macro present  -> Macro's GLOBAL cell, ALL 7 lanes (delegated; Macro's globalDir
+//                     store is 7-wide and the POLY direction push already follows it
+//                     on every lane via redDot::resolveDirItem — the mono push now
+//                     matches: VAR/LEG follow Macro like 0-4)
+//   otherwise East -> East's V1 slot (East is the mono editor)
+//   otherwise      -> nothing (caller leaves the lane Forward)
 MonsoonExpanderManager::MonoDirSrc MonsoonExpanderManager::monoDirAuthority(int lane) const {
     MonoDirSrc r;
     if (lane < 0 || lane >= dotModular::NUM_STRANDS) return r;
     // (monoVis removed — Mono killed Step 6, cachedSandsVisualExpander always null)
     auto* macroVis = cachedMacroSandsVisual;
     auto* eastVis  = cachedEastSandsVisual;
-    const bool varleg = (lane >= 4);          // VARIATION / LEGATO: Macro has no such lane
-
-    // (Mono killed Step 6 — cachedSandsVisualExpander always null, if(monoVis) block removed)
-    if (macroVis && !varleg) { r.mod = macroVis; r.eastMonoLane = lane; r.macroGlobal = true; return r; }
-    // No Mono, and either no Macro or a VAR/LEG lane Macro cannot own -> East's V1 slot.
-    // This is the arm that was missing: with Macro attached, V1's VAR/LEG had NO source, so
-    // those lanes were pinned Forward and East's DirCell for them did nothing.
+    if (macroVis) { r.mod = macroVis; r.eastMonoLane = lane; r.macroGlobal = true; return r; }
+    // No Macro -> East's V1 slot.
     if (eastVis) { r.mod = eastVis; r.eastMonoLane = lane; return r; }   // field-backed (Monsoon::editor.laneDir V1 slot)
     return r;
 }
@@ -65,27 +66,9 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
     // STEP 3: single-authority config classification (presence-only — enough for the
     // solo/none write guards; per-lane ownership inputs are filled in later steps when
     // the combination guards migrate). See docs/design/SANDS_TOPOLOGY_RESOLVER_PLAN.md.
-    dotModular::SandsTopology::Inputs topoIn;
-    fillPresence(topoIn, engine.numPolyVoices);   // single presence authority
-    // STEP 5b: populate per-voice East ownership so the topology can drive the POLY write
-    // guards (not just presence/V1). Source is East's persistent ownerId (engine-ordered)
-    // and monoOwnerId; converted to editor lane so topo speaks editor lane (decision 1).
-    // Now 5 poly lanes: MEL/OCT/QMIX/REST/ACC (editor order).
-    if (cachedEastSandsVisual) {
-        Monsoon* mmTopo = owner;   // back-pointer (set in Monsoon::process)
-        // No Macro → East is the sole owner of V1 (and everything). Without this,
-        // getMonoMacroOwn returns false (row 15 defaults to 0), so V1's owner resolves
-        // to MACRO in the topology → laneOwnedByMacroTopo returns true → the V1 spread
-        // knob is LOCKED (inert) and the V1 bar fill falls to engine.spreadE (stale/0).
-        const bool noMacro = (cachedMacroSandsVisual == nullptr);
-        for (int el = 0; el < dotModular::SandsGrid::POLY_LANES; ++el) {
-            const int eng = dotModular::EDITOR_TO_ENGINE_LANE_QMIX[el];
-            topoIn.eastV1Owner[el] = noMacro || (mmTopo ? mmTopo->getMacroOwn(Monsoon::kMonoMacroOwnRow, eng) > 0.5f : false);
-            for (int pv = 0; pv < 15; ++pv)
-                topoIn.eastPolyOwner[pv][el] = (mmTopo ? mmTopo->getMacroOwn(pv, eng) > 0.5f : false);
-        }
-    }
-    const dotModular::SandsTopology topo = dotModular::SandsTopology::build(topoIn);
+    // (The topology build itself is buildTopology_() below — shared with the
+    //  rate-manager producer so the two can never drift. STEP 3/5b comments live there.)
+    const dotModular::SandsTopology topo = buildTopology_(engine);
 
     // Spread interpolation is now centralised in redDot::SpreadInterp (see
     // src/dsp/SpreadInterp.hpp) — the single source of truth shared with the
@@ -95,7 +78,10 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
     // East-gated block. If East is absent or detached, the block below is skipped and this
     // stands — so "no East ⇒ follow mono" holds even after East is removed mid-session (no
     // stale Local-East state). When East IS present, the block re-asserts Local East per param.
-    for (int dv = 0; dv < 15; ++dv) { engine.setVarlegLocalEast(dv, 0, false); engine.setVarlegLocalEast(dv, 1, false); }
+    // voiceSlot convention: dv = 1..effPolyVoices (V2..V(effPolyVoices+1)).
+    // BUG FIX: was dv=0..effPolyVoices-1 (0-based poly) — V2's reset went to
+    // varlegLocalEast_[0] = V1's slot (the reader uses voiceSlot). Off-by-one.
+    for (int dv = 1; dv <= effPolyVoices; ++dv) { engine.setVarlegLocalEast(dotModular::VoiceResolver::slot(dv + 1), 0, false); engine.setVarlegLocalEast(dotModular::VoiceResolver::slot(dv + 1), 1, false); }
 
     // Change Alley V2: single module, runs INDEPENDENTLY of the old Change Alley.
     // (The V2 application was nested inside if(cachedChangeAlleyExpander) and never fired
@@ -135,24 +121,41 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
             v2->transformsAppliedThisBlock = true;   // first caller this block = the owner
         }
     }
+    // Containment (the CA sibling): SAME queue-fire semantics (phrase boundary while unlocked, or
+    // the unlock flush) and the SAME owner-guard shape. The module owns its graph + pending
+    // machinery (applyPendingTransforms -> CantonmentPending::applyAll); the manager decides WHEN
+    // and passes the operating voice count (the owner's count — the CA convention). Rate::Phrase
+    // is the boundary's first-class tier (fed in Monsoon::process right after lockManager.tick);
+    // the fire rides lockManager.queueFires() exactly like CA's ("copy CA exactly" — the build
+    // plan's TRANSFORM APPLICATION section). No live-under-lock scope bit yet (containment has no
+    // LockManager Control entry) — the axisMask defaults to the commit plane; the out-of-axis
+    // persistence machinery is core-tested (test_cantonment_pending) and narrows here when a
+    // scope bit lands.
+    if (cachedCantonment && caQueueFires && !cachedCantonment->transformsAppliedThisBlock) {
+        cachedCantonment->applyPendingTransforms(std::max(1, engine.numPolyVoices + 1));
+        cachedCantonment->transformsAppliedThisBlock = true;   // first caller this block = the owner
+    }
     // Step 3 (plans/lane_direction_homes.md): poly direction is reset-then-pushed exactly like
     // delegation above. The reset is the half that was missing while the engine was direction's
     // home: nothing cleared laneDirV_, so pulling East out of the rack left poly direction
     // applied forever. Now no East => Forward, same as no East => no delegation.
-    for (int dv = 0; dv < 15; ++dv)
+    for (int dv = 0; dv < 16; ++dv)
         for (int l = 0; l < dotModular::NUM_STRANDS; ++l)
             engine.laneDirVPending_[dv][l] = SequencerEngine::LaneDir::Forward;
     // Step 4: mono direction reset — same pattern. No expander => Forward.
     for (int l = 0; l < dotModular::NUM_STRANDS; ++l)
         engine.laneDirPending_[l] = SequencerEngine::LaneDir::Forward;
-    // Push mono direction from the owning expander.
-    // Lanes 0..3: if Mono present and owns → Mono's dirDispId; if Macro owns → Macro's dirDispId.
-    // Lanes 4..5 (VAR/LEG): Mono always owns → Mono's dirDispId.
-    // If Mono absent but Macro present → Macro's dirDispId (lanes 0..3 only).
-    // If neither Mono nor Macro → East's monoDirId (V1 slot). If nothing → Forward (reset).
+    // Push mono direction from the owning expander — ALL 7 lanes through the ONE
+    // authority (monoDirAuthority) + the ONE resolver selection (resolveDirItem /
+    // DirPolicy). Macro present → Macro's GLOBAL cell on every lane (VAR/LEG follow
+    // Macro like 0-4); else East's V1 slot; else Forward (reset). The engine consumes
+    // laneDirPending_ (advancePlayhead derives laneSign_), and the effective-direction
+    // display (the per-lane playhead cue) reads those derived signs — one resolved
+    // direction per (voice,lane), no second selection anywhere.
     //
-    // ALSO push Macro's own direction to macroLaneDir_ (always, regardless of ownership)
-    // so the engine advances macroLaneTick_ independently for Macro's playhead display.
+    // (CC_PROMPT_RETIRE_MACRO_LANE_HOLDER) the macroLaneDir_/macroLOR_ side-push is
+    // GONE with the display-only holder it fed — the Macro strip's playhead reads the
+    // engine's derived view (macroLaneDisplay) off the per-voice latched truth.
     {
         // Read through the single authority helper — the same one East's V1 gate-mod writes
         // through, so the mod can never target a store the manager isn't reading.
@@ -162,42 +165,19 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
             if (src.isField()) {
                 // Field-backed (MVC de-param): direction lives in the Monsoon store. Resolve the
                 // Monsoon from ANY owning expander (Mono/Macro/East all hang off it). macroGlobal
-                // picks Macro's globalDir vs the mono-lane dir (Mono/East V1).
+                // picks Macro's globalDir vs the mono-lane dir (Mono/East V1) — the selection +
+                // [0,3] clamp + lround ride the resolver (DirPolicy, step 4): src.macroGlobal IS
+                // the delegated flag (monoDirAuthority sets it only on the Macro-owns arm), so
+                // this is byte-identical to the old local ternary.
                 if (auto* mm = owner) {
-                    const float v = src.macroGlobal
-                        ? mm->getGlobalDir(src.eastMonoLane)
-                        : mm->getLaneDir(Monsoon::kMonoLaneDirRow, src.eastMonoLane);
-                    engine.laneDirPending_[l] = (SequencerEngine::LaneDir)(int)std::lround(
-                        math::clamp(v, 0.f, 3.f));
+                    engine.laneDirPending_[l] = (SequencerEngine::LaneDir)
+                        redDot::resolveDirItem(src.macroGlobal,
+                                               mm->getLaneDir(Monsoon::kMonoLaneDirRow, src.eastMonoLane),
+                                               mm->getGlobalDir(src.eastMonoLane));
                 }
             } else if (src.paramId >= 0) {
                 engine.laneDirPending_[l] = (SequencerEngine::LaneDir)(int)std::lround(
                     math::clamp(src.mod->params[src.paramId].getValue(), 0.f, 3.f));
-            }
-        }
-        auto* macroVis = cachedMacroSandsVisual;
-        // Push Macro's direction + LOR length to macroLaneDir_/macroLOR_ (all 4 lanes, always)
-        if (macroVis) {
-            auto* mmod = dynamic_cast<StraitsSandsMacroVisual*>(macroVis);
-            // MVC step 1c: Macro's global direction now reads from the store, not its params.
-            Monsoon* gMon = owner;   // back-pointer (set in Monsoon::process)
-            // Now 5 poly lanes: MEL/OCT/QMIX/REST/ACC (editor order).
-            for (int el = 0; el < dotModular::SandsGrid::POLY_LANES; ++el) {
-                // el = editor lane (MEL=0, OCT=1, QMIX=2, REST=3, ACC=4) = strand index
-                engine.macroLaneDir_[el] = (SequencerEngine::LaneDir)(int)std::lround(
-                    math::clamp(gMon ? gMon->getGlobalDir(el) : 0.f, 0.f, 3.f));
-                // Push Macro's own LOR length for bounce detection.
-                // macroBase is indexed by ENGINE lane (REST=0, MEL=1, OCT=2, ACC=3, QMIX=4);
-                // convert editor lane → engine lane via EDITOR_TO_ENGINE_LANE_QMIX.
-                if (mmod) {
-                    int engLane = dotModular::EDITOR_TO_ENGINE_LANE_QMIX[el];
-                    engine.macroLOR_[el] = std::max(1, (int)std::lround(mmod->macroBase[engLane][0] + mmod->macroCVDelta[engLane][0]));
-                }
-            }
-        } else {
-            for (int el = 0; el < dotModular::SandsGrid::POLY_LANES; ++el) {
-                engine.macroLaneDir_[el] = SequencerEngine::LaneDir::Forward;
-                engine.macroLOR_[el] = 16;
             }
         }
     }
@@ -235,19 +215,23 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
             || (engine.scopeLiveMask & (1u << 13)) != 0;   // QMIX own axis (SB_SANDS_Q)
         engine.pe.cachedSpreadInitialized = true;   // Stage 2a: enable step-rate refresh
 
-        for (int v = 0; v < effPolyVoices; v++) {
-            // Per-voice send/atten banks are voice-number-indexed (slot 0 = voice 1/mono, slot
-            // 1 = poly voice 2, …). Engine poly index v (0..14) is poly voice v+2; derive its
-            // 16-wide slot through the resolver so this can't drift from the asserted slot/bank
-            // invariant (slot stays off 0, the mono mix-in's slice).
-            const int slot = dotModular::VoiceResolver::voiceSlot(v + dotModular::VoiceResolver::kFirstPoly);
+        for (int v = 1; v <= effPolyVoices; v++) {
+            // v IS the voiceSlot (1..15 = V2..V16; Phase 2 unified this loop). The per-voice
+            // store banks (lorBase/spread/macroAtten/macroSend) are slot-indexed (slot 0 =
+            // V1/mono, slot k = V(k+1)) — use v directly.
+            // DOUBLE-CONVERSION FIX: this was voiceSlot(v + kFirstPoly), written when v was a
+            // 0-based poly bank index. After the loop became slot-based it computed v+1, so
+            // every voice read the NEXT voice's store slot (V16 read slot 16, out of bounds) —
+            // the "spread knob doesn't move voices-2+ probability bars" bug. Same class as the
+            // polyVoice() display fix (2b9d5ec5).
+            const int slot = v;
 
             // East's own base+CV for an L/O/R item. bank 0..3 = REST/MEL/OCT/ACC (== the
             // engine lane), item 0/1/2 = LEN/OFF/ROT. Base comes from the unified per-voice
             // store (Monsoon::editor.lorBase); r,c are the East CV jack coords.
-            auto eastLorVal = [&](int bank, int item, int r, int c, float lo, float hi)-> float {
+            auto eastLorVal = [&](int bank, int item, int r, int c, float lo, float hi, bool withCv = true)-> float {
                 float base = mmOwn ? mmOwn->getLorBase(slot, bank, item) : 0.f;
-                if (eastVisual && eastVisual->inputs[cvId(r,c)].isConnected()) {
+                if (withCv && eastVisual && eastVisual->inputs[cvId(r,c)].isConnected()) {
                     float att = mmOwn ? mmOwn->getMacroAtten(slot, r*4 + c) : 0.f;   // PER-VOICE depth
                     float cv  = eastVisual->inputs[cvId(r,c)].getPolyVoltage(v) / 10.f;
                     base = math::clamp(base + cv * att * (hi - lo), lo, hi);
@@ -258,34 +242,80 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
             //   lane: 0/1/2/3 (REST/MEL/OCT/ACC, also the lorBase bank)   item: 0/1/2 (LEN/OFF/ROT)
             //   r,c: East CV jack row/col
             auto combineLOR = [&](int lane, int item, int r, int c,
-                                  float lo, float hi)-> int {
+                                  float lo, float hi, bool withCv = true)-> int {
                 // STEP 5b: poly write ownership via the resolver. Was:
                 //   ownerEast = ownerId(v, lane) > 0.5f
-                // topo voice arg is 1-based for poly (0 = mono/V1); `lane` here is
-                // engine-ordered → convert to editor lane. Cross-check in debug.
-                const int elc = dotModular::ENGINE_LANE_TO_EDITOR_QMIX[lane];
-                const bool ownerEast = (topo.owner(v + 1, elc) == dotModular::SandsTopology::Role::EAST);
+                // owner() takes the voiceSlot (0 = V1/mono, 1..15 = V2..V16) — v already is
+                // one. (Was owner(v + 1) from the 0-based-loop era: read the NEXT voice's
+                // owner, and NONE at v=15 — fixed together with the slot double-conversion.)
+                const int elc = lane;
+                const bool ownerEast = (topo.owner(v, elc) == dotModular::SandsTopology::Role::EAST);
                 // (step 5+6 cross-check assert removed — the resolver is now the single
                 // source of truth; the old ownerId-match check fired on load-time transients
                 // during attach/teardown. Same strip as the other 7 topology cross-checks.)
-                // Macro owns → use Macro's CV-APPLIED value (base + its own main-modulator
-                // CV delta), not just the base. macroCVDelta is Macro's true POST delta
-                // (published in processDNA). Previously this used macroBase only, so a lane
-                // delegated to Macro ignored Macro's main LOR modulators on East's display.
-                // Same V1 ownership fix as combineSpread: no Macro → East owns everything.
-                float base = (ownerEast || !macroPresent) ? eastLorVal(lane, item, r, c, lo, hi)
-                                       : (macroVis->macroBase[lane][item] + macroVis->macroCVDelta[lane][item]);
-                // Macro-CV blend: only meaningful when EAST owns the lane (when Macro
-                // owns, the lane already IS the Macro value — nothing to blend). The
-                // send is a PER-VOICE attenuverter on Macro's CV contribution
-                // (macroCVDelta), summed with East's own per-voice poly-CV term that
-                // eastLorVal already folded into base. Default 0 → opt-in.
-                float blend = 0.f;
-                if (macroPresent && ownerEast) {
-                    float send = mmOwn ? mmOwn->getMacroSend(slot, lane, item) : 0.f;
-                    blend = macroVis->macroSendDelta[lane][item] * send;  // P9: tapped send delta
+                // RESOLVER STEP 3: the delegation algebra — the ownership ternary (Macro
+                // owns → Macro's CV-APPLIED value macroBase+macroCVDelta, not just the
+                // base, so a lane delegated to Macro follows Macro's main LOR modulators
+                // on East's display; no Macro → East owns everything, the V1 fallback),
+                // the P9b tap-lerp Macro-CV blend (only meaningful when EAST owns the
+                // lane — the send is a PER-VOICE attenuverter on macroCVDelta, default
+                // 0 → opt-in, summed with East's own per-voice poly-CV term that
+                // eastLorVal already folded into its result), the end-clamp and the (int)
+                // truncation — now lives in SandsModifierResolver<LorPolicy> via
+                // redDot::resolveLorItem (SandsModifierResolver.hpp). This lambda is the
+                // WIRING only: eastLorVal's port reads + the send/tap store reads + the
+                // Visual's published pre/post endpoints. BYTE-IDENTICAL to the old
+                // inline algebra (pinned by test_resolver_lor_bridge: int equality +
+                // same-BITS pre-cast float).
+                const float east = eastLorVal(lane, item, r, c, lo, hi, withCv);   // port reads + INTERMEDIATE clamp — VERBATIM, unchanged (the mid-clamp is load-bearing: clamp(clamp(base+cv)+blend), not sum-once)
+                const bool mp = macroPresent;
+                // send/tap are read ONLY under the old blend guard (macroPresent && ownerEast
+                // && mmOwn) — the same condition the old `if` used, so the no-Macro /
+                // mmOwn-null behaviour is preserved bit-for-bit.
+                const float send = (mp && ownerEast && mmOwn) ? mmOwn->getMacroSend(slot, lane, item) : 0.f;
+                // P9b: THIS voice's tap selects between the published pre/post endpoints
+                // (was the Macro-global tap baked into one macroSendDelta).
+                // (item == 3 ? 1 : 0) is a DEAD ternary — item ∈ {0,1,2} here; copy-paste
+                // residue of the shared template where item 3 meant "the spread item"
+                // (getMacroTap slot 1 = the spread kind — combineSpread passes literal 1 —
+                // slot 0 = the LOR kind). PRESERVED VERBATIM (the byte-identical law); a
+                // future cleanup may rename it to literal 0. The same residue lives at
+                // MonsoonSandsManager.cpp:306 and :534.
+                const float tap = (mp && ownerEast && mmOwn) ? mmOwn->getMacroTap(slot, lane, (item == 3 ? 1 : 0)) : 1.f;
+                return redDot::resolveLorItem(ownerEast, mp, east,
+                                              macroVis ? macroVis->macroBase[lane][item] : 0.f,
+                                              (withCv && macroVis) ? macroVis->macroCVDelta[lane][item] : 0.f,
+                                              send,
+                                              (withCv && macroVis) ? macroVis->macroPreDelta[lane][item] : 0.f,
+                                              (withCv && macroVis) ? macroVis->macroPostDelta[lane][item] : 0.f,
+                                              tap, lo, hi);
+            };
+            // (CC_PROMPT_CADENCE_C1B STAGE B) the per-lane base/CV split: the store
+            // receives the BASE-only row (withCv=false — the same law, every CV term
+            // absent, the same rounding); delta = combined − base_only goes to the
+            // engine's pending lane-CV push (committed at the boundary, not folded
+            // into the base store). With no CV patched the deltas are 0 and the
+            // write is byte-identical to the pre-split combined write. The base
+            // write is lorLaneLive-gated (the base pend under lock — the mono
+            // readStrand's existing law, the poly twin); the CV pending pushes
+            // regardless (the engine's commit gate holds it there).
+            auto lorLaneLiveC1b = [&](int editorLane)->bool {
+                if (!engine.locked) return true;
+                if (editorLane == PL::PL_QMIX) return (engine.scopeLiveMask & (1u << 13)) != 0;   // SB_SANDS_Q (the mono law's own axis)
+                const bool melodyAxis = (editorLane == PL::PL_MELODY || editorLane == PL::PL_OCTAVE);
+                return dotModular::LockManager::liveNow(dotModular::Control::Lor, engine.locked, engine.scopeLiveMask, melodyAxis);
+            };
+            auto splitWriteLane = [&](int editorLane, int lane, int lenC, int offC, int rotC) {
+                const int lenB = combineLOR(lane, 0, lane, 0, 1.f, (float)dotModular::kLaneLengthMax, false);
+                const int offB = combineLOR(lane, 1, lane, 1, 0.f, (float)dotModular::kLaneOffsetMax, false);
+                const int rotB = combineLOR(lane, 2, lane, 2, 0.f, (float)std::max(0, lenC - 1), false);
+                const std::array<int, 3> d3 = { lenC - lenB, offC - offB, rotC - rotB };
+                engine.pushLaneLorCvPoly(dotModular::VoiceResolver::slot(v + 1), editorLane, d3.data());
+                if (lorLaneLiveC1b(editorLane)) {
+                    engine.polyLenERef(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{editorLane}) = lenB;
+                    engine.polyOffERef(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{editorLane}) = offB;
+                    engine.polyRotERef(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{editorLane}) = rotB;
                 }
-                return (int)math::clamp(base + blend, lo, hi);
             };
 
             // Spread (item 3) counterpart of combineLOR. owner picks East's own
@@ -299,27 +329,57 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
             // [-1,1] so Macro ownership/blend can still reach negative spread.
             auto combineSpread = [&](int lane, float eastInterpVal)-> float {
                 // STEP 5b: same poly write ownership via the resolver (spread path).
-                const int els = dotModular::ENGINE_LANE_TO_EDITOR_QMIX[lane];
-                const bool ownerEast = (topo.owner(v + 1, els) == dotModular::SandsTopology::Role::EAST);
+                // CC_PROMPT_UI_TO_RESOLVER_SPEC step 1: the delegation now rides the ONE
+                // skeleton — SandsModifierResolver<SpreadPolicy>::effective — so every
+                // spread amount the ONE effectiveProbability accessor reads is the
+                // resolver's own output (this store, cachedPolySpread, is the Owner
+                // lens's per-voice amount). BIT-IDENTICAL to the old inline shape by
+                // expression order (resolveLorValue's wiring pattern):
+                //   free      : constrain(eastVal + tappedDelta(tap)·send)
+                //               == math::clamp(base + blend)   [non-NaN; the resolver's
+                //               max/min constrain form differs only on NaN — the
+                //               documented one-convention-for-the-resolver-file rule]
+                //   delegated : constrain(macroBase + macroCVDelta)
+                //               == math::clamp(macroBase[lane][3] + macroCVDelta[lane][3])
+                // The delegated branch NEUTRALIZES the tap (pre == post == macroCVDelta):
+                // the old delegated delta was the POST value directly — no lerp, no send.
+                const int els = lane;
+                const bool ownerEast = (topo.owner(v, els) == dotModular::SandsTopology::Role::EAST);
                 // (step 5+6 cross-check assert removed — see the poly-write path above.)
                 // No Macro → East is the sole owner (including V1). Only delegate to Macro
                 // when Macro is actually present AND owns the lane. Without this, V1's
                 // owner defaulted to Macro (getMonoMacroOwn returns false without Macro
                 // ever connected), suppressing East's V1 spread → bars flat.
-                float base = (ownerEast || !macroPresent) ? eastInterpVal
-                                       : (macroVis->macroBase[lane][3] + macroVis->macroCVDelta[lane][3]);
-                float blend = 0.f;
-                if (macroPresent && ownerEast) {
-                    float send = mmOwn ? mmOwn->getMacroSend(slot, lane, 3) : 0.f;
-                    blend = macroVis->macroSendDelta[lane][3] * send;  // P9: tapped send delta
+                redDot::SpreadResolver::Inputs sin;
+                sin.delegated    = !ownerEast && macroPresent;
+                sin.macroPresent = macroPresent;
+                if (sin.delegated) {
+                    sin.macroBase      = macroVis->macroBase[lane][3];
+                    sin.macroPreDelta  = macroVis->macroCVDelta[lane][3];   // NEUTRALIZE the tap: pre == post
+                    sin.macroPostDelta = macroVis->macroCVDelta[lane][3];   // → the lerp yields macroCVDelta bit-exactly
+                } else {
+                    sin.base = eastInterpVal;
+                    if (macroPresent && ownerEast) {
+                        sin.macroSend      = mmOwn ? mmOwn->getMacroSend(slot, lane, 3) : 0.f;
+                        // P9b: per-voice tap (spread kind) selects between the endpoints.
+                        sin.macroPreDelta  = macroVis->macroPreDelta[lane][3];
+                        sin.macroPostDelta = macroVis->macroPostDelta[lane][3];
+                        sin.macroTap       = (mmOwn ? mmOwn->getMacroTap(slot, lane, 1) : 1.f);
+                    }
                 }
-                return math::clamp(base + blend, -1.f, 1.f);
+                return redDot::SpreadResolver::effective(sin);
             };
 
             // REST lane (0): owner+blend equation. r/c are East CV jack coords.
-            engine.polyLenERef(v, PL::PL_REST) = combineLOR(PL::PL_REST, 0, PL::PL_REST, 0, 1.f, 16.f);
-            engine.polyOffERef(v, PL::PL_REST) = combineLOR(PL::PL_REST, 1, PL::PL_REST, 1, 0.f, 15.f);
-            engine.polyRotERef(v, PL::PL_REST) = combineLOR(PL::PL_REST, 2, PL::PL_REST, 2, 0.f, 15.f);
+            // F+G (CC_FIX_VOICE_RANGE_STRIP_INTERACTION): the poly lane windows take the
+            // NAMED bounds — LEN 1..kLaneLengthMax, OFF 0..kLaneOffsetMax (was the literal
+            // 1..16/0..15 spans — the same midpoint-snap class on the poly path). The LEN
+            // lands FIRST (hoisted) so ROT's hi is the lane's own length − 1 (the lanes'
+            // rule, the same clamp the editor and pushVoiceLorEditor apply).
+            const int restLen = combineLOR(PL::PL_REST, 0, PL::PL_REST, 0, 1.f, (float)dotModular::kLaneLengthMax);
+            const int restOff = combineLOR(PL::PL_REST, 1, PL::PL_REST, 1, 0.f, (float)dotModular::kLaneOffsetMax);
+            const int restRot = combineLOR(PL::PL_REST, 2, PL::PL_REST, 2, 0.f, (float)std::max(0, restLen - 1));
+            splitWriteLane(PL::PL_REST, PL::PL_REST, restLen, restOff, restRot);
 
             // ── EAST_EXTRA_LANES: per-voice VARIATION / LEGATO LOR ────────────────────────────
             // These are mono STRANDS, not PolyLanes, so they must use the EDITOR-order accessor
@@ -342,12 +402,29 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
                 // the engine lane (5/6) — same identity the old varlegStoreBank(vl) returned.
                 // mmOwn (hoisted before the loop) is the Monsoon for eastLOR — reuse it
                 // instead of re-walking the chain per voice.
-                engine.polyLORRef(v, SE::EDITOR_LANE_VARIATION, SE::LOR_LEN) = (int)std::lround(eastLorVal(PL::PL_VARIATION, 0, PL::PL_VARIATION, 0, 1.f, 16.f));
-                engine.polyLORRef(v, SE::EDITOR_LANE_VARIATION, SE::LOR_OFF) = (int)std::lround(eastLorVal(PL::PL_VARIATION, 1, PL::PL_VARIATION, 1, 0.f, 15.f));
-                engine.polyLORRef(v, SE::EDITOR_LANE_VARIATION, SE::LOR_ROT) = (int)std::lround(eastLorVal(PL::PL_VARIATION, 2, PL::PL_VARIATION, 2, 0.f, 15.f));
-                engine.polyLORRef(v, SE::EDITOR_LANE_LEGATO,    SE::LOR_LEN) = (int)std::lround(eastLorVal(PL::PL_LEGATO,    0, PL::PL_LEGATO,    0, 1.f, 16.f));
-                engine.polyLORRef(v, SE::EDITOR_LANE_LEGATO,    SE::LOR_OFF) = (int)std::lround(eastLorVal(PL::PL_LEGATO,    1, PL::PL_LEGATO,    1, 0.f, 15.f));
-                engine.polyLORRef(v, SE::EDITOR_LANE_LEGATO,    SE::LOR_ROT) = (int)std::lround(eastLorVal(PL::PL_LEGATO,    2, PL::PL_LEGATO,    2, 0.f, 15.f));
+                // F+G: the named bounds; each lane's LEN lands first (hoisted) so its
+                // ROT hi is that lane's length − 1 (the lanes' rule; eastLorVal returns
+                // the base UNCLAMPED when the CV jack is unpatched, hence max(0,·)).
+                // (C1b Stage B) the VAR/LEG split (the splitWriteLane law, eastLorVal
+                // form — no Macro blend on these lanes): the store gets the base-only
+                // row, the delta pushes to the pending, the base write is gated.
+                auto splitWriteVarleg = [&](int editorLane, int bank) {
+                    const int lenC = (int)std::lround(eastLorVal(bank, 0, bank, 0, 1.f, (float)dotModular::kLaneLengthMax));
+                    const int offC = (int)std::lround(eastLorVal(bank, 1, bank, 1, 0.f, (float)dotModular::kLaneOffsetMax));
+                    const int rotC = (int)std::lround(eastLorVal(bank, 2, bank, 2, 0.f, std::max(0.f, (float)lenC - 1.f)));
+                    const int lenB = (int)std::lround(eastLorVal(bank, 0, bank, 0, 1.f, (float)dotModular::kLaneLengthMax, false));
+                    const int offB = (int)std::lround(eastLorVal(bank, 1, bank, 1, 0.f, (float)dotModular::kLaneOffsetMax, false));
+                    const int rotB = (int)std::lround(eastLorVal(bank, 2, bank, 2, 0.f, std::max(0.f, (float)lenC - 1.f), false));
+                    const std::array<int, 3> d3 = { lenC - lenB, offC - offB, rotC - rotB };
+                    engine.pushLaneLorCvPoly(dotModular::VoiceResolver::slot(v + 1), editorLane, d3.data());
+                    if (lorLaneLiveC1b(editorLane)) {
+                        engine.polyLORRef(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{editorLane}, SE::LOR_LEN)  = lenB;
+                        engine.polyLORRef(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{editorLane}, SE::LOR_OFF)  = offB;
+                        engine.polyLORRef(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{editorLane}, SE::LOR_ROT)  = rotB;
+                    }
+                };
+                splitWriteVarleg(SE::EDITOR_LANE_VARIATION, PL::PL_VARIATION);
+                splitWriteVarleg(SE::EDITOR_LANE_LEGATO,    PL::PL_LEGATO);
 
                 // Delegation toggles (§4d): 0 = follow mono (default, silent), 1 = Local East.
                 // When Local East, the LOR pushed above is read; when delegating, the engine
@@ -356,8 +433,8 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
                 // Local East — the two flags are unified so taking East ownership of a VAR/LEG
                 // lane automatically un-delegates (otherwise the per-voice LOR is written but
                 // short-circuited by varlegDelegated before generation reads it).
-                engine.setVarlegLocalEast(v, 0, mmOwn && (mmOwn->getVarlegDeleg(v, 0) > 0.5f || mmOwn->getMacroOwn(v, PL::PL_VARIATION) > 0.5f));
-                engine.setVarlegLocalEast(v, 1, mmOwn && (mmOwn->getVarlegDeleg(v, 1) > 0.5f || mmOwn->getMacroOwn(v, PL::PL_LEGATO)    > 0.5f));
+                engine.setVarlegLocalEast(dotModular::VoiceResolver::slot(v + 1), 0, mmOwn && (mmOwn->getVarlegDeleg(v, 0) > 0.5f || mmOwn->ownerIsEast(v, PL::PL_VARIATION)));
+                engine.setVarlegLocalEast(dotModular::VoiceResolver::slot(v + 1), 1, mmOwn && (mmOwn->getVarlegDeleg(v, 1) > 0.5f || mmOwn->ownerIsEast(v, PL::PL_LEGATO)));
 
                 // Per-voice LANE DIRECTION, from East's bank — same shape as the delegation
                 // push above. This is what frees direction from the widget: the editor owns the
@@ -369,22 +446,29 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
                 // with laneDirSign(Pendulum)=+1 every pass and the lane would never turn around.
                 if (mmOwn) {
                     for (int l = 0; l < dotModular::NUM_STRANDS; ++l) {
-                        // MVC: resolve through ownership — delegated to Macro → Macro's globalDir;
-                        // else the voice's own getLaneDir (cached for reclaim). Lanes 4/5 (VAR/LEG)
-                        // have no Macro ownership, so always use the voice's getLaneDir.
-                        // NOTE: getMacroOwn/getGlobalDir take ENGINE lane (REST=0,MEL=1,OCT=2,ACC=3),
-                        // but l is a STRAND (== editor lane: MEL=0,OCT=1,QMIX=2,REST=3,ACC=4). Convert.
-                        float dirVal;
-                        if (l < dotModular::SandsGrid::POLY_LANES) {
-                            int engLane = dotModular::EDITOR_TO_ENGINE_LANE_QMIX[l];
-                            dirVal = (mmOwn->getMacroOwn(v, engLane) > 0.5f)
-                                   ? mmOwn->getLaneDir(v, l)       // East owns → voice's own (cached)
-                                   : mmOwn->getGlobalDir(engLane);  // Macro owns → Macro's global
-                        } else {
-                            dirVal = mmOwn->getLaneDir(v, l);      // VAR/LEG: always voice's own
-                        }
-                        int dv = (int)std::lround(math::clamp(dirVal, 0.f, 3.f));
-                        engine.laneDirVPending_[v][l] = (SequencerEngine::LaneDir)dv;
+                        // MVC: resolve through ownership, UNIFORM across all 7 lanes — Macro owns
+                        // → Macro's globalDir; East owns → the voice's own getLaneDir (cached for
+                        // reclaim). VAR/LEG are full lanes: they follow Macro IFF their store
+                        // ownership flag says so, exactly like every other lane. (The old
+                        // `l < POLY_LANES` else-arm — "Lanes 4/5 (VAR/LEG) have no Macro
+                        // ownership" — was DEAD CODE: this loop runs l < NUM_STRANDS and
+                        // NUM_STRANDS == POLY_LANES == 7, static_asserted in ui/SandsGrid.hpp;
+                        // deleted together with its stale comment.)
+                        // Resolver step 4: the selection + [0,3] clamp + lround ride
+                        // SandsModifierResolver<DirPolicy> — redDot::resolveDirItem —
+                        // byte-identical to the old local ternary.
+                        // Layer-2 §3 DECIDED — option B (Rodney 2026-10-21): delegated is
+                        // the TOPOLOGY answer (owner()==MACRO), not a raw store read;
+                        // direction joins warp's semantics ("Direction can't get anything
+                        // from a missing module"). Byte-identical in every Macro-attached
+                        // state (macroPresent parity verified); the ONE changed state is
+                        // no-Macro ∧ store-0, where delegated flips true→false and
+                        // direction plays East's own per the 3-case rule (case 1).
+                        // getMacroOwn/getGlobalDir take the unified lane order — same as l
+                        // (editor == engine == strand) — so l passes through directly.
+                        const bool delegated = (topo.owner(v, l) == dotModular::SandsTopology::Role::MACRO);
+                        engine.laneDirVPending_[v][l] = (SequencerEngine::LaneDir)
+                            redDot::resolveDirItem(delegated, mmOwn->getLaneDir(v, l), mmOwn->getGlobalDir(l));
                     }
                 }
 #if RULE2_DEBUG
@@ -398,9 +482,9 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
                             v,
                             (mmOwn ? mmOwn->getVarlegDeleg(v, 0) : 0.f),
                             (mmOwn ? mmOwn->getVarlegDeleg(v, 1) : 0.f),
-                            (int)std::lround(math::clamp(mmOwn ? mmOwn->getLorBase(slot, legBank, 0) : 16.f, 1.f, 16.f)),
-                            (int)std::lround(math::clamp(mmOwn ? mmOwn->getLorBase(slot, legBank, 1) : 0.f, 0.f, 15.f)),
-                            (int)std::lround(math::clamp(mmOwn ? mmOwn->getLorBase(slot, legBank, 2) : 0.f, 0.f, 15.f)));
+                            (int)std::lround(math::clamp(mmOwn ? mmOwn->getLorBase(slot, legBank, 0) : 16.f, 1.f, (float)dotModular::kLaneLengthMax)),
+                            (int)std::lround(math::clamp(mmOwn ? mmOwn->getLorBase(slot, legBank, 1) : 0.f, 0.f, (float)dotModular::kLaneOffsetMax)),
+                            (int)std::lround(math::clamp(mmOwn ? mmOwn->getLorBase(slot, legBank, 2) : 0.f, 0.f, (float)dotModular::kLaneOffsetMax)));
                 }
 #endif
             }
@@ -429,15 +513,16 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
             engine.pe.cachedPolySpread[v][PL::PL_REST] = restInterp;   // Stage 2a: cache for step-rate refresh
 
             // if (deepEast) {
-            //     engine.voices[v].restProb = deepEast->params[MonsoonIds::POLY_REST_PARAM_1 + v].getValue();
+            //     engine.voices[dotModular::VoiceResolver::slot(v + 1)].restProb = deepEast->params[MonsoonIds::POLY_REST_PARAM_1 + v].getValue();
             // }
 
             // Stage 2a: removed full-field applyPoly loop — engine refreshes at step advance
             
             float melodyInterp = mmOwn ? mmOwn->getSpread(slot, PL::PL_MELODY) : 0.f;
-            engine.polyLenERef(v, PL::PL_MELODY) = combineLOR(PL::PL_MELODY, 0, PL::PL_MELODY, 0, 1.f, 16.f);
-            engine.polyOffERef(v, PL::PL_MELODY) = combineLOR(PL::PL_MELODY, 1, PL::PL_MELODY, 1, 0.f, 15.f);
-            engine.polyRotERef(v, PL::PL_MELODY) = combineLOR(PL::PL_MELODY, 2, PL::PL_MELODY, 2, 0.f, 15.f);
+            const int melLen = combineLOR(PL::PL_MELODY, 0, PL::PL_MELODY, 0, 1.f, (float)dotModular::kLaneLengthMax);
+            const int melOff = combineLOR(PL::PL_MELODY, 1, PL::PL_MELODY, 1, 0.f, (float)dotModular::kLaneOffsetMax);
+            const int melRot = combineLOR(PL::PL_MELODY, 2, PL::PL_MELODY, 2, 0.f, (float)std::max(0, melLen - 1));
+            splitWriteLane(PL::PL_MELODY, PL::PL_MELODY, melLen, melOff, melRot);
             if (eastVisual && eastVisual->inputs[cvId(PL::PL_MELODY,3)].isConnected()) {
                 float att = mmOwn ? mmOwn->getMacroAtten(slot, PL::PL_MELODY*4 + 3) : 0.f;   // PER-VOICE depth
                 float cv  = eastVisual->inputs[cvId(PL::PL_MELODY,3)].getPolyVoltage(v) / 10.f;
@@ -457,9 +542,10 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
             //     engine.polyRotERef(v, 1) = (int)deepEast->params[melodyBase + 2].getValue();
             // }
             
-            engine.polyLenERef(v, PL::PL_OCTAVE) = combineLOR(PL::PL_OCTAVE, 0, PL::PL_OCTAVE, 0, 1.f, 16.f);
-            engine.polyOffERef(v, PL::PL_OCTAVE) = combineLOR(PL::PL_OCTAVE, 1, PL::PL_OCTAVE, 1, 0.f, 15.f);
-            engine.polyRotERef(v, PL::PL_OCTAVE) = combineLOR(PL::PL_OCTAVE, 2, PL::PL_OCTAVE, 2, 0.f, 15.f);
+            const int octLen = combineLOR(PL::PL_OCTAVE, 0, PL::PL_OCTAVE, 0, 1.f, (float)dotModular::kLaneLengthMax);
+            const int octOff = combineLOR(PL::PL_OCTAVE, 1, PL::PL_OCTAVE, 1, 0.f, (float)dotModular::kLaneOffsetMax);
+            const int octRot = combineLOR(PL::PL_OCTAVE, 2, PL::PL_OCTAVE, 2, 0.f, (float)std::max(0, octLen - 1));
+            splitWriteLane(PL::PL_OCTAVE, PL::PL_OCTAVE, octLen, octOff, octRot);
 
             float octaveInterp = mmOwn ? mmOwn->getSpread(slot, PL::PL_OCTAVE) : 0.f;
             if (eastVisual && eastVisual->inputs[cvId(PL::PL_OCTAVE,3)].isConnected()) {
@@ -481,9 +567,10 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
             // directly and bypassed combineLOR, so the accent send did nothing while the other
             // three lanes worked).
             {
-                engine.polyLenERef(v, PL::PL_ACCENT) = combineLOR(PL::PL_ACCENT, 0, PL::PL_ACCENT, 0, 1.f, 16.f);
-                engine.polyOffERef(v, PL::PL_ACCENT) = combineLOR(PL::PL_ACCENT, 1, PL::PL_ACCENT, 1, 0.f, 15.f);
-                engine.polyRotERef(v, PL::PL_ACCENT) = combineLOR(PL::PL_ACCENT, 2, PL::PL_ACCENT, 2, 0.f, 15.f);
+                const int accLen = combineLOR(PL::PL_ACCENT, 0, PL::PL_ACCENT, 0, 1.f, (float)dotModular::kLaneLengthMax);
+                const int accOff = combineLOR(PL::PL_ACCENT, 1, PL::PL_ACCENT, 1, 0.f, (float)dotModular::kLaneOffsetMax);
+                const int accRot = combineLOR(PL::PL_ACCENT, 2, PL::PL_ACCENT, 2, 0.f, (float)std::max(0, accLen - 1));
+                splitWriteLane(PL::PL_ACCENT, PL::PL_ACCENT, accLen, accOff, accRot);
                 float accentInterp = math::clamp(mmOwn ? mmOwn->getSpread(slot, PL::PL_ACCENT) : 0.f, -1.f, 1.f);
                 // Accent spread CV (cvId(PL_ACCENT,3)) — was missing, so accent spread
                 // only responded to the manual knob, never to modulation. Mirror the
@@ -508,9 +595,10 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
             // editing QMIX LOR on poly voices had no effect (the comment claimed a "main
             // POLY_LANES combineLOR loop above" that never existed; each lane was individual).
             {
-                engine.polyLenERef(v, PL::PL_QMIX) = combineLOR(PL::PL_QMIX, 0, PL::PL_QMIX, 0, 1.f, 16.f);
-                engine.polyOffERef(v, PL::PL_QMIX) = combineLOR(PL::PL_QMIX, 1, PL::PL_QMIX, 1, 0.f, 15.f);
-                engine.polyRotERef(v, PL::PL_QMIX) = combineLOR(PL::PL_QMIX, 2, PL::PL_QMIX, 2, 0.f, 15.f);
+                const int qmxLen = combineLOR(PL::PL_QMIX, 0, PL::PL_QMIX, 0, 1.f, (float)dotModular::kLaneLengthMax);
+                const int qmxOff = combineLOR(PL::PL_QMIX, 1, PL::PL_QMIX, 1, 0.f, (float)dotModular::kLaneOffsetMax);
+                const int qmxRot = combineLOR(PL::PL_QMIX, 2, PL::PL_QMIX, 2, 0.f, (float)std::max(0, qmxLen - 1));
+                splitWriteLane(PL::PL_QMIX, PL::PL_QMIX, qmxLen, qmxOff, qmxRot);
                 float qmixInterp = math::clamp(mmOwn ? mmOwn->getSpread(slot, PL::PL_QMIX) : 0.f, -1.f, 1.f);
                 if (eastVisual && eastVisual->inputs[cvId(PL::PL_QMIX,3)].isConnected()) {
                     float att = mmOwn ? mmOwn->getMacroAtten(slot, PL::PL_QMIX*4 + 3) : 0.f;   // PER-VOICE depth
@@ -617,106 +705,354 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
         //     }
         // }
     }
-    else if (cachedMacroSandsVisual && polyBaseActive) {
-        // ── MACRO-ONLY poly path (no East visual) ────────────────────────────
-        // When Macro is the sole Sands visual editor, Macro OWNS every lane, so its
-        // GLOBAL per-lane values drive all voices (there are no per-voice East params
-        // and no ownership split). The East-gated block above is the ONLY other writer
-        // of engine.polyLen/Off/Rot and the spread-applied polyRhythmRandom — so without
-        // this, Macro-only left polyLen at defaults and polyRhythmRandom un-spread
-        // (LOR only appeared to work because the WIDGET draws its window from Macro's own
-        // params; the engine never saw it). macroBase/macroSendDelta are published by
-        // MonsoonSandsManager::processDNA (macroDrivesOutput is true here).
-        using namespace StraitsMacroVisualIds;
-        auto* macroVis = cachedMacroSandsVisual;
-        // Spread scope (LOCK_SCOPE_MENU): PER-AXIS. msR gates rhythm arrays (rhythm/accent), msM the
-        // melody arrays (melody/octave), for both the V1 mono finals and the poly voices. The LOR
-        // sub-loop inside keeps its OWN per-strand Lor gate (LOR runs under lock; spread does not).
-        // Stage 2a: cache spread lock axes for step-rate refresh
-        engine.pe.cachedSpreadLiveR = dotModular::LockManager::liveNow(dotModular::Control::Spread, engine.locked, engine.scopeLiveMask, /*melodyAxis=*/false);
-        engine.pe.cachedSpreadLiveM = dotModular::LockManager::liveNow(dotModular::Control::Spread, engine.locked, engine.scopeLiveMask, /*melodyAxis=*/true);
-        engine.pe.cachedSpreadLiveQ = !engine.locked || (engine.scopeLiveMask & (1u << 13)) != 0;   // == dotModular::SB_SANDS_Q (q-mix own axis)
-        engine.pe.cachedSpreadInitialized = true;   // Stage 2a: enable step-rate refresh
-        const bool msR = engine.pe.cachedSpreadLiveR;
-        const bool msM = engine.pe.cachedSpreadLiveM;
-        const bool msQ = engine.pe.cachedSpreadLiveQ;
-        if (msR || msM || msQ) {
-            // V1 (mono final arrays + mono strand LOR): Macro owns V1 too when it is the
-            // sole visual. The hasMonoVisual block (which normally does this) is skipped
-            // with no Mono editor, so apply Macro's global LOR/spread to the mono strand
-            // here. (engine strand order: REST/MEL/OCT/ACC = macroBase lanes 0/1/2/3.)
-            // BUT: when a Mono visual IS present, Mono owns V1 per-lane and
-            // MonsoonSandsManager::readStrand already writes the mono strands/finals from
-            // Mono's own params (respecting each lane's owner). Writing them here too would
-            // clobber Mono's V1 LOR every frame with Macro's global base — the editor's
-            // window then never matched the edit values (uneditable-looking V1 in
-            // Mono+Macro). So skip the V1/mono-strand writes when Mono is attached; the
-            // poly-voice writes below still run (Mono only owns V1, not V2+).
-            // STEP 3 migration: this V1/mono-strand sub-block is the MACRO_SOLE case.
-            // At this site East-visual is absent (the East branch above is an `if`, this
-            // is its `else if`), so "no Mono" here means exactly MACRO_SOLE.
-            if (topo.config == dotModular::SandsTopology::Config::MACRO_SOLE) {
-                const float spR = math::clamp(macroVis->macroBase[PL::PL_REST][3]   + macroVis->macroSendDelta[PL::PL_REST][3],   -1.f, 1.f);
-                const float spM = math::clamp(macroVis->macroBase[PL::PL_MELODY][3] + macroVis->macroSendDelta[PL::PL_MELODY][3], -1.f, 1.f);
-                const float spO = math::clamp(macroVis->macroBase[PL::PL_OCTAVE][3] + macroVis->macroSendDelta[PL::PL_OCTAVE][3], -1.f, 1.f);
-                const float spA = math::clamp(macroVis->macroBase[PL::PL_ACCENT][3] + macroVis->macroSendDelta[PL::PL_ACCENT][3], -1.f, 1.f);
-                const float spQ = math::clamp(macroVis->macroBase[PL::PL_QMIX][3]   + macroVis->macroSendDelta[PL::PL_QMIX][3],   -1.f, 1.f);   // QMIX (Task 4c)
-                for (int j = 0; j < 16; ++j) {
-                    if (msR) {
-                        engine.pe.rhythmRandom[j] = redDot::SpreadInterp::applyMono(engine.pe, PL::PL_REST,   j, spR);
-                        engine.pe.accentRandom[j] = redDot::SpreadInterp::applyMono(engine.pe, PL::PL_ACCENT, j, spA);
-                    }
-                    if (msM) {
-                        engine.pe.melodyRandom[j] = redDot::SpreadInterp::applyMono(engine.pe, PL::PL_MELODY, j, spM);
-                        engine.pe.octaveRandom[j] = redDot::SpreadInterp::applyMono(engine.pe, PL::PL_OCTAVE, j, spO);
-                    }
-                    if (msQ) {
-                        engine.pe.qmixRandom[j]   = redDot::SpreadInterp::applyMono(engine.pe, PL::PL_QMIX,   j, spQ);   // QMIX own axis (SB_SANDS_Q)
-                    }
+    // ── RATE MANAGER (CC_PROMPT_RATE_MANAGER_START, Stage 0 / S0b) ─────────────────
+    // The MACRO-ONLY poly path (no East visual) WAS HERE — it is now the FIRST
+    // Control-rate producer (macroPopulationProduce_ below), declared once via
+    // declareRateProducers() and dispatched by Monsoon::process at this tick position
+    // (between lockManager.tick and sync), with a skip-on-unchanged input+produced-cells
+    // fingerprint. The measured Macro-only 3% (controlDiv sync 515-578 ns/sample vs 33
+    // East+Macro) was this block re-populating 15×7 LOR cells + spread taps
+    // unconditionally ~1500×/s. Behaviour-identical: same writes, same order, same
+    // liveness gates — verbatim extraction; the guard (macroPopulationActive_) is the
+    // else-if reachability recomputed.
+}
+
+// ── RATE MANAGER (Stage 0) ─────────────────────────────────────────────────────
+// The topology build sync's head used inline; shared with the producer so the two can
+// never drift. STEP 3: single-authority config classification (presence-only — enough
+// for the solo/none write guards; per-lane ownership inputs are filled in later steps
+// when the combination guards migrate). See docs/design/SANDS_TOPOLOGY_RESOLVER_PLAN.md.
+dotModular::SandsTopology MonsoonExpanderManager::buildTopology_(const SequencerEngine& engine) const {
+    dotModular::SandsTopology::Inputs topoIn;
+    fillPresence(topoIn, engine.numPolyVoices);   // single presence authority
+    // STEP 5b: populate per-voice East ownership so the topology can drive the POLY write
+    // guards (not just presence/V1). Source is East's persistent ownerId (engine-ordered)
+    // and monoOwnerId; converted to editor lane so topo speaks editor lane (decision 1).
+    // Now 5 poly lanes: MEL/OCT/QMIX/REST/ACC (editor order).
+    if (cachedEastSandsVisual) {
+        Monsoon* mmTopo = owner;   // back-pointer (set in Monsoon::process)
+        // CC_PROMPT_07 → layer-2 (ZAI_PROMPT_delegation_decision.md §2A): the ONE
+        // store→topo fill is SandsTopology::Inputs::fillOwnersFromStore — the hand-written
+        // lambda is gone so the two topologies can never drift (that drift left the warp
+        // delegation matrix at its struct defaults). voiceSlot rows throughout: v=0 → V1,
+        // 1..15 → V2..V16 (the old loop stopped at effPolyVoices; the store holds all 16
+        // rows and owner() is only queried for live voices, so filling 1..15 is a safe
+        // superset). The old noMacro guard's effect lives on as the helper's !macroPresent
+        // term: no Macro attached ⇒ East is the sole owner of V1 and everything (without
+        // that term V1's spread knob locked inert and its bars fell to engine.spreadE).
+        // The helper takes the boolean store directly (editor.eastOwns) — the
+        // boolean-model migration (Rodney, 2026-10-22) removed the float `> 0.5f` and
+        // with it the last threshold between the store and the topology. The helper
+        // still cannot include Monsoon and no longer needs any of its values: plain
+        // bool*, which is exactly what keeps it rig-testable (test_ownership_flip).
+        // owner (mmTopo) is non-null here by construction: Monsoon.cpp sets
+        // expanderManager.owner = this immediately before sync() (verified at brief
+        // execution) — the old lambda's `mmTopo &&` term guarded a null that cannot be.
+        topoIn.fillOwnersFromStore(mmTopo->editor.eastOwns, /*eastPresent=*/true,
+                                   /*macroPresent=*/cachedMacroSandsVisual != nullptr);
+    }
+    return dotModular::SandsTopology::build(topoIn);
+}
+
+// The else-if reachability guard, recomputed. sync's chain is
+//   if (eastLOR && (straits || eastVisual) && polyBaseActive) { East }
+//   else if (cachedMacroSandsVisual && polyBaseActive)          { Macro-only }
+// with eastLOR == eastVisual, so the Macro-only branch is reachable iff
+//   macroVis && polyBaseActive && !(eastVisual && straits && polyBaseActive).
+// The produce must be INERT exactly when the chain would NOT reach it (the East
+// branch owns the cells then). All guard inputs are fingerprint fields too.
+bool MonsoonExpanderManager::macroPopulationActive_(const SequencerEngine& engine) const {
+    const bool straits = cachedPolyVoiceExpander != nullptr;
+    const bool eastVisual = cachedEastSandsVisual != nullptr;
+    const bool polyBaseActive = straits && engine.numPolyVoices >= 1;
+    return cachedMacroSandsVisual != nullptr && polyBaseActive && !(eastVisual && straits);
+}
+
+// D17 compare-in-place halves (the byte-image macroPopulationFingerprint_ is DELETED —
+// deletion is the enforcement). The compare's field walk is the capture's MIRROR: same
+// fields, same order, adjacent functions. The pointer words are compared FIRST so a
+// presence flip short-circuits the walk; when a pointer is null the capture stored
+// zeros for its region (the img{} zero-init below) and the compare skips the region —
+// the same information the byte image carried, read without building it. The compare
+// is what runs EVERY control tick now (previously: the full image build + copy +
+// compare); the early-out matters most here — 315 polyLOR reads + 75 tap reads sit
+// behind the first fields.
+bool MonsoonExpanderManager::macroPopulationCompare_(const SequencerEngine& engine) const {
+    using PL = SequencerEngine;
+    const PopulationSig& sig = popSig_;
+    if ((uint64_t)(uintptr_t)cachedMacroSandsVisual    != sig.macroVis)    return true;
+    if ((uint64_t)(uintptr_t)cachedEastSandsVisual     != sig.eastVisual)  return true;
+    if ((uint64_t)(uintptr_t)cachedPolyVoiceExpander   != sig.straits)     return true;
+    if ((uint64_t)(uintptr_t)cachedSandsVisualExpander != sig.monoVis)     return true;
+    const bool polyBaseActive = (cachedPolyVoiceExpander != nullptr) && (engine.numPolyVoices >= 1);
+    if ((int32_t)(polyBaseActive ? math::clamp(engine.numPolyVoices, 0, 15) : 0) != sig.effPolyVoices) return true;
+    { const uint8_t l = engine.locked ? 1 : 0;      if (l != sig.locked) return true; }
+    if (engine.scopeLiveMask != sig.scopeLiveMask) return true;
+    if (const auto* macroVis = cachedMacroSandsVisual) {
+        if (std::memcmp(macroVis->macroBase.data(), sig.macroBase.data(), sizeof sig.macroBase) != 0) return true;
+        for (int l = 0; l < 7; ++l) {
+            { const float v = macroVis->macroPreDelta[l][3];  if (std::memcmp(&v, &sig.preD3[l], sizeof v) != 0) return true; }
+            { const float v = macroVis->macroPostDelta[l][3]; if (std::memcmp(&v, &sig.postD3[l], sizeof v) != 0) return true; }
+        }
+        static const int TAPLANE[5] = { PL::PL_REST, PL::PL_MELODY, PL::PL_OCTAVE, PL::PL_ACCENT, PL::PL_QMIX };
+        // const_cast: the memo's signature takes Module* (a read-only resolve here;
+        // the compare must not mutate anything — memcmp inputs only).
+        if (const Monsoon* mmV = redDot::lookupMonsoon(const_cast<StraitsSandsMacroVisual*>(macroVis))) {
+            for (int v = 1; v <= 15; ++v)
+                for (int k = 0; k < 5; ++k) {
+                    const float t = mmV->getMacroTap(v, TAPLANE[k], 1);
+                    if (std::memcmp(&t, &sig.tapPost[v - 1][k], sizeof t) != 0) return true;
                 }
-                // Mono strand LOR from Macro globals (REST/MEL/OCT/ACC/QMIX strands).
-                // Note: These are in ENGINE lane order (REST=0, MEL=1, OCT=2, ACC=3, QMIX=4), not editor order.
-                // SANDS CONSOLIDATION Step 1: 7 poly lanes. STRND must have 7 entries (was 5 —
-                // lane 5/6 read OOB, causing the strand=12 StrandLedger CONFLICT warning).
-                static const int STRND[7] = { dotModular::STRAND_RHYTHM, dotModular::STRAND_MELODY,
-                                              dotModular::STRAND_OCTAVE, dotModular::STRAND_ACCENT,
-                                              dotModular::STRAND_QMIX,
-                                              dotModular::STRAND_VARIATION, dotModular::STRAND_LEGATO };
-                for (int lane = 0; lane < dotModular::SandsGrid::POLY_LANES; ++lane) {
-                    // SCOPE (LOCK_SCOPE_MENU): per-strand — MELODY/OCTAVE = melody axis; QMIX = its OWN
-                    // axis (SB_SANDS_Q); else rhythm.
-                    const bool lorMelAxis = (STRND[lane] == dotModular::STRAND_MELODY || STRND[lane] == dotModular::STRAND_OCTAVE);
-                    const bool lorLive = (STRND[lane] == dotModular::STRAND_QMIX)
-                        ? (!engine.locked || (engine.scopeLiveMask & (1u << 13)) != 0)   // == dotModular::SB_SANDS_Q
-                        : dotModular::LockManager::liveNow(dotModular::Control::Lor, engine.locked, engine.scopeLiveMask, lorMelAxis);
-                    if (lorLive)   // LOR LATCH: skip re-push under lock
-                    engine.setStrand(StrandWriter::MACRO, STRND[lane],
-                                     (int)std::round(macroVis->macroBase[lane][0]),
-                                     (int)std::round(macroVis->macroBase[lane][1]),
-                                     (int)std::round(macroVis->macroBase[lane][2]));
+        } else {
+            // The null-host default the capture stores (the 1.f fill).
+            for (int v = 1; v <= 15; ++v)
+                for (int k = 0; k < 5; ++k) {
+                    const float t = 1.f;
+                    if (std::memcmp(&t, &sig.tapPost[v - 1][k], sizeof t) != 0) return true;
                 }
-            }
-            for (int v = 0; v < effPolyVoices; ++v) {
-                // Global LOR per lane (Macro owns → no per-voice/ownership branch).
-                // macroBase[lane][item]: item 0=LEN 1=OFF 2=ROT, engine-lane indexed.
-                for (int lane = 0; lane < PL::PL_LANES; ++lane) {
-                    engine.polyLenERef(v, lane) = (int)math::clamp(std::round(macroVis->macroBase[lane][0]), 1.f, 16.f);
-                    engine.polyOffERef(v, lane) = ((int)std::round(macroVis->macroBase[lane][1]) % 16 + 16) % 16;
-                    engine.polyRotERef(v, lane) = ((int)std::round(macroVis->macroBase[lane][2]) % 16 + 16) % 16;
-                }
-                // Global spread per lane → spread-applied final arrays for this voice.
-                const float spR = math::clamp(macroVis->macroBase[PL::PL_REST][3]   + macroVis->macroSendDelta[PL::PL_REST][3],   -1.f, 1.f);
-                const float spM = math::clamp(macroVis->macroBase[PL::PL_MELODY][3] + macroVis->macroSendDelta[PL::PL_MELODY][3], -1.f, 1.f);
-                const float spO = math::clamp(macroVis->macroBase[PL::PL_OCTAVE][3] + macroVis->macroSendDelta[PL::PL_OCTAVE][3], -1.f, 1.f);
-                const float spA = math::clamp(macroVis->macroBase[PL::PL_ACCENT][3] + macroVis->macroSendDelta[PL::PL_ACCENT][3], -1.f, 1.f);
-                const float spQ = math::clamp(macroVis->macroBase[PL::PL_QMIX][3]   + macroVis->macroSendDelta[PL::PL_QMIX][3],   -1.f, 1.f);   // QMIX (Task 4c)
-                // Stage 2a: cache spread values for step-rate refresh (was: full-field applyPoly loop)
-                engine.pe.cachedPolySpread[v][PL::PL_REST]   = spR;
-                engine.pe.cachedPolySpread[v][PL::PL_ACCENT] = spA;
-                engine.pe.cachedPolySpread[v][PL::PL_MELODY] = spM;
-                engine.pe.cachedPolySpread[v][PL::PL_OCTAVE] = spO;
-                engine.pe.cachedPolySpread[v][PL::PL_QMIX]   = spQ;
-            }
         }
     }
+    static const int TAPLANE2[5] = { PL::PL_REST, PL::PL_ACCENT, PL::PL_MELODY, PL::PL_OCTAVE, PL::PL_QMIX };
+    for (int v = 1; v <= 15; ++v) {
+        const auto vs = dotModular::VoiceResolver::slot(v + 1);
+        for (int lane = 0; lane < 7; ++lane) {
+            const auto lid = dotModular::LaneId{lane};
+            if (engine.polyLenE(vs, lid) != sig.polyLOR[v - 1][lane][0]) return true;
+            if (engine.polyOffE(vs, lid) != sig.polyLOR[v - 1][lane][1]) return true;
+            if (engine.polyRotE(vs, lid) != sig.polyLOR[v - 1][lane][2]) return true;
+        }
+        for (int k = 0; k < 5; ++k) {
+            const float s = engine.pe.cachedPolySpread[v][TAPLANE2[k]];
+            if (std::memcmp(&s, &sig.cachedSpread[v - 1][k], sizeof s) != 0) return true;
+        }
+    }
+    // Per-call (NOT static — a static local would freeze the first engine's array
+    // addresses; the audit's Finding-C rule). 5 pointers of stack, negligible.
+    const float* const monoFinalSrc[5] = {
+        engine.pe.rhythmRandom.data(), engine.pe.accentRandom.data(), engine.pe.melodyRandom.data(),
+        engine.pe.octaveRandom.data(), engine.pe.qmixRandom.data(),
+    };
+    for (int k = 0; k < 5; ++k)
+        if (std::memcmp(monoFinalSrc[k], sig.monoFinals[k].data(), sizeof sig.monoFinals[k]) != 0) return true;
+    for (int s = 0; s < 7; ++s)
+        for (int i = 0; i < 3; ++i)
+            if (engine.lor(s, i) != sig.strandLOR[s][i]) return true;
+    if ((uint8_t)(engine.pe.cachedSpreadLiveR ? 1 : 0)        != sig.liveR)        return true;
+    if ((uint8_t)(engine.pe.cachedSpreadLiveM ? 1 : 0)        != sig.liveM)        return true;
+    if ((uint8_t)(engine.pe.cachedSpreadLiveQ ? 1 : 0)        != sig.liveQ)        return true;
+    if ((uint8_t)(engine.pe.cachedSpreadInitialized ? 1 : 0)  != sig.spreadInited) return true;
+    return false;
+}
+
+// The capture: the old fingerprint body verbatim, landing in popSig_ instead of dst
+// (runs only after a produce — the rare path; the img{} zero-init keeps the
+// null-presence regions at zero, exactly as the byte image had them).
+void MonsoonExpanderManager::macroPopulationCapture_(const SequencerEngine& engine) {
+    using PL = SequencerEngine;
+    PopulationSig img{};
+    img.macroVis   = (uint64_t)(uintptr_t)cachedMacroSandsVisual;
+    img.eastVisual = (uint64_t)(uintptr_t)cachedEastSandsVisual;
+    img.straits    = (uint64_t)(uintptr_t)cachedPolyVoiceExpander;
+    img.monoVis    = (uint64_t)(uintptr_t)cachedSandsVisualExpander;
+    const bool polyBaseActive = (cachedPolyVoiceExpander != nullptr) && (engine.numPolyVoices >= 1);
+    img.effPolyVoices = polyBaseActive ? math::clamp(engine.numPolyVoices, 0, 15) : 0;
+    img.locked        = engine.locked ? 1 : 0;
+    img.scopeLiveMask = engine.scopeLiveMask;
+    if (const auto* macroVis = cachedMacroSandsVisual) {
+        std::memcpy(img.macroBase.data(), macroVis->macroBase.data(), sizeof img.macroBase);
+        for (int l = 0; l < 7; ++l) {
+            img.preD3[l]  = macroVis->macroPreDelta[l][3];
+            img.postD3[l] = macroVis->macroPostDelta[l][3];
+        }
+        static const int TAPLANE[5] = { PL::PL_REST, PL::PL_MELODY, PL::PL_OCTAVE, PL::PL_ACCENT, PL::PL_QMIX };
+        for (int v = 1; v <= 15; ++v)
+            for (int k = 0; k < 5; ++k)
+                img.tapPost[v - 1][k] = 1.f;   // the null-host default the produce uses
+        // const_cast: the memo's signature takes Module* (a read-only resolve here;
+        // the capture must not mutate anything — memcmp inputs only).
+        if (const Monsoon* mmV = redDot::lookupMonsoon(const_cast<StraitsSandsMacroVisual*>(macroVis)))
+            for (int v = 1; v <= 15; ++v)
+                for (int k = 0; k < 5; ++k)
+                    img.tapPost[v - 1][k] = mmV->getMacroTap(v, TAPLANE[k], 1);
+    }
+    static const int TAPLANE2[5] = { PL::PL_REST, PL::PL_ACCENT, PL::PL_MELODY, PL::PL_OCTAVE, PL::PL_QMIX };
+    for (int v = 1; v <= 15; ++v) {
+        const auto vs = dotModular::VoiceResolver::slot(v + 1);
+        for (int lane = 0; lane < 7; ++lane) {
+            const auto lid = dotModular::LaneId{lane};
+            img.polyLOR[v - 1][lane][0] = engine.polyLenE(vs, lid);
+            img.polyLOR[v - 1][lane][1] = engine.polyOffE(vs, lid);
+            img.polyLOR[v - 1][lane][2] = engine.polyRotE(vs, lid);
+        }
+        for (int k = 0; k < 5; ++k)
+            img.cachedSpread[v - 1][k] = engine.pe.cachedPolySpread[v][TAPLANE2[k]];
+    }
+    std::memcpy(img.monoFinals[0].data(), engine.pe.rhythmRandom.data(),  16 * sizeof(float));
+    std::memcpy(img.monoFinals[1].data(), engine.pe.accentRandom.data(),  16 * sizeof(float));
+    std::memcpy(img.monoFinals[2].data(), engine.pe.melodyRandom.data(),  16 * sizeof(float));
+    std::memcpy(img.monoFinals[3].data(), engine.pe.octaveRandom.data(),  16 * sizeof(float));
+    std::memcpy(img.monoFinals[4].data(), engine.pe.qmixRandom.data(),    16 * sizeof(float));
+    for (int s = 0; s < 7; ++s) {
+        img.strandLOR[s][0] = engine.lor(s, 0);
+        img.strandLOR[s][1] = engine.lor(s, 1);
+        img.strandLOR[s][2] = engine.lor(s, 2);
+    }
+    img.liveR       = engine.pe.cachedSpreadLiveR ? 1 : 0;
+    img.liveM       = engine.pe.cachedSpreadLiveM ? 1 : 0;
+    img.liveQ       = engine.pe.cachedSpreadLiveQ ? 1 : 0;
+    img.spreadInited = engine.pe.cachedSpreadInitialized ? 1 : 0;
+    popSig_ = img;
+}
+
+// The extracted MACRO-ONLY population — VERBATIM (same writes, same order, same
+// liveness gates). Runs only when the manager dispatches Control AND the fingerprint
+// changed (inputs OR a foreign write to the produced cells).
+void MonsoonExpanderManager::macroPopulationProduce_(SequencerEngine& engine) {
+    if (!macroPopulationActive_(engine)) return;
+    using PL = SequencerEngine;
+    // sync-head locals the block had in scope:
+    const bool polyBaseActive = (cachedPolyVoiceExpander != nullptr) && (engine.numPolyVoices >= 1);
+    const int  polyOutCap = polyBaseActive ? 15 : 0;
+    const int  effPolyVoices = math::clamp(engine.numPolyVoices, 0, polyOutCap);
+    const dotModular::SandsTopology topo = buildTopology_(engine);
+    // ── MACRO-ONLY poly path (no East visual) ────────────────────────────
+    // When Macro is the sole Sands visual editor, Macro OWNS every lane, so its
+    // GLOBAL per-lane values drive all voices (there are no per-voice East params
+    // and no ownership split). The East-gated block in sync is the ONLY other writer
+    // of engine.polyLen/Off/Rot and the spread-applied polyRhythmRandom — so without
+    // this, Macro-only left polyLen at defaults and polyRhythmRandom un-spread
+    // (LOR only appeared to work because the WIDGET draws its window from Macro's own
+    // params; the engine never saw it). macroBase/macroSendDelta are published by
+    // MonsoonSandsManager::processDNA (macroDrivesOutput is true here).
+    using namespace StraitsMacroVisualIds;
+    auto* macroVis = cachedMacroSandsVisual;
+    // Spread scope (LOCK_SCOPE_MENU): PER-AXIS. msR gates rhythm arrays (rhythm/accent), msM the
+    // melody arrays (melody/octave), for both the V1 mono finals and the poly voices. The LOR
+    // sub-loop inside keeps its OWN per-strand Lor gate (LOR runs under lock; spread does not).
+    // Stage 2a: cache spread lock axes for step-rate refresh
+    engine.pe.cachedSpreadLiveR = dotModular::LockManager::liveNow(dotModular::Control::Spread, engine.locked, engine.scopeLiveMask, /*melodyAxis=*/false);
+    engine.pe.cachedSpreadLiveM = dotModular::LockManager::liveNow(dotModular::Control::Spread, engine.locked, engine.scopeLiveMask, /*melodyAxis=*/true);
+    engine.pe.cachedSpreadLiveQ = !engine.locked || (engine.scopeLiveMask & (1u << 13)) != 0;   // == dotModular::SB_SANDS_Q (q-mix own axis)
+    engine.pe.cachedSpreadInitialized = true;   // Stage 2a: enable step-rate refresh
+    const bool msR = engine.pe.cachedSpreadLiveR;
+    const bool msM = engine.pe.cachedSpreadLiveM;
+    const bool msQ = engine.pe.cachedSpreadLiveQ;
+    if (msR || msM || msQ) {
+        // V1 (mono final arrays + mono strand LOR): Macro owns V1 too when it is the
+        // sole visual. The hasMonoVisual block (which normally does this) is skipped
+        // with no Mono editor, so apply Macro's global LOR/spread to the mono strand
+        // here. (engine strand order: REST/MEL/OCT/ACC = macroBase lanes 0/1/2/3.)
+        // BUT: when a Mono visual IS present, Mono owns V1 per-lane and
+        // MonsoonSandsManager::readStrand already writes the mono strands/finals from
+        // Mono's own params (respecting each lane's owner). Writing them here too would
+        // clobber Mono's V1 LOR every frame with Macro's global base — the editor's
+        // window then never matched the edit values (uneditable-looking V1 in
+        // Mono+Macro). So skip the V1/mono-strand writes when Mono is attached; the
+        // poly-voice writes below still run (Mono only owns V1, not V2+).
+        // STEP 3 migration: this V1/mono-strand sub-block is the MACRO_SOLE case.
+        // At this site East-visual is absent (the East branch is an if, this is its
+        // else), so "no Mono" here means exactly MACRO_SOLE.
+        if (topo.config == dotModular::SandsTopology::Config::MACRO_SOLE) {
+            // Macro's OWN value (it has no receiving voice) → the POST endpoint
+            // (P9b: identical to the old expression at the default tap 1.0).
+            const float spR = math::clamp(macroVis->macroBase[PL::PL_REST][3]   + macroVis->macroPostDelta[PL::PL_REST][3],   -1.f, 1.f);
+            const float spM = math::clamp(macroVis->macroBase[PL::PL_MELODY][3] + macroVis->macroPostDelta[PL::PL_MELODY][3], -1.f, 1.f);
+            const float spO = math::clamp(macroVis->macroBase[PL::PL_OCTAVE][3] + macroVis->macroPostDelta[PL::PL_OCTAVE][3], -1.f, 1.f);
+            const float spA = math::clamp(macroVis->macroBase[PL::PL_ACCENT][3] + macroVis->macroPostDelta[PL::PL_ACCENT][3], -1.f, 1.f);
+            const float spQ = math::clamp(macroVis->macroBase[PL::PL_QMIX][3]   + macroVis->macroPostDelta[PL::PL_QMIX][3],   -1.f, 1.f);   // QMIX (Task 4c)
+            for (int j = 0; j < 16; ++j) {
+                if (msR) {
+                    engine.pe.rhythmRandom[j] = redDot::SpreadInterp::applyMono(engine.pe, PL::PL_REST,   j, spR);
+                    engine.pe.accentRandom[j] = redDot::SpreadInterp::applyMono(engine.pe, PL::PL_ACCENT, j, spA);
+                }
+                if (msM) {
+                    engine.pe.melodyRandom[j] = redDot::SpreadInterp::applyMono(engine.pe, PL::PL_MELODY, j, spM);
+                    engine.pe.octaveRandom[j] = redDot::SpreadInterp::applyMono(engine.pe, PL::PL_OCTAVE, j, spO);
+                }
+                if (msQ) {
+                    engine.pe.qmixRandom[j]   = redDot::SpreadInterp::applyMono(engine.pe, PL::PL_QMIX,   j, spQ);   // QMIX own axis (SB_SANDS_Q)
+                }
+            }
+            // Warp mirror (CC_PROMPT_03): the mono writes above — refresh row 0's
+            // mirror cells (voice scope). The poly rows below only cache spread
+            // values; their random_ cells refresh at step rate (cell scope).
+            engine.pe.rebuildWarpMirrorVoice(0);
+            // Mono strand LOR from Macro globals (REST/MEL/OCT/ACC/QMIX strands).
+            // Note: These are in ENGINE lane order (REST=0, MEL=1, OCT=2, ACC=3, QMIX=4), not editor order.
+            // SANDS CONSOLIDATION Step 1: 7 poly lanes. STRND must have 7 entries (was 5 —
+            // lane 5/6 read OOB, causing the strand=12 StrandLedger CONFLICT warning).
+            static const int STRND[7] = { dotModular::STRAND_RHYTHM, dotModular::STRAND_MELODY,
+                                          dotModular::STRAND_OCTAVE, dotModular::STRAND_ACCENT,
+                                          dotModular::STRAND_QMIX,
+                                          dotModular::STRAND_VARIATION, dotModular::STRAND_LEGATO };
+            for (int lane = 0; lane < dotModular::SandsGrid::POLY_LANES; ++lane) {
+                // SCOPE (LOCK_SCOPE_MENU): per-strand — MELODY/OCTAVE = melody axis; QMIX = its OWN
+                // axis (SB_SANDS_Q); else rhythm.
+                const bool lorMelAxis = (STRND[lane] == dotModular::STRAND_MELODY || STRND[lane] == dotModular::STRAND_OCTAVE);
+                const bool lorLive = (STRND[lane] == dotModular::STRAND_QMIX)
+                    ? (!engine.locked || (engine.scopeLiveMask & (1u << 13)) != 0)   // == dotModular::SB_SANDS_Q
+                    : dotModular::LockManager::liveNow(dotModular::Control::Lor, engine.locked, engine.scopeLiveMask, lorMelAxis);
+                if (lorLive)   // LOR LATCH: skip re-push under lock
+                engine.setStrand(StrandWriter::MACRO, STRND[lane],
+                                 (int)std::round(macroVis->macroBase[lane][0]),
+                                 (int)std::round(macroVis->macroBase[lane][1]),
+                                 (int)std::round(macroVis->macroBase[lane][2]));
+            }
+        }
+        // voiceSlot loop (1..effPolyVoices = V2..V16). Slot 0 is V1, whose
+        // strands the MACRO_SOLE mono block above already writes; the old
+        // 0-based loop clobbered V1's store slot with the globals AND
+        // dropped V16 (slot 15).
+        // PERF (perf round 2): the host walk below is loop-invariant — hoisted out
+        // of the per-voice loop (was up to 15 dynamic_cast chain walks per control
+        // tick). BIT-IDENTICAL: same pure function, same argument, and the chain
+        // cannot change within one tick (Rack rewrites expander pointers
+        // between process() calls, never during one). LOOKUP AUTHORITY: the
+        // memoized lookupMonsoon — one walk per generation, not per tick.
+        auto* mmV = redDot::lookupMonsoon(macroVis);
+        for (int v = 1; v <= effPolyVoices; ++v) {
+            // Global LOR per lane (Macro owns → no per-voice/ownership branch).
+            // macroBase[lane][item]: item 0=LEN 1=OFF 2=ROT, engine-lane indexed.
+            for (int lane = 0; lane < PL::PL_LANES; ++lane) {
+                // F+G: the delegated-poly push takes the named bounds — LEN clamped to
+                // the lane length max, OFF/ROT normalised on the RING (setStrand's own
+                // law; was the literal 16 — the same fold-to-0..15 snap for Macro-authored
+                // 16..31 starts).
+                engine.polyLenERef(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{lane}) = (int)math::clamp(std::round(macroVis->macroBase[lane][0]), 1.f, (float)dotModular::kLaneLengthMax);
+                engine.polyOffERef(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{lane}) = ((int)std::round(macroVis->macroBase[lane][1]) % dotModular::kMaskRing + dotModular::kMaskRing) % dotModular::kMaskRing;
+                engine.polyRotERef(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{lane}) = ((int)std::round(macroVis->macroBase[lane][2]) % dotModular::kMaskRing + dotModular::kMaskRing) % dotModular::kMaskRing;
+            }
+            // Global spread per lane → spread-applied final arrays for this voice.
+            // P9b: each voice v selects its OWN tap between the published endpoints
+            // (this loop is per-voice — v is a receiving voice tracking Macro, so the
+            // ceding-voice rule applies, not the Macro-display rule).
+            const float tapR = (mmV ? mmV->getMacroTap(v, PL::PL_REST,   1) : 1.f);
+            const float tapM = (mmV ? mmV->getMacroTap(v, PL::PL_MELODY, 1) : 1.f);
+            const float tapO = (mmV ? mmV->getMacroTap(v, PL::PL_OCTAVE, 1) : 1.f);
+            const float tapA = (mmV ? mmV->getMacroTap(v, PL::PL_ACCENT, 1) : 1.f);
+            const float tapQ = (mmV ? mmV->getMacroTap(v, PL::PL_QMIX,   1) : 1.f);
+            const float spR = math::clamp(macroVis->macroBase[PL::PL_REST][3]   + macroVis->tappedDelta(tapR, PL::PL_REST,   3), -1.f, 1.f);
+            const float spM = math::clamp(macroVis->macroBase[PL::PL_MELODY][3] + macroVis->tappedDelta(tapM, PL::PL_MELODY, 3), -1.f, 1.f);
+            const float spO = math::clamp(macroVis->macroBase[PL::PL_OCTAVE][3] + macroVis->tappedDelta(tapO, PL::PL_OCTAVE, 3), -1.f, 1.f);
+            const float spA = math::clamp(macroVis->macroBase[PL::PL_ACCENT][3] + macroVis->tappedDelta(tapA, PL::PL_ACCENT, 3), -1.f, 1.f);
+            const float spQ = math::clamp(macroVis->macroBase[PL::PL_QMIX][3]   + macroVis->tappedDelta(tapQ, PL::PL_QMIX,   3), -1.f, 1.f);   // QMIX (Task 4c)
+            // Stage 2a: cache spread values for step-rate refresh (was: full-field applyPoly loop)
+            engine.pe.cachedPolySpread[v][PL::PL_REST]   = spR;
+            engine.pe.cachedPolySpread[v][PL::PL_ACCENT] = spA;
+            engine.pe.cachedPolySpread[v][PL::PL_MELODY] = spM;
+            engine.pe.cachedPolySpread[v][PL::PL_OCTAVE] = spO;
+            engine.pe.cachedPolySpread[v][PL::PL_QMIX]   = spQ;
+        }
+    }
+}
+
+// Declared ONCE (Monsoon's ctor). The lambdas capture the OWNER (Monsoon outlives its
+// member managers) — the engine is ownerMon.engine. Dispatch position: Monsoon::process,
+// between lockManager.tick and expanderManager.sync (the block's old tick position).
+void MonsoonExpanderManager::declareRateProducers(redDot::RateManager& rm, Monsoon& ownerMon) {
+    rm.declareProducer(
+        redDot::Rate::Control,
+        [this, &ownerMon]() -> bool { return macroPopulationCompare_(ownerMon.engine); },
+        [this, &ownerMon]()           { macroPopulationCapture_(ownerMon.engine); },
+        [this, &ownerMon]()           { macroPopulationProduce_(ownerMon.engine); });
 }

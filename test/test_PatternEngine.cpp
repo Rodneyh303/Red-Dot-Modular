@@ -50,6 +50,14 @@ static PatternEngine fresh(float rseed=0.f, float mseed=0.f) {
     return pe;
 }
 
+// (ITEM 1 — CC_PROMPT_RHYTHMPATTERN_DELETE_AND_POLARITY) rhythmPattern is RETIRED:
+// the step LEDs derive note/rest LIVE from the rest-draw row (POLARITY_TABLE §3 —
+// a step is a NOTE iff draw >= restProb, the complement of the audio's `<` → rest).
+// Every pin below derives through this helper instead of the deleted array.
+static inline bool isNoteAt(const PatternEngine& pe, int i, float restProb) {
+    return pe.warpRow(pe.displayedVoice_, dotModular::LaneId{PatternEngine::PL_REST})[i] >= restProb;
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 int main(){
     std::cout<<"\033[1mPatternEngine Tests\033[0m\n";
@@ -59,17 +67,17 @@ int main(){
     SUITE("Seed & RNG");
     // ─────────────────────────────────────────────────────────────────────────
 
-    TEST("Same seed → identical rhythm pattern", {
+    TEST("Same seed → identical rhythm pattern (the live note/rest derivation off the rest-draw row)", {
         auto p1=fresh(3.f,5.f), p2=fresh(3.f,5.f);
         PatternInput in=allActive();
         p1.redrawRhythm(in); p2.redrawRhythm(in);
-        for(int i=0;i<16;++i) EXPECT_EQ(p1.rhythmPattern[i], p2.rhythmPattern[i]);
+        for(int i=0;i<16;++i) EXPECT_EQ(isNoteAt(p1,i,in.restProb), isNoteAt(p2,i,in.restProb));
     });
 
     TEST("Different seeds → different patterns (very likely)", {
         auto p1=fresh(1.f,1.f), p2=fresh(9.f,9.f);
         PatternInput in=allActive();
-        p1.latchMix(1.f,1.f,1.f,0.f,0.f,0.f); p2.latchMix(1.f,1.f,1.f,0.f,0.f,0.f);  // scrub=6, slew=0 (independent/raw); q-mix twins
+        p1.latchMix(1.f,1.f,1.f); p2.latchMix(1.f,1.f,1.f);  // scrub=6, slew=0 init (independent/raw); q-mix twins
         p1.redrawMelody(in); p2.redrawMelody(in);
         int diffs=0;
         for(int i=0;i<16;++i) if(p1.melodySemitone[i]!=p2.melodySemitone[i]) ++diffs;
@@ -112,7 +120,8 @@ int main(){
         p2.seedRhythmPhilox(5.f);
         p2.seedMelodyPhilox(0.f);
         p2.redrawRhythm(allActive());
-        for(int i=0;i<16;++i) EXPECT_EQ(p1.rhythmPattern[i], p2.rhythmPattern[i]);
+        PatternInput in=allActive();
+        for(int i=0;i<16;++i) EXPECT_EQ(isNoteAt(p1,i,in.restProb), isNoteAt(p2,i,in.restProb));
     });
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -222,14 +231,14 @@ int main(){
         auto pe=fresh(1.f);
         PatternInput in=allActive(); in.restProb=0.f;
         pe.redrawRhythm(in);
-        for(int i=0;i<16;++i) EXPECT(pe.rhythmPattern[i]);
+        for(int i=0;i<16;++i) EXPECT(isNoteAt(pe,i,0.f));
     });
 
     TEST("restProb=1: all steps are rests", {
         auto pe=fresh(1.f);
         PatternInput in=allActive(); in.restProb=1.f;
         pe.redrawRhythm(in);
-        for(int i=0;i<16;++i) EXPECT(!pe.rhythmPattern[i]);
+        for(int i=0;i<16;++i) EXPECT(!isNoteAt(pe,i,1.f));
     });
 
     TEST("restProb=0.5: roughly half active over many redraws", {
@@ -238,7 +247,7 @@ int main(){
         int active=0;
         for(int r=0;r<100;++r){
             pe.redrawRhythm(in);
-            for(int i=0;i<16;++i) if(pe.rhythmPattern[i]) ++active;
+            for(int i=0;i<16;++i) if(isNoteAt(pe,i,0.5f)) ++active;
         }
         float ratio=float(active)/1600.f;
         EXPECT(ratio>0.35f && ratio<0.65f);
@@ -246,12 +255,16 @@ int main(){
 
     TEST("locked=true: rhythm NOT redrawn", {
         auto pe=fresh(3.f);
-        PatternInput in=allActive(); in.restProb=0.f;
+        PatternInput in=allActive(); in.restProb=0.5f;
         pe.redrawRhythm(in);
-        bool snap[16]; for(int i=0;i<16;++i) snap[i]=pe.rhythmPattern[i];
+        // (ITEM 1) snapshot the DRAW row itself — full fidelity, so a redraw under
+        // lock that moves any cell (not just across a threshold) trips the pin.
+        float snap[16]; for(int i=0;i<16;++i)
+            snap[i]=pe.warpRow(pe.displayedVoice_, dotModular::LaneId{PatternEngine::PL_REST})[i];
         in.locked=true; in.restProb=1.f;  // would flip everything
         pe.redrawRhythm(in);
-        for(int i=0;i<16;++i) EXPECT_EQ(pe.rhythmPattern[i],snap[i]);
+        for(int i=0;i<16;++i)
+            EXPECT_EQ(pe.warpRow(pe.displayedVoice_, dotModular::LaneId{PatternEngine::PL_REST})[i],snap[i]);
     });
 
     TEST("16 distinct steps generated per redraw", {
@@ -259,7 +272,7 @@ int main(){
         PatternInput in=allActive(); in.restProb=0.5f;
         pe.redrawRhythm(in);
         int count=0;
-        for(int i=0;i<16;++i) if(pe.rhythmPattern[i]) ++count;
+        for(int i=0;i<16;++i) if(isNoteAt(pe,i,0.5f)) ++count;
         EXPECT(count>=0 && count<=16);  // sanity
     });
 
@@ -308,10 +321,10 @@ int main(){
     TEST("variation=0.5 (neutral): result within ±2 of base", {
         auto pe=fresh(7.f);
         PatternInput in=allActive(); in.variationAmount=0.5f;
-        for(int base=0;base<=8;++base)
+        for(int base=0;base<NUM_NOTE_VALUES;++base)
             for(int t=0;t<20;++t){
                 int r=pe.varyNoteIndex(base,in, pe.unitRhythm());
-                EXPECT(r>=std::max(0,base-2) && r<=std::min(8,base+2));
+                EXPECT(r>=std::max(0,base-2) && r<=std::min(NUM_NOTE_VALUES-1,base+2));
             }
     });
 
@@ -331,13 +344,13 @@ int main(){
         EXPECT(sum/200.f < float(base));
     });
 
-    TEST("Result always clamped 0..8", {
+    TEST("Result always clamped 0..NUM_NOTE_VALUES-1", {
         auto pe=fresh(2.f);
         PatternInput in=allActive();
-        for(float v:{0.f,0.5f,1.f}) for(int b=0;b<=8;++b){
+        for(float v:{0.f,0.5f,1.f}) for(int b=0;b<NUM_NOTE_VALUES;++b){
             in.variationAmount=v;
             int r=pe.varyNoteIndex(b,in, pe.unitRhythm());
-            EXPECT(r>=0&&r<=8);
+            EXPECT(r>=0&&r<NUM_NOTE_VALUES);
         }
     });
 
@@ -360,52 +373,73 @@ int main(){
         PatternInput in=allActive();
         pe.redrawMelody(in);
         float snap[16]; for(int i=0;i<16;++i) snap[i]=pe.melodyPitchV[i];
-        int si=5, lsi=4;
-        pe.switchMelodyMode(si,lsi);
+        pe.switchMelodyMode();   // (4-final) parameterless — the position cache is gone
         EXPECT_EQ(pe.melodyMode,1);
         // Overwrite pattern
         in.semiWeights[0]=1.f; for(int i=1;i<12;++i) in.semiWeights[i]=0.f;
         pe.redrawMelody(in);
         // Switch back
-        pe.switchMelodyMode(si,lsi);
+        pe.switchMelodyMode();
         EXPECT_EQ(pe.melodyMode,0);
         for(int i=0;i<16;++i) EXPECT_NEAR(pe.melodyPitchV[i],snap[i],1e-5f);
     });
 
-    TEST("switchRhythmMode: dice→realtime caches rhythm pattern", {
+    TEST("switchQmixMode: dice→realtime caches the seed + the q-mix row (the lossless twin)", {
+        // (CC_PROMPT_SWITCH_QMIX_MODE_COMPLETE) the melody twin's mirror, PATTERN-ONLY.
+        // sandsActive=true: the config where recomputeEffectiveQmix's publish arm is
+        // skipped, so the restored qmixRandom SURVIVES the return the way melodyPitchV
+        // survives the melody twin (the melody recompute never writes it). In the
+        // default config the recompute re-derives the row from the draw counter — the
+        // real restore either way; this test pins the cached-row round-trip.
+        auto pe=fresh(5.f,6.f);
+        pe.sandsActive = true;
+        for(int i=0;i<16;++i) pe.qmixRandom[i]=0.05f*(float)(i+1);   // a recognizable row
+        const float seedBefore = pe.qmixSeedFloat;
+        pe.switchQmixMode();                    // dice→realtime: caches the seed + the row
+        EXPECT_EQ(pe.qmixMode,1);
+        EXPECT(pe.qmixSeedCached);
+        EXPECT_EQ(pe.cachedQmixSeedFloat, seedBefore);
+        for(int i=0;i<16;++i) EXPECT_NEAR(pe.cachedQmix[i], 0.05f*(float)(i+1), 1e-6f);
+        for(int i=0;i<16;++i) pe.qmixRandom[i]=0.9f;                 // mutate in realtime
+        pe.switchQmixMode();                    // realtime→dice: restores the row
+        EXPECT_EQ(pe.qmixMode,0);
+        for(int i=0;i<16;++i) EXPECT_NEAR(pe.qmixRandom[i], 0.05f*(float)(i+1), 1e-6f);
+    });
+
+    TEST("switchRhythmMode: dice→realtime caches the seed (the position cache retired — 4-final)", {
+        // (ITEM 1) the cachedRhythmPattern copy — the old pin's object — is RETIRED
+        // with the array. (STEP 4-final) the step-index cache twins are RETIRED too —
+        // the vestigial position cache (recomputeEffective* reads neither quantity;
+        // post-slice-4 the restored stepIndex was a mirror the next advance
+        // overwrote). What the mode-switch machinery still caches: the seed float
+        // (the melody twin's surviving substance, mirrored here).
         auto pe=fresh(3.f,4.f);
         PatternInput in=allActive(); in.restProb=0.3f;
         pe.redrawRhythm(in);
-        bool snap[16]; for(int i=0;i<16;++i) snap[i]=pe.rhythmPattern[i];
-        int si=0,lsi=0;
-        pe.switchRhythmMode(si,lsi);
-        in.restProb=1.f; pe.redrawRhythm(in);  // all rests
-        pe.switchRhythmMode(si,lsi);
-        for(int i=0;i<16;++i) EXPECT_EQ(pe.rhythmPattern[i],snap[i]);
+        const float seedBefore = pe.rhythmSeedFloat;
+        pe.switchRhythmMode();                // dice→realtime: caches the seed
+        EXPECT(pe.rhythmSeedCached);
+        EXPECT_EQ(pe.cachedRhythmSeedFloat, seedBefore);
+        pe.switchRhythmMode();                // realtime→dice: the pattern round-trip
+        EXPECT_EQ(pe.rhythmMode,0);
     });
 
-    TEST("switchMelodyMode: stepIndex cached and restored", {
-        auto pe=fresh(); int si=7, lsi=6;
-        pe.switchMelodyMode(si,lsi); si=99;  // change while in realtime
-        pe.switchMelodyMode(si,lsi);          // restore
-        EXPECT_EQ(si,7);
-    });
+    // (STEP 4-final) "stepIndex cached and restored" — RETIRED with its object: the
+    // position cache is deleted (the restore fed nothing live; post-slice-4 the
+    // restored stepIndex was a mirror the next advance overwrote from pos_).
 
     TEST("switchRhythmMode twice (dice→rt→dice): rhythmMode back to 0", {
-        auto pe=fresh(); int si=0,lsi=0;
+        auto pe=fresh();
         EXPECT_EQ(pe.rhythmMode,0);
-        pe.switchRhythmMode(si,lsi); EXPECT_EQ(pe.rhythmMode,1);
-        pe.switchRhythmMode(si,lsi); EXPECT_EQ(pe.rhythmMode,0);
+        pe.switchRhythmMode(); EXPECT_EQ(pe.rhythmMode,1);
+        pe.switchRhythmMode(); EXPECT_EQ(pe.rhythmMode,0);
     });
 
     TEST("No restore if cache not set (first switch to realtime, back)", {
-        auto pe=fresh(); int si=3,lsi=2;
-        // Switch to realtime first (sets cache), but DON'T switch back
-        // Then create new engine with no cache and switch back directly
-        PatternEngine pe2; pe2.melodySeedCached=false;
-        int si2=5,lsi2=4; pe2.melodyMode=1;
         // Switching from realtime to dice when no cache should not crash
-        pe2.switchMelodyMode(si2,lsi2);
+        PatternEngine pe2; pe2.melodySeedCached=false;
+        pe2.melodyMode=1;
+        pe2.switchMelodyMode();
         EXPECT_EQ(pe2.melodyMode,0);  // toggled
     });
 
@@ -433,7 +467,7 @@ int main(){
         p1.reset(); p2.reset();
         PatternInput in=allActive();
         p1.redrawRhythm(in); p2.redrawRhythm(in);
-        for(int i=0;i<16;++i) EXPECT_EQ(p1.rhythmPattern[i],p2.rhythmPattern[i]);
+        for(int i=0;i<16;++i) EXPECT_EQ(isNoteAt(p1,i,in.restProb), isNoteAt(p2,i,in.restProb));
     });
 
     // ─────────────────────────────────────────────────────────────────────────

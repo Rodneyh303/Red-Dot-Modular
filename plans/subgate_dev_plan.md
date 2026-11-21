@@ -92,6 +92,88 @@ Tie=same pitch, Legato=new pitch, NewNote=retrigger). The legato lane decides
 retrigger-vs-not. Quantiser (Mode D) samples the incoming CV at each subGate onset, so a
 repeated incoming pitch naturally yields a Tie.
 
+### OPEN DESIGN QUESTION (Rodney, 2026-10) — should ratchet subgates RE-DRAW pitch, or HOLD it?
+CURRENT BEHAVIOUR (verified in code): subgates advance the playhead on ANY rise
+(mainGateRise || subGateRise || ghostRise → advancePlayhead; SequencerEngine.cpp:947), and ALL
+pitch lanes (melody/octave/qmix) DRAW FRESH at each subgate (SequencerEngine.cpp:1015 "all pitch
+lanes draw, Tie/Legato emergent from pitch equality"). So a ratchet is N independent fresh draws;
+a Tie EMERGES only when a fresh draw happens to equal the previous pitch. This FELL OUT of the
+"advance on any subgate" decision — applying step machinery one level down was simpler/consistent —
+it was NEVER deliberately decided whether to hold pitch across a ratchet burst. (Ghost DOES redraw
+because it's genuinely a new note; the ratchet-pitch question is the unconsidered one.)
+
+TWO REGIMES (both legitimate, different instruments):
+- RE-DRAW (current): a ratchet is a MELODIC FLOURISH — N hits, N (potentially) different pitches
+  (arpeggiated/moving stutters). Pitch is a per-SUBGATE property.
+- HOLD: a ratchet is a RHYTHMIC subdivision of ONE note — N hits, SAME pitch (drum-roll/tremolo).
+  Pitch is the STEP's property; the ratchet divides TIME/articulation only, not pitch. Matches the
+  common sequencer mental model ("ratchet subdivides the step; pitch is the step's").
+A defensible default: HOLD (ratchet = time/articulation tool), with RE-DRAW as an opt-in
+("re-pitch ratchets") — so the melodic-flourish is chosen, not a surprise to someone expecting a
+tremolo. But it is a MUSICAL call (Rodney's), not an engineering one. The point: make it a DECISION,
+not an inherited accident.
+
+COUPLING-THEORY DEPENDENCY (OUTPUT_LAYER_DISTRIBUTION_MAPPING.md cross-lane note): this decision
+picks which cross-lane coupling regime applies between a per-step lane (melody) and the per-subgate
+Variation-driven-articulation:
+- HOLD melody → melody is per-STEP, Variation per-SUBGATE → CROSS-RATE coupling: the step's melody
+  atom gates the WHOLE ratchet burst's articulation ("accented step ⟺ its whole burst locks long").
+- RE-DRAW melody → both per-subgate → SAME-RATE coupling: each ratchet hit's pitch couples to its own
+  articulation. (The cross-lane note currently assumes the HOLD/cross-rate case — flag it contingent.)
+
+CONSUMER-GROUP MODEL (Rodney — the uniform pattern; corrected + simplified):
+ONE pattern repeated everywhere, no special lanes: a LANE produces a SHAPED draw (post-w / post-
+distribution / post-clamp, out of the output layer) at its DECISION EVENT; GROUPS OF CONSUMER-KNOBS
+each THRESHOLD that draw at their own event. Knobs CONSUME the shaped value (not feed it); NOTHING
+changes on resolver/Sands (pure downstream read-side).
+
+  LANE (draw source)      →  CONSUMER-KNOB GROUPS (each at its OWN event)
+  ─────────────────────────────────────────────────────────────────────
+  REST                    →  main-gate (base) · ghost-rest · ratchet-rest
+  LEGATO                  →  main-gate (base) · ghost-legato · ratchet-legato
+  VARIATION (gate mode)   →  pitch-hold (at main onset) · tie-across-rest (at rest-arrival)
+
+Every cell is the SAME thing: a knob thresholding a lane's shaped draw at a specific event. No lane
+hosts a compound/special value; no knob means two things.
+
+WHY THE REQUIREMENT NEEDED THIS (not the overkill original): the point of independent subgate
+legato/rest is a RATE independent of the main-gate level. The original idea (assign VARIATION to
+subgate legato/rest) was OVERKILL — it added a whole separate draw when all you need is a separate
+THRESHOLD on the main rest/legato lane. The consumer-group model gives the independence minimally.
+And it FREES Variation for its best gate-mode use: PITCH-HOLD (hold vs re-draw pitch across a ratchet
+burst) — the one NEW decision with no existing lane (rest/legato already have lanes; pitch-hold
+doesn't), so it's the role that specifically WANTS Variation. More fundamental than the competitors
+("tie across rests", "advance playhead on tie into rest") — those MODIFY existing behaviour; pitch-
+hold adds a new DEGREE OF FREEDOM (ratchet = tremolo vs flourish). And "tie across rest" then becomes
+just ANOTHER Variation consumer group (parallel to ratchet-rest), not a special second use.
+
+INDEPENDENCE comes from DIFFERENT DRAW EVENTS + OWN KNOBS — the key timing fact:
+- Ghost / ratchet / main advance the playhead at DIFFERENT moments → a ghost-rest knob and a ratchet-
+  rest knob read the REST lane at DIFFERENT playhead steps = DIFFERENT, INDEPENDENT DRAWS (successive
+  draws on a lane are independent). Same for Variation: pitch-hold samples at MAIN ONSET, tie-across-
+  rest samples at REST-ARRIVAL → different events → independent.
+- So same-lane-different-EVENT consumers are INDEPENDENT (not auto-correlated). CORRECTION to an
+  earlier draft: the matrix does NOT "auto-correlate within a column" in general — that only holds
+  where two consumers read the SAME SAMPLE (e.g. a ratchet subgate landing COINCIDENT with a main
+  gate draw → same value). The robust coupling is CROSS-LANE at a SHARED draw event (rest-lane vs
+  melody-lane at the same playhead position), per OUTPUT_LAYER_DISTRIBUTION_MAPPING.md.
+- Because events differ, you need SEPARATE THRESHOLDS anyway to express different rates — so the
+  consumer-knobs aren't adding fake independence, they EXPOSE control over already-distinct draws.
+
+PHYSICAL HOME (Sands FULL):
+- SANDS keeps the single per-lane knob (main level). User can leave subgate behaviour inheriting it.
+- STRAITS = the consumer-group home: optional groups of SMALL set-and-forget threshold knobs (shrink
+  OK — assignment controls, not performance controls). Add the groups you want (ghost/ratchet rest/
+  legato, tie-across-rest, pitch-hold).
+- CAUSEWAY must get matching mod coverage for any new Straits group — everything on Straits is
+  Causeway-modulatable (the CV/mod layer, CHAT_HANDOFF:98); a group without it = the one that can't
+  be modulated = a modulation-layer seam. Add the Straits group AND its Causeway mod path together.
+
+GHOST pitch-hold cell: flagged to confirm — ghost is a gap/new-note, "hold" may be n/a there.
+INVARIANT: within a SINGLE draw event, all consumers of that event read the SAME sampled shaped value
+(no re-draw per consumer) — that is what makes SAME-EVENT consumers correlatable; DIFFERENT-event
+consumers are independent.
+
 ---
 
 ## Where the code changes land (verified against the tree)
@@ -195,3 +277,52 @@ Mono phases (0-5) land and verify first. Then, in the same branch:
   and RATE_DISCIPLINE_UNIFICATION) — the same "which edge samples the mod?" question.
 - **Naming** — user-facing label **subGate** everywhere; keep it distinct from the existing
   STEP_GATE OUTPUT family in code comments to prevent future conflation.
+
+────────────────────────────────────────────────────────────────────────────────
+## GLOBAL-vs-POLY SCOPE + SUBGATE CONTROL — the settled model (Rodney)
+
+### CORRECTION ON RECORD (Claude error, Rodney caught):
+"Global" does NOT mean "all voices get the identical outcome / comonotone / rho=1". That was WRONG.
+GLOBAL = SHARED CONTROL PARAMETER, INDEPENDENT DRAWS. A global accent knob = all voices share the same
+accent PROBABILITY but still draw independently (they don't accent on the same steps). A global
+VARIATION knob = all voices share the same variation RANGE/amount but still pick DIFFERENT lengths
+within it. So global-vs-poly is a CONTROL-SHARING choice, ORTHOGONAL to the copula/correlation layer
+(spread/CA govern how DRAWS relate; global-vs-poly governs whether the KNOB is shared). A global-knob
+lane can still be spread-correlated. Do NOT conflate "share a control" with "correlate the outcomes".
+Also: MELODY/OCTAVE have NO Straits per-voice (poly) knobs → the global-vs-poly choice does NOT apply
+to them; it applies to the Straits MAIN-GATE lanes that HAVE poly knobs (rest/accent/qmix/legato/
+variation).
+
+### THE MODEL
+1. GLOBAL-vs-POLY per STRAITS MAIN-GATE LANE: each such lane gets a user choice — GLOBAL (one shared
+   control knob for all voices) or POLY (the per-voice knob group). e.g. global accent + global qmix +
+   poly rest + poly legato + global variation. Shared knob = same parameter, independent draws.
+2. SUBGATE control = the SAME choice applied to ghost/ratchet decisions, with THREE ways to source it
+   (highest engaged wins, per decision, uniform resolution):
+   - FOLLOW MAIN (free): subgate inherits the lane's main knob (global or poly, whichever main is).
+   - GLOBAL SUBGATE KNOB: a shared global knob gives the subgate its own character distinct from main,
+     WITHOUT consuming the main level's modulation budget.
+   - ASSIGNED POLY SUBGATE GROUP on STRAITS (opt-in, a FEW assignable groups, e.g. 3): full per-voice
+     control for the ghost/ratchet decisions the user prioritises. Costs Straits/Causeway space; capped
+     + assignable (user points the 3 at whatever they want poly). Decisions without an assigned group
+     fall back to global-subgate or main (graceful — no decision is ever uncontrolled).
+3. VARIATION in GATE MODE:
+   - WITH subgates: Variation does PITCH-HOLD (hold vs re-draw pitch across the ratchet burst) — again
+     a GLOBAL or POLY choice (poly reuses the idle gate-mode Variation per-voice knobs = free).
+   - WITHOUT subgates: Variation is free for another gate-mode role (candidates: tie-across-rest,
+     advance-playhead-on-tie-into-rest — see the open-question + consumer-group notes above).
+
+### ADJUNCT TECHNIQUE (not a built tier): main-gate-state as a region modulation KEY
+In poly/follow-main, a user CAN get region-independent ghost/ratchet levels by modulating the main
+level with the MAIN GATE STATE as key (gate HIGH = ratchet region → one offset; gate LOW = ghost
+region → another; step modulation). Gate state IS the region signal (no new source needed). COST: it
+CONSUMES the main level's modulation path → can't also apply other modulation to that level. THAT is
+why the dedicated GLOBAL SUBGATE KNOB (tier 2) exists — it gets region-independence WITHOUT spending
+the main modulation budget. (VERIFY when building: is gate state accessible as a mod source at the
+point the subgate rest/legato threshold is read.)
+
+### SEAM-SAFETY
+global-vs-poly is a uniform SCOPE flag per lane/decision (resolver reads a shared value vs a per-voice
+bank for `Inputs.base` — upstream of resolution, algebra unchanged). Same mechanism everywhere, no
+per-lane special-casing → seam-free. Subgate = the same flag at a finer event, housed on Straits
+(Sands full). Assignable groups are the same structure wherever pointed.

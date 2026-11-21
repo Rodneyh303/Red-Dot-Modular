@@ -11,7 +11,7 @@
 //
 // Usage:
 //   auto* p = createOutputCentered<redDot::GoldPolyPort>(pos, module, ID);
-//   p->lightTheme = [module]{ Monsoon* m = redDot::findMonsoonEitherSide(module);
+//   p->lightTheme = [module]{ Monsoon* m = redDot::lookupMonsoon(module);   // ui/ModuleLookup.hpp — the memoized authority
 //                             return m && m->lightTheme; };
 //   addOutput(p);
 namespace redDot {

@@ -52,9 +52,9 @@ void TimingController::clearReset() {
 
 TimingController::GateEdges TimingController::processGateEdges(float gate1V, float gate2V) {
     // Schmitt triggers give hysteresis (0.1V low / 1.0V high): the rise edge fires on
-    // the low→high transition and the internal `.state` holds the hysteresis-filtered
-    // level.  This is more robust against noisy/dipping gates than a raw `>= threshold`.
-    // `getGate1SchmittHigh()` exposes `.state` for the legato grace timer (IMPL 2b).
+    // the low→high transition and the internal .state holds the hysteresis-filtered
+    // level.  This is more robust against noisy/dipping gates than a raw >= threshold.
+    // getGate1SchmittHigh() exposes .state for the legato grace timer (IMPL 2b).
     bool gate1Rise = gate1EdgeTrig.process(gate1V, 0.1f, 1.f);
     bool gate2Rise = gate2EdgeTrig.process(gate2V, 0.1f, 1.f);
 

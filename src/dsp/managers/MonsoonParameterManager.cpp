@@ -27,18 +27,46 @@ float ParameterManager::readInput_(int inputId) const {
 
 // ──── Core Parameter Getters ────────────────────────────────────────────────
 
+float ParameterManager::getNoteValueDial() const {
+    // The NOTE_VALUE PARAM stores the DIAL SLOT (0..NUM-1) — the knob's detents and
+    // the CV2/Junction sweep walk the DIAL_ORDER grouped reading. (DOTTED BUILD:
+    // was clamped to the legacy 0..7 with junction scaled by 7.)
+    float v = readParam_(NOTE_VALUE_PARAM, 0.f, (float)(NUM_NOTE_VALUES - 1));
+    return clampv(v + cv2Offsets[0] + junctionOffsets[0] * (float)(NUM_NOTE_VALUES - 1),
+                  0.f, (float)(NUM_NOTE_VALUES - 1));
+}
+
 float ParameterManager::getNoteValue() const {
-    // Param range is 0..7 (8 note values, indices 0..7) — was mistakenly read/
-    // clamped to 0..8 (an index 8 doesn't exist) with junction scaled by 8.
-    float v = readParam_(NOTE_VALUE_PARAM, 0.f, 7.f);
-    v = clampv(v + cv2Offsets[0] + junctionOffsets[0]*7.f, 0.f, 7.f);
-    return v;
+    // THE ONE SEAM: dial slot → ENGINE index (the table stays in strict duration
+    // order; the param walks the grouped dial order). Everything downstream
+    // (getNoteLenIdx, PatternInput, the engine) consumes engine indices.
+    const int slot = (int)std::lround(getNoteValueDial());
+    return (float)DIAL_ORDER[slot < 0 ? 0 : (slot >= NUM_NOTE_VALUES ? NUM_NOTE_VALUES - 1 : slot)];
 }
 
 float ParameterManager::getVariation() const {
     float v = readParam_(VARIATION_PARAM, 0.f, 1.f);
     v = clampv(v + cv2Offsets[1] + junctionOffsets[1], 0.f, 1.f);
     return v;
+}
+
+// UNCLAMPED mono variation: knob + all local modulation (CV2 + Junction), summed with
+// NO clamp — the bipolar step-advance source (CC_PROMPT_STEP_ADVANCE_CONSUMPTION
+// Stage 2; the getRestUnclamped idiom, same "sum all mods, clamp the end result"
+// law). The negative half is REAL: CV2's normalized range is bipolar -1..+1
+// (Monsoon.cpp, the cv2Mode==1 routing), so a bipolar modulation source (LFO,
+// random, envelope) into CV2 sweeps the value across zero — forward, backward,
+// stutter — which is exactly Rodney's "the sequence WANDERS" design note. The
+// ADVANCE consumer clamps THIS sum to [-1,+1]; the rectified clamp ([0,1], what
+// getVariation() returns) stays the ghost-candidacy rate. Same arithmetic as
+// getVariation() up to the final clamp — bit-identical sums.
+float ParameterManager::getVariationUnclamped() const {
+    return readParam_(VARIATION_PARAM, 0.f, 1.f) + cv2Offsets[1] + junctionOffsets[1];
+}
+// GATE MODE ONLY (the BIPOLAR SCOPE): the knob remapped bipolar — (2*knob - 1) +
+// CV2 + Junction. The knob ALONE reaches negative; clock/phase never call this.
+float ParameterManager::getVariationGateUnclamped() const {
+    return (2.f * readParam_(VARIATION_PARAM, 0.f, 1.f) - 1.f) + cv2Offsets[1] + junctionOffsets[1];
 }
 
 float ParameterManager::getLegato() const {

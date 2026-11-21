@@ -174,6 +174,14 @@ polymeter when levels use different styles; the instantaneous sign-product compo
 consistently forward and back (same frame rule), so scrub retraces single-vs-double endpoints exactly.
 Turnaround style is a per-level setting.
 
+### [CORRECTION — Rodney] Offset vs Rotation within the range
+NOTE: the paragraph below conflates OFFSET and ROTATION. The correct reading: L and O set the WINDOW (where
+it is + its length); ROTATION (R) sets the read's phase/start position WITHIN that window. So R — not O — is
+what slides the read start within the [range]. O is the nested parent-relative offset of the window itself.
+Treat "offset slides the read phase within the window" below as describing ROTATION's role; O positions the
+window relative to the parent. (Voice LOR currently implements L and O but NOT R — see the Voice-LOR-gaps
+note at the end — which is itself part of why this was muddled.)
+
 ### Offset (the O in LOR) — nested, relative to parent read position
 Offset is the usual LOR O (NOT the range start). Range = {where the window is, length}; OFFSET = where
 within/along that window the read starts, relative to the PARENT's read position:
@@ -422,6 +430,7 @@ is ONE path (one mask gate + one flag), not four. Big simplification: four modes
 mechanism with two degrees of freedom (mask pattern, follow-R).
 
 ## MASK <-> ROTATION ANCHORING (Rodney) — base re-anchors, modulation moves relative to it
+> **SUPERSEDED 2026-11-21** — follow-R / abs3 is retired; see the RESOLVED cycle-consistent block below. Kept for the history of the idea.
 How the fixed rotatable mask (abs2/abs3) connects to rotation. PER STEP:
 1. **Check whether the UNMODULATED (base knob) rotation has changed** — i.e. has the anchor link
    between MASK-STEP-1 and the base rotation value changed?
@@ -444,6 +453,45 @@ to the current anchor. Both -> anchor tracks base (re-pin on change), mod offset
 This resolves the earlier "establish the link first, then move together" question: the BASE establishes
 (and re-establishes on change) the anchor; the MODULATION moves the mask relative to it. No separate
 reset/phrase-boundary decision needed — base-change detection IS the re-anchor trigger.
+
+### [RESOLVED — Rodney] PAINT ONLY in abs2 (static); enabling abs3 captures base rotation as the anchor
+The paint↔rotation chicken-and-egg (if rotation is modulating while you paint, do you paint the base or the
+rotated view?) is removed by FORBIDDING the conflicting operation:
+- PAINTING IS ALLOWED ONLY IN abs2 (static / NOT-follows-rotation). You cannot paint while follows-rotation
+  is on. In abs2 you paint absolute cells at the voice's CURRENT BASE (unmodulated) rotation — WHAT YOU SEE
+  = WHAT YOU PAINT = where it sits at that base rotation. No moving target, no paint-blind.
+- ENABLING abs3 (follows-rotation) CAPTURES the current base rotation as the ANCHOR for the stored pattern.
+  From then on the figure SLIDES relative to that anchor: base-knob changes RE-ANCHOR (move the figure — the
+  per-step base-change detection above), CV rotation-mod OFFSETS from the anchor. The "first link" from
+  painted pattern to rotation is established ON THE MODE TRANSITION (abs2→abs3), not during painting.
+- "SET MASK FROM RANGE" seeds the abs2 base from the window (at the current base rotation) — same space.
+- TO RE-EDIT: flip back to abs2 (freezes it absolute/static for editing), paint, re-enable abs3.
+WORKFLOW: edit in static mode, turn on follows-rotation to make it move ("stop the tape to edit, play to
+hear it move"). Cleaner than suspending rotation — you paint where it looks right at the base rotation, and
+enabling abs3 is what binds it to rotation.
+PLAYBACK: abs2 plays the pattern at absolute steps (rotation-independent); abs3 = base + rotation (anchor +
+CV mod). The gate lives in ABSOLUTE phrase space, INDEPENDENT of the voiceLOR read window — "follows R"
+borrows the voice's R as a MODULATION SOURCE (the figure slides with the voice's phase), NOT a confinement.
+
+## [RESOLVED — Rodney 2026-11-21] CYCLE-CONSISTENT ABSOLUTE MODE + PAINTED MASKS (supersedes the abs1 read law, the follow-R / abs3 anchor law and the abs1 lane-jump point above)
+
+**One model: content is ALWAYS the cycle read; a mask only mutes.**
+- **Base × overlay, two independent axes.** BASE = cycle (all-on) or range (the window [O,O+L) on the global ring). OVERLAY = none or a painted pattern. Gate = `base ∧ overlay`, evaluated per GLOBAL played column. The old cycle ⊂ abs1 ⊂ abs2 ⊂ abs3 hierarchy is just configurations of these.
+- **Abs1 = cycle with the cycling off.** The voice reads exactly what cycle mode reads (its own L, rotation R window-relative: R marks the voice's cell at global step 1, i.e. cell O + R%L), and SOUNDS only while the global step is inside [O,O+L) — one pass as the playhead crosses it. At every sounding step the read and the lane values equal cycle mode's at the same global step. Reverse = reverse of the cycle read (enters at R, counts down). Rotation is NOT "enter at R at the window start" and NOT ignored.
+- **Playhead outside the window** follows the global step (the strip's lane sweeps 1..G under the global's); silent.
+- **Mute semantics:** the cycle keeps running under a muted step; nothing is skipped or held.
+- **Painted overlay composes with BOTH bases** (cycle and range), indexed by global step. Painted cells outside the window are INERT (the window dominates).
+- **Painted mask is STATIC: fixed to global-step positions, independent of R and of voice direction.** Rotation only slides the content under the rhythm.
+
+**Probability-lane jump: at the voice's RANGE EDGE (the cycle predicate), regardless of any mask.** Abs1 evaluates the SAME edge predicate as cycle on the same cycle-consistent phase; it does not jump on mid-range entry. A mid-range entry plays the value latched at the previous edge (as cycle does at global step 1 with a non-zero rotation); aligned rotation puts the edge at the entry. "Re-draw on entry" is a possible later opt-in, NOT the default.
+
+**FOLLOW-R (abs3) IS RETIRED** (measured, not argued): the mask's slide direction must equal the voice's content direction (Forward: earlier; Reverse: later; transport direction irrelevant), the old re-pin applied "earlier" to every direction (wrong for Reverse), and Pendulum/PingPong reflect the content so NO single shift tracks it. Loaded patches with follow-R on behave as STATIC; the stored keys are still read. The anchor law, the re-pin and the abs2→abs3 paint workflow are superseded.
+
+**Moving the figure → a dedicated MASK SHIFT control (separate change; needs panel work).** The voice-lane row has 3 jacks/3 knobs (L,O,R) vs the lane rows' 4 (spread): the 4th position is free. Per-voice (East, poly jack) and Macro (mono jack): base knob + CV jack + depth, labelled MASK. Evaluated at STEP RATE as an integer rotation of the painted pattern on the G ring (`base + CV`), independent of R and direction. Replaces follow-R as the way to move the rhythm.
+
+**Accepted:** L may not divide G; the seam question belonged to follow-R and no longer applies.
+
+**Tests first (reproduce-first):** (1) abs1 sounding read AND lane values == cycle's at the same steps across O/R/direction sweeps; (2) abs1 latch steps == cycle's; (3) gate == `base ∧ overlay` per played column, both directions; (4) latch steps identical with/without any mask; (5) follow-R-on loads as static. Rack feel-test is the acceptance gate.
 
 ## MUSICAL PAYOFF OF THE MASK MODES — "rhythmic in and out" = the PRESENCE / STRUCTURE axis (Rodney)
 The extra absolute modes open a distinct musical register: **rhythmic in and out** — voices rhythmically
@@ -487,3 +535,35 @@ logic anyway, and the correct wrap falls out of implementing the nested maps pro
 Sub-question to settle then: should Sands DISPLAY the full 16 with the active window highlighted, or only
 the active window? (Ties to the adapt-to-length vs fixed display decision — see STEP_COUNT_DECISION.md /
 LIGHT_RING_32_STEPS.md.)
+
+════════════════════════════════════════════════════════════════════════════════
+## [GAPS — Rodney, on re-read] Voice LOR is INCOMPLETE vs the probability-lane LORs
+The voice LOR was intended to match the probability-lane LORs but currently does NOT:
+1. ROTATION missing: voice LOR has LENGTH and OFFSET but NO ROTATION (R) — inconsistent with every
+   probability lane LOR (which has L/O/R). R is needed (it's what sets the read phase within the window —
+   see the Offset-vs-Rotation correction above). ADD per-voice rotation.
+2. MODULATION missing (lines 211, 229-281 intended it): voice LOR has NO mod — no LOR mod, no spread, no
+   spread mod, no warp — inconsistent with other lanes. The design intended voice LOR to be modulatable.
+   ADD voice-LOR modulation (and consider spread/warp parity with the probability lanes).
+3. DIRECTION + DELEGATION as BUTTONS, not context menu: the design intended direction and delegation to be
+   buttons (like other lanes), not buried in a context menu. Currently context-menu only — inconsistent.
+   Move to buttons for parity.
+These are tracked as a "voice LOR parity" fix item — bring voice LOR to full consistency with the
+probability-lane LORs (L/O/R + mod + spread + warp + direction/delegation buttons).
+
+### [Rodney] Voice-R ↔ the chevron, and the modulation-subpanel question
+- The MISSING voice R is also why the voice-LOR lane has NO CHEVRON: other lanes show the chevron at the
+  R-denoted read-start step; the voice lane can't, because there's no R. Adding voice R gives the voice lane
+  a meaningful chevron like the others (not just parity — it's what the chevron denotes).
+- PANEL CROWDING: adding voice-LOR mod jacks + attenuverters (L/O/R — NOT spread/warp, which voice LOR
+  doesn't need; otherwise ALIGN to the other lanes) + direction/delegation buttons/jacks will crowd Sands.
+- DECIDED (Rodney):
+  - FOR NOW: add the voice-LOR controls it needs TO THE BASE PANEL, NEXT TO THE LANE, same as every other
+    lane (full consistency with the existing layout). That means: voice R knob (+ its mod jack + attenuverter
+    aligned to the other lanes), direction + delegation buttons/jacks next to the lane, L/O/R all on the base.
+    NO spread/warp (voice LOR doesn't need them). No subpanel yet.
+  - LATER (parked, NOT now): a possible INSTRUMENT-WIDE direction — move ALL lanes' modulation jacks +
+    attenuverters (not just voice LOR) to an optional SUBPANEL (users may not want to modulate these;
+    declutters the base; progressive disclosure). This is an instrument-wide RULE if adopted (all lanes, so
+    consistent — not a voice-LOR special case), affecting every lane's mod I/O. Deferred — revisit after the
+    voice-LOR controls are in and the base-panel density is seen in practice.

@@ -21,6 +21,7 @@
 #define REDDOT_SPREAD_ASSERT(cond, msg) ((void)0)
 #endif
 #include "engines/PatternEngine.hpp"
+#include "SandsModifierResolver.hpp"   // resolveFollowCaSpread — the ONE follow-CA/anchor decision (the fifth rider)
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SpreadInterp — the SINGLE definition of spread interpolation, shared by the
@@ -52,27 +53,69 @@ struct SpreadInterp {
     // Pointers to the lane's slewed buffers for the engine. Set per lane by the
     // caller so the same code serves rhythm/melody/octave.
     // Per-lane accessor into the PatternEngine slewed draws.
-    // Lane index is the SPREAD/poly-engine lane: 0=REST 1=MEL 2=OCT 3=ACC 4=QMIX 5=VAR 6=LEG
+    // Lane index is the UNIFIED PL_*/strand order (MEL=0, OCT=1, QMIX=2, REST=3, ACC=4,
+    // VAR=5, LEG=6 — PatternEngine::PolyLane; editor==engine==strand since the lane-index
+    // unification). NOTE: these switches USED to speak the old spread order (0=REST, 1=MEL,
+    // 2=OCT, 3=ACC, 4=QMIX) while unified-PL_* callers passed the new order — the lane-
+    // convention split caught by test_voice_conventions [C]; unified here 2026-10-16.
     static float monoSlewed(const PatternEngine& pe, int lane, int step) {
+        // COLLAPSE: slewed*[16][16] — V1 at [0]. monoSlewed reads voiceSlot 0.
         switch (lane) {
-            case 0:  return pe.slewedRhythm[step];
-            case 1:  return pe.slewedMelody[step];
-            case 3:  return pe.slewedAccent[step];
-            case 4:  return pe.slewedQmix[step];
-            case 5:  return pe.slewedVariation[step];
-            case 6:  return pe.slewedLegato[step];
-            default: return pe.slewedOctave[step];
+            case PatternEngine::PL_MELODY:    return pe.slewedMelody[0][step];
+            case PatternEngine::PL_OCTAVE:    return pe.slewedOctave[0][step];
+            case PatternEngine::PL_QMIX:      return pe.slewedQmix[0][step];
+            case PatternEngine::PL_REST:      return pe.slewedRhythm[0][step];
+            case PatternEngine::PL_ACCENT:    return pe.slewedAccent[0][step];
+            case PatternEngine::PL_VARIATION: return pe.slewedVariation[0][step];
+            case PatternEngine::PL_LEGATO:    return pe.slewedLegato[0][step];
+            default:                          return pe.slewedRhythm[0][step];   // invalid lane → rhythm fallback
         }
     }
     static float polySlewed(const PatternEngine& pe, int lane, int voice, int step) {
+        // voice is voiceSlot (0=V1, 1=V2, ..., 15=V16). slewed*[voice] directly.
         switch (lane) {
-            case 0:  return pe.slewedPolyRhythm[voice][step];
-            case 1:  return pe.slewedPolyMelody[voice][step];
-            case 3:  return pe.slewedPolyAccent[voice][step];
-            case 4:  return pe.slewedPolyQmix[voice][step];
-            case 5:  return pe.slewedPolyVariation[voice][step];
-            case 6:  return pe.slewedPolyLegato[voice][step];
-            default: return pe.slewedPolyOctave[voice][step];
+            case PatternEngine::PL_MELODY:    return pe.slewedMelody[voice][step];
+            case PatternEngine::PL_OCTAVE:    return pe.slewedOctave[voice][step];
+            case PatternEngine::PL_QMIX:      return pe.slewedQmix[voice][step];
+            case PatternEngine::PL_REST:      return pe.slewedRhythm[voice][step];
+            case PatternEngine::PL_ACCENT:    return pe.slewedAccent[voice][step];
+            case PatternEngine::PL_VARIATION: return pe.slewedVariation[voice][step];
+            case PatternEngine::PL_LEGATO:    return pe.slewedLegato[voice][step];
+            default:                          return pe.slewedRhythm[voice][step];   // invalid lane → rhythm fallback
+        }
+    }
+
+    // Published-snapshot twins (DISPLAY-ONLY). The UI thread must never read the live
+    // slewed*: the audio thread rewrites them for ~116µs per recomputeEffective*, and a
+    // video-rate read mid-rewrite is a torn value. This was the V16 flicker: the bars'
+    // own-draw came from pubSlewed* but the spread TARGET leaked through to the live
+    // array — so every voice at spread != 0 (V16 was the spread-up voice in the repro)
+    // tracked a churning/torn target while spread-0 voices looked stable. The audio
+    // path (applyMono/applyPoly — engine thread, same thread as the writer) keeps the
+    // LIVE reads above, which are correct there.
+    static float monoSlewedPub(const PatternEngine& pe, int lane, int step) {
+        switch (lane) {
+            case PatternEngine::PL_MELODY:    return pe.pubSlewedPolyMelody[0][step];
+            case PatternEngine::PL_OCTAVE:    return pe.pubSlewedPolyOctave[0][step];
+            case PatternEngine::PL_QMIX:      return pe.pubSlewedPolyQmix[0][step];
+            case PatternEngine::PL_REST:      return pe.pubSlewedPolyRhythm[0][step];
+            case PatternEngine::PL_ACCENT:    return pe.pubSlewedPolyAccent[0][step];
+            case PatternEngine::PL_VARIATION: return pe.pubSlewedPolyVariation[0][step];
+            case PatternEngine::PL_LEGATO:    return pe.pubSlewedPolyLegato[0][step];
+            default:                          return pe.pubSlewedPolyRhythm[0][step];
+        }
+    }
+    static float polySlewedPub(const PatternEngine& pe, int lane, int voice, int step) {
+        // voice is voiceSlot (0=V1, 1=V2, ..., 15=V16).
+        switch (lane) {
+            case PatternEngine::PL_MELODY:    return pe.pubSlewedPolyMelody[voice][step];
+            case PatternEngine::PL_OCTAVE:    return pe.pubSlewedPolyOctave[voice][step];
+            case PatternEngine::PL_QMIX:      return pe.pubSlewedPolyQmix[voice][step];
+            case PatternEngine::PL_REST:      return pe.pubSlewedPolyRhythm[voice][step];
+            case PatternEngine::PL_ACCENT:    return pe.pubSlewedPolyAccent[voice][step];
+            case PatternEngine::PL_VARIATION: return pe.pubSlewedPolyVariation[voice][step];
+            case PatternEngine::PL_LEGATO:    return pe.pubSlewedPolyLegato[voice][step];
+            default:                          return pe.pubSlewedPolyRhythm[voice][step];
         }
     }
 
@@ -80,7 +123,7 @@ struct SpreadInterp {
     // Anchor V1: the mono (voice-1) draw (today's behaviour).
     // Follow CA: the post-remap draw — which IS src[v]'s material, because CA's pin remap
     // already put it there. So the "target" is the same slewed buffer the caller passes as
-    // `original` in follow-CA mode; the caller selects `own` (pre-remap) vs post-remap.
+    // original in follow-CA mode; the caller selects own (pre-remap) vs post-remap.
     static float target(const PatternEngine& pe, int lane, int step) {
         return monoSlewed(pe, lane, step);
     }
@@ -89,25 +132,29 @@ struct SpreadInterp {
     // the pre-remap mono draw for the mono/V1 path (Follow CA on V1 is a no-op by construction
     // — V1's pre-remap == post-remap — but the poly path needs the pre-remap poly buffers).
     static float monoPreRemap(const PatternEngine& pe, int lane, int step) {
+        // COLLAPSE: preRemapSlewed*[16][16] — V1 at [0].
         switch (lane) {
-            case 0:  return pe.preRemapSlewedRhythm[step];
-            case 1:  return pe.preRemapSlewedMelody[step];
-            case 3:  return pe.preRemapSlewedAccent[step];
-            case 4:  return pe.preRemapSlewedQmix[step];
-            case 5:  return pe.preRemapSlewedVariation[step];
-            case 6:  return pe.preRemapSlewedLegato[step];
-            default: return pe.preRemapSlewedOctave[step];
+            case PatternEngine::PL_MELODY:    return pe.preRemapSlewedMelody[0][step];
+            case PatternEngine::PL_OCTAVE:    return pe.preRemapSlewedOctave[0][step];
+            case PatternEngine::PL_QMIX:      return pe.preRemapSlewedQmix[0][step];
+            case PatternEngine::PL_REST:      return pe.preRemapSlewedRhythm[0][step];
+            case PatternEngine::PL_ACCENT:    return pe.preRemapSlewedAccent[0][step];
+            case PatternEngine::PL_VARIATION: return pe.preRemapSlewedVariation[0][step];
+            case PatternEngine::PL_LEGATO:    return pe.preRemapSlewedLegato[0][step];
+            default:                          return pe.preRemapSlewedRhythm[0][step];
         }
     }
     static float polyPreRemap(const PatternEngine& pe, int lane, int voice, int step) {
+        // voice is voiceSlot (0=V1, 1=V2, ..., 15=V16).
         switch (lane) {
-            case 0:  return pe.preRemapSlewedPolyRhythm[voice][step];
-            case 1:  return pe.preRemapSlewedPolyMelody[voice][step];
-            case 3:  return pe.preRemapSlewedPolyAccent[voice][step];
-            case 4:  return pe.preRemapSlewedPolyQmix[voice][step];
-            case 5:  return pe.preRemapSlewedPolyVariation[voice][step];
-            case 6:  return pe.preRemapSlewedPolyLegato[voice][step];
-            default: return pe.preRemapSlewedPolyOctave[voice][step];
+            case PatternEngine::PL_MELODY:    return pe.preRemapSlewedMelody[voice][step];
+            case PatternEngine::PL_OCTAVE:    return pe.preRemapSlewedOctave[voice][step];
+            case PatternEngine::PL_QMIX:      return pe.preRemapSlewedQmix[voice][step];
+            case PatternEngine::PL_REST:      return pe.preRemapSlewedRhythm[voice][step];
+            case PatternEngine::PL_ACCENT:    return pe.preRemapSlewedAccent[voice][step];
+            case PatternEngine::PL_VARIATION: return pe.preRemapSlewedVariation[voice][step];
+            case PatternEngine::PL_LEGATO:    return pe.preRemapSlewedLegato[voice][step];
+            default:                          return pe.preRemapSlewedRhythm[voice][step];
         }
     }
 
@@ -124,18 +171,28 @@ struct SpreadInterp {
     //
     // spreadAmount == 0 → return original exactly (bit-identity at spread 0).
     static float interpolate(float original, float targetValue, float spreadAmount) {
-        if (spreadAmount == 0.0f) return original;
-        if (spreadAmount > 0.0f && targetValue == original) return original;  // V1 self-target no-op
-        return (float)redDot::copula::mix2((double)original, (double)targetValue, (double)spreadAmount);
+        // ONE definition: the primitive lives in the resolver (spreadMixEndpoints —
+        // the fifth rider); this delegate keeps the SpreadInterp entry for the
+        // existing callers. Bit-identical (same expression, moved verbatim).
+        return redDot::spreadMixEndpoints(original, targetValue, spreadAmount);
     }
 
-    // DISPLAY-ONLY entry point (anchor-V1 target, caller supplies original). Used by
-    // SpreadManager and macroOwnProbability for visual interpolation. Named explicitly
-    // to prevent accidental use on the audio path where Follow-CA mode requires
-    // applyMono/applyPoly (which resolve the target from the CA source).
+    // ANCHOR-V1-ONLY twin (caller supplies original; target = V1's pub draw).
+    // CONTRACT (east-spread follow-CA C2 audit): this entry HARDCODES the anchor
+    // composition — it ignores pe.spreadTargetMode, so on a FOLLOW-CA lane it
+    // diverges from the audio path. The ONE remaining caller is
+    // SpreadManager::getInterpolatedValue, a TEST-ONLY oracle (the uniformity +
+    // voice-convention addressing pins); production display reads
+    // effectiveProbability, which resolves through redDot::resolveFollowCaSpread
+    // (mode-aware) exactly like the audio path. (The old "macroOwnProbability"
+    // caller was deleted — CC_PROMPT_UI_TO_RESOLVER_SPEC step 2.) Do NOT wire
+    // this into anything that can display a follow-CA lane — that reintroduces
+    // display != audio.
     static float applyAnchorV1Only(const PatternEngine& pe, int lane, int step,
                                    float original, float spreadAmount) {
-        return interpolate(original, target(pe, lane, step), spreadAmount);
+        // Pub-snapshot target, not the live slewed* (the live read here was the
+        // V16 flicker — see monoSlewedPub).
+        return interpolate(original, monoSlewedPub(pe, lane, step), spreadAmount);
     }
 
     // Mono/V1 path — reads the mode from pe.spreadTargetMode[lane], so the caller
@@ -153,10 +210,15 @@ struct SpreadInterp {
     // Used only by the debug assertion to know when V1 is actually pinned (src != self).
     static int v1caSrc(const PatternEngine& pe, int lane) {
         switch (lane) {
-            case 0: case 3: case 5: case 6: return pe.caRhythmSrc[0];  // REST, ACC, VAR, LEG → rhythm plane
-            case 1: case 2:                 return pe.caMelodySrc[0];  // MEL, OCT → melody plane
-            case 4:                          return pe.caQmixSrc[0];    // QMIX → qmix plane
-            default:                         return 0;
+            case PatternEngine::PL_MELODY: case PatternEngine::PL_OCTAVE:
+                return pe.caMelodySrc[0];    // MEL, OCT → melody plane
+            case PatternEngine::PL_QMIX:
+                return pe.caQmixSrc[0];      // QMIX → qmix plane
+            case PatternEngine::PL_REST: case PatternEngine::PL_ACCENT:
+            case PatternEngine::PL_VARIATION: case PatternEngine::PL_LEGATO:
+                return pe.caRhythmSrc[0];    // REST, ACC, VAR, LEG → rhythm plane
+            default:
+                return 0;
         }
     }
 
@@ -170,7 +232,16 @@ struct SpreadInterp {
         // knob a silent no-op — the bug that bit three times. Assert loudly in debug builds.
         REDDOT_SPREAD_ASSERT(!(followCA && spreadAmount != 0.0f && v1caSrc(pe, lane) != 0 && own == t),
                "follow-CA mono spread: own==target (pre-remap collapsed) — knob would be a silent no-op");
-        return interpolate(own, t, spreadAmount);
+        // FOLLOW-CA (the fifth rider): the AUDIO view of the ONE decision — the
+        // endpoints come from the LIVE buffers (engine thread, the writer's own
+        // thread); the display fills the same entry from the PUB snapshots.
+        return redDot::resolveFollowCaSpread({
+            .mode = pe.spreadTargetMode[lane],
+            .ownAnchor = t,
+            .ownPreRemap = own,
+            .targetV1 = t,
+            .targetPostRemap = t,
+            .amount = spreadAmount });
     }
 
     // Poly path — reads the mode from pe.spreadTargetMode[lane], so the caller
@@ -179,29 +250,34 @@ struct SpreadInterp {
     //   Follow CA:  own = polyPreRemap (voice's pre-remap draw), target = polySlewed
     //               (voice's post-remap = src[v]'s material, already in the poly buffer).
     static float applyPoly(const PatternEngine& pe, int lane, int voice, int step, float spreadAmount) {
-        bool followCA = (pe.spreadTargetMode[lane] == 1);
-        float own = followCA ? polyPreRemap(pe, lane, voice, step) : polySlewed(pe, lane, voice, step);
-        float t = followCA ? polySlewed(pe, lane, voice, step) : monoSlewed(pe, lane, step);
-        // SPREAD CONTRACT (SPREAD_TARGET_MODES.md POST-MORTEM): under follow-CA with this voice
-        // actually pinned (src != self), own (pre-remap) MUST differ from t (post-remap = its
-        // leader's material). Same silent-no-op collapse the mono path hit — assert on BOTH paths.
+        const bool followCA = (pe.spreadTargetMode[lane] == 1);
+        const float ownSlewed = polySlewed(pe, lane, voice, step);   // the voice's post-remap draw
+        const float monoS    = monoSlewed(pe, lane, step);           // V1's draw (the anchor)
+        const float own = followCA ? polyPreRemap(pe, lane, voice, step) : ownSlewed;
+        // SPREAD CONTRACT (same as applyMono): under follow-CA with the voice actually
+        // pinned (src != voice), own (pre-remap) MUST differ from ownSlewed (post-remap =
+        // the source's material, already in the poly buffer). The old local `t` is folded
+        // in — in follow-CA mode t WAS polySlewed, so the comparison is unchanged.
         REDDOT_SPREAD_ASSERT(!(followCA && spreadAmount != 0.0f
-                 && (int)pe.caSrcRow(voice + 1, laneToStrand(lane)) != voice + 1 && own == t),
+                 && (int)pe.caSrcRow(voice, laneToStrand(lane)) != voice && own == ownSlewed),
                "follow-CA poly spread: own==target (pre-remap collapsed) — knob would be a silent no-op");
-        return interpolate(own, t, spreadAmount);
+        // FOLLOW-CA (the fifth rider): the AUDIO view of the ONE decision (LIVE reads) —
+        // each endpoint read exactly once; the initializers read like the spec.
+        return redDot::resolveFollowCaSpread({
+            .mode = pe.spreadTargetMode[lane],
+            .ownAnchor = ownSlewed,
+            .ownPreRemap = own,
+            .targetV1 = monoS,
+            .targetPostRemap = ownSlewed,
+            .amount = spreadAmount });
     }
 
     // Spread lane (0=REST,1=MEL,2=OCT,3=ACC,4=QMIX) → engine strand, for the poly assertion's
     // src lookup (caSrcRow takes a strand, not a spread lane).
+    // Lane-index unification: lane == strand (PL_* reordered to match STRAND_*).
+    // laneToStrand is now IDENTITY — lane IS the strand index.
     static int laneToStrand(int lane) {
-        switch (lane) {
-            case 0: return dotModular::STRAND_RHYTHM;
-            case 1: return dotModular::STRAND_MELODY;
-            case 2: return dotModular::STRAND_OCTAVE;
-            case 3: return dotModular::STRAND_ACCENT;
-            case 4: return dotModular::STRAND_QMIX;
-            default: return dotModular::STRAND_RHYTHM;
-        }
+        return (lane >= 0 && lane < dotModular::NUM_STRANDS) ? lane : dotModular::STRAND_RHYTHM;
     }
 };
 

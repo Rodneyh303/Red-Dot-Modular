@@ -15,14 +15,16 @@
 #include <atomic>
 #include "Monsoon.hpp"
 #include "ui/VisualExpanderHelpers.hpp"
+#include "ui/ModuleLookup.hpp"           // THE module-lookup authority: lookupMonsoon — memoized, event-driven (CC_PROMPT_MODULE_LOOKUP_AUTHORITY_START)
 #include "ui/ModArcOverlay.hpp"
 #include "ui/StoreEditAction.hpp"   // pin edits: store-backed, undoable (DAW_PARAM_AUDIT 5b)
 #include "dsp/ChangeAlleyTransforms.hpp"   // ca::applyCorrelation (transform apply owned here)
 #include "dsp/CATrajectoryBuffer.hpp"      // TRUE REVERSE: per-stream committed-state trajectory ring
 #include "dsp/CAPendingOrder.hpp"          // chronological pending-transform ordering
-#include "ui/IntertropicalPairing.hpp"     // shared pairing: assignPairIdT / resolveFollowedT<T>
+#include "ui/IntertropicalPairing.hpp"     // shared pairing: assignPairIdT / resolveFollowedT (templates)
 #include "ui/ConnectMark.hpp"              // shared dot.modular connect indicator (same as other panels)
 #include "ui/SvgPanelKit.hpp"             // Option B-full: bind ports/params/lights by name from anchors
+#include <array>   // P-B: std::array member state (ARRAY_CONTAINER_AUDIT)
 
 using namespace rack;
 // NOT 'using namespace ChangeAlleyIds' — Monsoon.hpp exposes MonsoonIds with the same
@@ -31,8 +33,8 @@ using namespace rack;
 namespace CA = ChangeAlleyV2Ids;
 
 struct MonsoonChangeAlleyV2 : Module {
-    uint8_t rhythmSrc[CA::N_VOICES];
-    uint8_t melodySrc[CA::N_VOICES];
+    std::array<uint8_t, CA::N_VOICES> rhythmSrc{};
+    std::array<uint8_t, CA::N_VOICES> melodySrc{};
     // Q-MIX source-select plane (QMIX_LANE_PARITY §"The blend"): the NEW green plane, a full
     // parity sibling of rhythm(white)/melody(red). Row-radio like the other two: qmixSrc[v] holds
     // the ONE source column voice v consumes for its q-mix PROBABILITY. Downstream of CA the
@@ -40,7 +42,7 @@ struct MonsoonChangeAlleyV2 : Module {
     // on. Default identity (qmixSrc[v]=v) → the Straits per-voice level reads exactly as before.
     // The PANEL's physical q-mix pin ROW is a later layer (CA_PANEL_THREE_STREAM_LAYOUT.md); this
     // field + its persistence/undo/scatter are wired NOW so the panel layer only adds click+render.
-    uint8_t qmixSrc[CA::N_VOICES];
+    std::array<uint8_t, CA::N_VOICES> qmixSrc{};
 
     // ── Shared-CA pairing (CA_SHARED_EXPANDER_BUILD.md) ──────────────────────────────────────
     // Self-assigned lowest-free number (1..N) so a second Monsoon can bind this CA by id, rack-wide
@@ -55,8 +57,9 @@ struct MonsoonChangeAlleyV2 : Module {
     // the designation returns if that host comes back. Runtime helpers below resolve the effective one.
     int primaryPairId = 0;
 
-    // The pairIds of every Monsoon currently bound to THIS CA (its scan cached us). Rebuilt at control
-    // rate by refreshConnectedHosts(); read by the widget's 8-slot row + primary menu. Sorted ascending.
+    // The pairIds of every Monsoon currently bound to THIS CA (its scan cached us). Rebuilt when the
+    // topology epoch moves (refreshConnectedHosts(); was the /1024 hostScanDiv_ poll — CC_PROMPT_
+    // MODULE_LOOKUP_AUTHORITY_START); read by the widget's 8-slot row + primary menu. Sorted ascending.
     std::vector<int> connectedHostIds_;
 
     // Which pairId is EFFECTIVELY primary right now: the designation if it's connected, else the lowest
@@ -68,11 +71,13 @@ struct MonsoonChangeAlleyV2 : Module {
             for (int id : connectedHostIds_) if (id == primaryPairId) return primaryPairId;
         return connectedHostIds_.front();   // sorted → lowest connected = auto default / promotion
     }
-    rack::dsp::ClockDivider hostScanDiv_;   // control-rate rebuild of connectedHostIds_
+    uint64_t hostScanEpoch_ = 0;            // epoch guard: rebuild connectedHostIds_ once per generation
 
     // Rebuild connectedHostIds_ = pairIds of every Monsoon whose expander scan cached THIS CA (covers
-    // both adjacency and explicit followCA — both resolve into cachedChangeAlleyV2). Rack-wide walk,
-    // control-rate only. A capped/unassigned host (pairId 0) is skipped for the slot row (no colour).
+    // both adjacency and explicit followCA — both resolve into cachedChangeAlleyV2). Rack-wide
+    // enumeration, EPOCH-GATED only (the Monsoon caches it reads are themselves event/epoch-driven;
+    // Monsoon::onExpanderChange updates them eagerly inside the event). A capped/unassigned host
+    // (pairId 0) is skipped for the slot row (no colour).
     void refreshConnectedHosts() {
         connectedHostIds_.clear();
         if (!(APP && APP->engine)) return;
@@ -100,15 +105,15 @@ struct MonsoonChangeAlleyV2 : Module {
     };
 
     // ── Transforms (§15): the full Temasek control set, in one module ──────────────────
-    CA::PendingAction pendingRows[CA::N_ROWS];
-    rack::dsp::SchmittTrigger domTrig  [CA::N_ROWS];
-    rack::dsp::SchmittTrigger codTrig  [CA::N_ROWS];
-    rack::dsp::BooleanTrigger btnTrig  [CA::N_ROWS * 2];
-    rack::dsp::SchmittTrigger sBackDom [CA::SIDES * CA::TYPES];
-    rack::dsp::SchmittTrigger sBackCod [CA::SIDES * CA::TYPES];
+    std::array<CA::PendingAction, CA::N_ROWS> pendingRows{};
+    std::array<rack::dsp::SchmittTrigger, CA::N_ROWS> domTrig{};
+    std::array<rack::dsp::SchmittTrigger, CA::N_ROWS> codTrig{};
+    std::array<rack::dsp::BooleanTrigger, CA::N_ROWS * 2> btnTrig{};
+    std::array<rack::dsp::SchmittTrigger, CA::SIDES * CA::TYPES> sBackDom{};
+    std::array<rack::dsp::SchmittTrigger, CA::SIDES * CA::TYPES> sBackCod{};
     // Button twins of the back-jacks: domain + codomain reverse buttons (scatterDelta = -1).
-    rack::dsp::BooleanTrigger sRevBtnDom [CA::SIDES * CA::TYPES];
-    rack::dsp::BooleanTrigger sRevBtnCod [CA::SIDES * CA::TYPES];
+    std::array<rack::dsp::BooleanTrigger, CA::SIDES * CA::TYPES> sRevBtnDom{};
+    std::array<rack::dsp::BooleanTrigger, CA::SIDES * CA::TYPES> sRevBtnCod{};
     // TRUE-REVERSE (CA_DICE_COUNTER_MODEL): one jack + one button per STREAM (rhythm/melody/q-mix =
     // TYPES = 3), VERB-AGNOSTIC. The committed pin STATE is one whole-matrix array per stream, so a
     // single control per stream restores both Intra/Inter AND domain/codomain (they're baked into the
@@ -118,10 +123,10 @@ struct MonsoonChangeAlleyV2 : Module {
     // NOTE: the trajectory-replay ENGINE (a deeper state-history buffer, per the doc's true-reverse
     // proposal + buffer-size section) is a SEPARATE build; here we add the CONTROLS + trigger
     // detection + a per-stream pending request flag. See trueRevRequested[] below.
-    rack::dsp::SchmittTrigger  sTrueRevIn  [CA::TYPES];
-    rack::dsp::BooleanTrigger  sTrueRevBtn [CA::TYPES];
+    std::array<rack::dsp::SchmittTrigger, CA::TYPES> sTrueRevIn{};
+    std::array<rack::dsp::BooleanTrigger, CA::TYPES> sTrueRevBtn{};
     // Set when a true-reverse jack/button fires (index = stream/type); drained by the future engine.
-    bool trueRevRequested[CA::TYPES] = {};
+    std::array<bool, CA::TYPES> trueRevRequested = {};
     // Scatter draw counters: 8 = Intra/Inter x rhythm/melody x domain/codomain (the panel's separate
     // scatter jacks). Each is a SIGNED int64 addressable POSITION in its own domain-separated Philox
     // stream -- the SAME model as the main dice draw counters. Forward jack = counter++, back jack =
@@ -131,7 +136,7 @@ struct MonsoonChangeAlleyV2 : Module {
     // intra/inter. SCATTER_TYPES=3 (not TYPES=2) so q-mix gets CA scatter parity without touching
     // the panel row/param geometry. Indexing: ci = (side*SCATTER_TYPES + type)*2 + (dom?0:1),
     // type 0=rhythm 1=melody 2=qmix — kept consistent with corrKey + transform apply below.
-    int64_t scatterCounter[CA::N_SCATTER] = {};
+    std::array<int64_t, CA::N_SCATTER> scatterCounter = {};
 
     // One Philox KEY per scatter stream (8 = the counters' Intra/Inter x r/m x dom/cod), mirroring
     // the 2 main-dice RNGs. INTERNAL seeding = 8 INDEPENDENT random keys (different per stream, like
@@ -139,7 +144,7 @@ struct MonsoonChangeAlleyV2 : Module {
     // draw builds a transient PhiloxRng from corrKey[ci] and reads at(scatterCounter[ci]) -- the
     // counter is the addressable position, so counter-- rewinds exactly. Keys persist so saved
     // patches reproduce future scatters. See CA_DICE_COUNTER_MODEL.md.
-    uint64_t corrKey[CA::N_SCATTER] = {};
+    std::array<uint64_t, CA::N_SCATTER> corrKey = {};
     void seedCorrKeysInternal() {
         for (int i = 0; i < CA::N_SCATTER; ++i) corrKey[i] = rack::random::u64();
     }
@@ -161,17 +166,12 @@ struct MonsoonChangeAlleyV2 : Module {
     // drains it and pushes a Rack history action per committed transform. Transform commits are
     // infrequent (phrase boundaries), so 16 slots is ample.
     struct TransformUndoSnapshot {
-        uint8_t  beforeR[CA::N_VOICES];
-        uint8_t  beforeM[CA::N_VOICES];
-        uint8_t  beforeQ[CA::N_VOICES];   // q-mix plane (parity with R/M)
-        uint8_t  afterR[CA::N_VOICES];
-        uint8_t  afterM[CA::N_VOICES];
-        uint8_t  afterQ[CA::N_VOICES];
-        int64_t counterBefore[CA::N_SCATTER];
-        int64_t counterAfter [CA::N_SCATTER];
+        std::array<uint8_t, CA::N_VOICES> beforeR{}, beforeM{}, beforeQ{};   // q-mix plane (parity with R/M)
+        std::array<uint8_t, CA::N_VOICES> afterR{}, afterM{}, afterQ{};
+        std::array<int64_t, CA::N_SCATTER> counterBefore{}, counterAfter {};
     };
     static constexpr int UNDO_RING = 16;
-    TransformUndoSnapshot undoRing[UNDO_RING];
+    std::array<TransformUndoSnapshot, UNDO_RING> undoRing{};
     std::atomic<uint32_t> undoHead{0};   // producer (audio) writes, then advances
     std::atomic<uint32_t> undoTail{0};   // consumer (UI) reads, then advances
 
@@ -246,7 +246,8 @@ struct MonsoonChangeAlleyV2 : Module {
         }
         resetToIdentity();
         seedCorrKeysInternal();   // fresh module: no seed known yet, entropy keys are correct
-        hostScanDiv_.setDivision(1024);   // ~47 Hz @ 48 kHz: control-rate host enumeration (§3b)
+        // (hostScanDiv_ DELETED — CC_PROMPT_MODULE_LOOKUP_AUTHORITY_START: connectedHostIds_ rebuilds
+        //  on the topology-epoch guard; see process().)
     }
 
     static int grainFromKnob(float v) {
@@ -295,7 +296,7 @@ struct MonsoonChangeAlleyV2 : Module {
     // Apply all ARMED pending transforms to this module's own pin matrix. Owns the state
     // mutation (rhythmSrc/melodySrc + scatterCounter) -- the manager only decides WHEN to call
     // this (phrase boundary / unlock). Moved out of MonsoonExpanderManager so the module that
-    // holds the state also owns its mutation (and, next, its undo snapshot). `active` is the
+    // holds the state also owns its mutation (and, next, its undo snapshot). active is the
     // active voice count (numPolyVoices+1, clamped >=1).
     // axisMask (LOCK_SCOPE_MENU §6): which axes may commit THIS call. bit0 = rhythm rows (type==0),
     // bit1 = melody rows (type==1), bit2 = q-mix rows (type==2). Default 0b111 = all (normal unlock/
@@ -326,10 +327,10 @@ struct MonsoonChangeAlleyV2 : Module {
             // returns false (STOP, don't wrap) — the consume still clears the lamp above so the
             // affordance is consistent, but the state is left unchanged.
             {
-                uint8_t restored[CA::N_VOICES];
-                uint8_t* tbl = (ty == 0) ? rhythmSrc : (ty == 1) ? melodySrc : qmixSrc;
-                if (trajectory_.stepBack(ty, restored))
-                    std::memcpy(tbl, restored, CA::N_VOICES);
+                std::array<uint8_t, CA::N_VOICES> restored{};
+                uint8_t* tbl = (ty == 0) ? rhythmSrc.data() : (ty == 1) ? melodySrc.data() : qmixSrc.data();
+                if (trajectory_.stepBack(ty, restored.data()))
+                    std::memcpy(tbl, restored.data(), CA::N_VOICES);
             }
         }
         // Any armed row this call whose AXIS is in the mask?  If none, nothing to snapshot or apply.
@@ -350,10 +351,10 @@ struct MonsoonChangeAlleyV2 : Module {
         // (today's verb-major). Includes out-of-axis rows so their stamp survives for the later
         // commit; the axis check below skips them (they stay armed). CA_DICE_COUNTER_MODEL.md
         // "Pending transform ORDER".
-        bool armedArr[CA::N_ROWS]; uint32_t stampArr[CA::N_ROWS];
+        std::array<bool, CA::N_ROWS> armedArr{}; std::array<uint32_t, CA::N_ROWS> stampArr{};
         for (int row = 0; row < CA::N_ROWS; ++row) { armedArr[row] = pendingRows[row].armed; stampArr[row] = pendingRows[row].stamp; }
-        int orderArr[CA::N_ROWS];
-        const int nOrdered = redDot::CAPendingOrder::orderRows(CA::N_ROWS, armedArr, stampArr, orderArr);
+        std::array<int, CA::N_ROWS> orderArr{};
+        const int nOrdered = redDot::CAPendingOrder::orderRows(CA::N_ROWS, armedArr.data(), stampArr.data(), orderArr.data());
         for (int oi = 0; oi < nOrdered; ++oi) {
             const int row = orderArr[oi];
             auto& p = pendingRows[row];
@@ -368,7 +369,7 @@ struct MonsoonChangeAlleyV2 : Module {
             // Table + scatter index by type: 0=rhythm 1=melody 2=qmix (parity, kept consistent with the
             // corrKey/scatterCounter ordering). ci uses SCATTER_TYPES so the q-mix streams (type 2) are
             // addressable NOW even though the current panel only fires type 0/1.
-            uint8_t* tbl   = (type == 0) ? rhythmSrc : (type == 1) ? melodySrc : qmixSrc;
+            uint8_t* tbl   = (type == 0) ? rhythmSrc.data() : (type == 1) ? melodySrc.data() : qmixSrc.data();
             const int ci   = (side * CA::SCATTER_TYPES + type) * 2 + (p.isDomain ? 0 : 1);
             if (verb == CA::V_SCATTER)
                 scatterCounter[ci] += (int64_t)p.scatterDelta;   // +1 fwd jack, -1 back jack
@@ -393,9 +394,9 @@ struct MonsoonChangeAlleyV2 : Module {
         // call (records RESULTS, not causes — after the verbs applied). pushIfChanged skips
         // unchanged states so static passages don't consume depth. This is what makes true-reverse
         // verb-agnostic and able to step back through a lossy collapse.
-        if (axisMask & 0b001) trajectory_.pushIfChanged(0, rhythmSrc);
-        if (axisMask & 0b010) trajectory_.pushIfChanged(1, melodySrc);
-        if (axisMask & 0b100) trajectory_.pushIfChanged(2, qmixSrc);
+        if (axisMask & 0b001) trajectory_.pushIfChanged(0, rhythmSrc.data());
+        if (axisMask & 0b010) trajectory_.pushIfChanged(1, melodySrc.data());
+        if (axisMask & 0b100) trajectory_.pushIfChanged(2, qmixSrc.data());
         // Chronological counter: reset ONLY when the pending set is now fully empty (no armed
         // rows remain — out-of-axis rows would still be armed). Resetting at every boundary would
         // give new post-boundary arms stamp 0 < persistent out-of-axis rows' stamps, jumping them
@@ -403,6 +404,13 @@ struct MonsoonChangeAlleyV2 : Module {
         bool anyArmed = false;
         for (int row = 0; row < CA::N_ROWS; ++row) if (pendingRows[row].armed) { anyArmed = true; break; }
         if (!anyArmed) pendingStampCounter_ = 0;
+    }
+
+    // LOOKUP AUTHORITY (CC_PROMPT_MODULE_LOOKUP_AUTHORITY_START): the event is THE trigger — bump the
+    // global topology epoch so the bound-host enumeration and the lookup* memos re-resolve on the
+    // next read, engine + widget threads.
+    void onExpanderChange(const ExpanderChangeEvent& e) override {
+        redDot::bumpTopologyEpoch();
     }
 
     void process(const ProcessArgs&) override {
@@ -421,12 +429,15 @@ struct MonsoonChangeAlleyV2 : Module {
                         if (ca->pairId == pairId) { clash = true; break; }
                 }
             }
-            if (pairId <= 0 || clash) pairId = redDot::assignPairIdT<MonsoonChangeAlleyV2>(this);
+            if (pairId <= 0 || clash) pairId = redDot::assignPairIdT<MonsoonChangeAlleyV2>(this);   // LOOKUP-AUTHORITY (one-shot identity settle — runs once per lifetime behind pairChecked; not a hot-path walk)
         }
-        // Enumerate the Monsoons bound to THIS CA at control rate (§3b): feeds the 8-slot connect-mark
-        // row + the primary-selector menu. Rack-wide getModuleIds() walk is too costly per-sample, so
-        // it's divided; the first block runs immediately (divider fires on the initial count).
-        if (hostScanDiv_.process()) refreshConnectedHosts();
+        // Enumerate the Monsoons bound to THIS CA (§3b): feeds the 8-slot connect-mark row + the
+        // primary-selector menu. LOOKUP AUTHORITY (Rodney's ruling): EVENT-DRIVEN — rebuilt only when
+        // the topology epoch moved (onExpanderChange bumps it; the Monsoon caches this reads are
+        // updated eagerly inside Monsoon's own handler, so this always sees fresh data; a static rack
+        // enumerates zero times). Was: the /1024 hostScanDiv_ poll (re-scanning forever even when
+        // idle). The first block still refreshes (the epoch starts at 1 != the 0 cache).
+        if (redDot::lookupEpochStale(hostScanEpoch_)) refreshConnectedHosts();
         // Owner guard: reset each block; the first ExpanderManager::sync() that applies transforms
         // sets it, so a second (reader) Monsoon skips the mutation. See CA_SHARED_EXPANDER_BUILD §Step4.
         transformsAppliedThisBlock = false;
@@ -484,13 +495,13 @@ struct MonsoonChangeAlleyV2 : Module {
         // ── Correlation EXPRESSION pairs (CA_EXPRESSION_CV_CORRELATION.md) ───────────────────────
         // Each pair is a pass-through ROUTER: poly-CV OUT = poly-CV IN with its 16 voice channels
         // permuted by that stream's LIVE voice table (the SAME src[] the notes/Keppel consume, so the
-        // expression stays in one voice frame). GATHER form: consuming voice `row` pulls the envelope
+        // expression stays in one voice frame). GATHER form: consuming voice row pulls the envelope
         // of its source voice src[row] — out[row] = in[src[row]] — i.e. "voice 1's envelope goes where
         // voice 3's note went." Tables change only at phrase granularity; the per-sample cost is a
         // 16-ch copy through a lookup. Pair→stream allocation 3 rhythm / 3 melody / 2 q-mix (== the
         // panel layout / configInput labels). Unpatched IN → 0-channel (silent) OUT, not identity.
         for (int k = 0; k < 8; ++k) {
-            const uint8_t* src = (k < 3) ? rhythmSrc : (k < 6) ? melodySrc : qmixSrc;
+            const uint8_t* src = (k < 3) ? rhythmSrc.data() : (k < 6) ? melodySrc.data() : qmixSrc.data();
             rack::Input&  in  = inputs [CA::EXPR_IN_START  + k];
             rack::Output& out = outputs[CA::EXPR_OUT_START + k];
             const int nIn = in.getChannels();
@@ -524,9 +535,9 @@ struct MonsoonChangeAlleyV2 : Module {
             for (int v = 0; v < CA::N_VOICES; ++v) json_array_append_new(arr, json_integer(a[v]));
             json_object_set_new(root, k, arr);
         };
-        save("rhythmSrc", rhythmSrc);
-        save("melodySrc", melodySrc);
-        save("qmixSrc",   qmixSrc);   // q-mix source-select plane (parity with rhythm/melody)
+        save("rhythmSrc", rhythmSrc.data());
+        save("melodySrc", melodySrc.data());
+        save("qmixSrc", qmixSrc.data());   // q-mix source-select plane (parity with rhythm/melody)
         json_object_set_new(root, "pairId", json_integer(pairId));   // shared-CA pairing (CA_SHARED_EXPANDER)
         json_object_set_new(root, "primaryPairId", json_integer(primaryPairId));  // §3b user primary (0=auto-lowest)
         {   json_t* ck = json_array();
@@ -573,9 +584,9 @@ struct MonsoonChangeAlleyV2 : Module {
                     a[v] = (uint8_t)math::clamp((int)json_integer_value(val), 0, CA::N_VOICES-1);
             }
         };
-        load("rhythmSrc", rhythmSrc);
-        load("melodySrc", melodySrc);
-        load("qmixSrc",   qmixSrc);   // missing in old patches → resetToIdentity left it identity (qmixSrc[v]=v)
+        load("rhythmSrc", rhythmSrc.data());
+        load("melodySrc", melodySrc.data());
+        load("qmixSrc", qmixSrc.data());   // missing in old patches → resetToIdentity left it identity (qmixSrc[v]=v)
         if (json_t* ck = json_object_get(root, "corrKey")) {
             // NOTE (pre-release, acceptable): bumping the scatter dimension 8→12 (SCATTER_TYPES 2→3)
             // reindexes the melody corrKey/scatterCounter slots, so a patch saved with the OLD 8-stream
@@ -735,7 +746,7 @@ struct MonsoonChangeAlleyV2Widget : ModuleWidget,
         // Mod arc factory: overlay a red arc on a knob showing where poly CV pushes it.
         // getSetNorm = knob's own value; getModNorm = resolved knob+CV; gated on the
         // Monsoon menu flag modVizChangeAlley (matches every other surface).
-        auto* mod = module;   // capture the ctor param explicitly (member `this->module`
+        auto* mod = module;   // capture the ctor param explicitly (member this->module
                               //   is set by setModule but the local shadows it here)
         auto addArc = [&, mod](rack::app::Knob* knob, int paramId,
                           std::function<float()> resolved) {
@@ -748,7 +759,7 @@ struct MonsoonChangeAlleyV2Widget : ModuleWidget,
             };
             arc->getModNorm = resolved;
             arc->isActive   = [mod]() -> bool {
-                Monsoon* mm = mod ? redDot::findMonsoonEitherSide(mod) : nullptr;
+                Monsoon* mm = mod ? redDot::lookupMonsoon(mod) : nullptr;
                 return mm ? mm->modVizChangeAlley : false;
             };
             arc->attachOverKnob(knob, 1.5f);
@@ -899,7 +910,7 @@ struct MonsoonChangeAlleyV2Widget : ModuleWidget,
 
         int getPolyCount() const {
             if (!module) return 0;
-            auto* mon = redDot::findMonsoonEitherSide(module);
+            auto* mon = redDot::lookupMonsoon(module);
             return mon ? mon->engine.numPolyVoices : 0;
         }
 
@@ -953,7 +964,7 @@ struct MonsoonChangeAlleyV2Widget : ModuleWidget,
                     // (The earlier 'only row 1 numbered' bug was dark ink on a dark body;
                     //  the fix is theme-correct ink, not permanently-light ink.)
                     // Same source as the panel swap: the connected Monsoon's flag.
-                    Monsoon* themeM = module ? redDot::findMonsoonEitherSide(module) : nullptr;
+                    Monsoon* themeM = module ? redDot::lookupMonsoon(module) : nullptr;
                     const bool lightBody = themeM && themeM->lightTheme;
                     NVGcolor ink    = lightBody ? nvgRGB(0x2a,0x2a,0x2e) : nvgRGB(0xe8,0xe2,0xd0);
                     NVGcolor inkdim = lightBody ? nvgRGBA(0x88,0x8d,0x96,0xd0)
@@ -1085,7 +1096,7 @@ struct MonsoonChangeAlleyV2Widget : ModuleWidget,
                     // (An earlier version outlined diagonal squares, which is only correct
                     //  near identity: rotateValues takes its block from src[v], the COLUMN,
                     //  and collapseDomain hands row v the value tmp[leader], any column.)
-                    // INTRA bands are `grain` wide; INTER bands are the whole pool split
+                    // INTRA bands are grain wide; INTER bands are the whole pool split
                     // into blocks, drawn heavier because whole blocks move as units.
                     const int b    = std::max(1, h.grain);
                     const float lw = h.isInter ? sw * 1.6f : sw;
@@ -1108,12 +1119,46 @@ struct MonsoonChangeAlleyV2Widget : ModuleWidget,
                 }
             }
 
+            // Phase B: active-area frame + OOB identity diagonal.
+            // Light frame around the active (poly+1)x(poly+1) area to show the non-dimmed region.
+            // Light red diagonal line for the identity diagonal OUTSIDE the active area, showing
+            // the user that OOB mappings resolve to identity (suspended).
+            if (poly < CA::N_VOICES - 1) {  // only when there ARE OOB voices
+                const float hw = mm2px(Vec(CELL_W * 0.5f, 0)).x;
+                const float hh = mm2px(Vec(0, CELL_H * 0.5f)).y;
+                // Active frame: rectangle around cells (0,0)..(poly,poly)
+                Vec tl = cellCentre(0, 0);
+                Vec br = cellCentre(poly, poly);
+                nvgBeginPath(vg);
+                nvgRect(vg, tl.x - hw, tl.y - hh,
+                        (br.x + hw) - (tl.x - hw), (br.y + hh) - (tl.y - hh));
+                nvgStrokeColor(vg, nvgRGBAf(1,1,1,0.25f));
+                nvgStrokeWidth(vg, mm2px(Vec(0.4f,0)).x);
+                nvgStroke(vg);
+                // OOB identity diagonal: from (poly+1,poly+1) to (15,15) in light red
+                Vec d0 = cellCentre(poly + 1, poly + 1);
+                Vec d1 = cellCentre(CA::N_VOICES - 1, CA::N_VOICES - 1);
+                nvgBeginPath(vg);
+                nvgMoveTo(vg, d0.x, d0.y);
+                nvgLineTo(vg, d1.x, d1.y);
+                nvgStrokeColor(vg, nvgRGBAf(0.85f,0.15f,0.15f,0.35f));
+                nvgStrokeWidth(vg, mm2px(Vec(0.5f,0)).x);
+                nvgStroke(vg);
+            }
+
             for (int row = 0; row < CA::N_VOICES; ++row) {
                 bool active = (row == 0) || (row <= poly);  // row 0=mono always active
                 float alpha = active ? 1.f : 0.4f;
                 uint8_t rSrc = module->rhythmSrc[row];
                 uint8_t mSrc = module->melodySrc[row];
                 uint8_t qSrc = module->qmixSrc[row];
+                // Phase B: dim BOTH axes. A pin whose SOURCE is also OOB resolves to
+                // identity (OOB=identity policy), so dim it to show the user which
+                // mappings are suspended. Per-plane alpha: target active AND source active.
+                auto vActive = [&](int v) { return (v == 0) || (v <= poly); };
+                float rAlpha = (active && vActive(rSrc)) ? 1.f : 0.4f;
+                float mAlpha = (active && vActive(mSrc)) ? 1.f : 0.4f;
+                float qAlpha = (active && vActive(qSrc)) ? 1.f : 0.4f;
 
                 for (int col = 0; col < CA::N_VOICES; ++col) {
                     Vec c = cellCentre(row, col);
@@ -1134,21 +1179,21 @@ struct MonsoonChangeAlleyV2Widget : ModuleWidget,
                     if (hasR || hasM || hasQ) {
                         // base peg: white if rhythm present, else the outermost present plane's colour
                         if (hasR) {
-                            drawPin(vg, c.x, c.y, ro, white, rIdentity ? 0.72f*alpha : alpha);
+                            drawPin(vg, c.x, c.y, ro, white, rIdentity ? 0.72f*rAlpha : rAlpha);
                         } else if (hasM) {
-                            drawPin(vg, c.x, c.y, ro, red, mIdentity ? 0.72f*alpha : alpha);
+                            drawPin(vg, c.x, c.y, ro, red, mIdentity ? 0.72f*mAlpha : mAlpha);
                         } else { // q-mix only
-                            drawPin(vg, c.x, c.y, ro, green, qIdentity ? 0.72f*alpha : alpha);
+                            drawPin(vg, c.x, c.y, ro, green, qIdentity ? 0.72f*qAlpha : qAlpha);
                         }
                         // mid red dot if melody present AND a rhythm peg is under it
                         if (hasM && hasR) {
-                            NVGcolor ic = red; ic.a = (mIdentity ? 0.72f : 1.f) * alpha;
+                            NVGcolor ic = red; ic.a = (mIdentity ? 0.72f : 1.f) * mAlpha;
                             nvgBeginPath(vg); nvgCircle(vg, c.x, c.y, ri);
                             nvgFillColor(vg, ic); nvgFill(vg);
                         }
                         // inner green dot if q-mix present AND something is under it (peg is R or M)
                         if (hasQ && (hasR || hasM)) {
-                            NVGcolor gc = green; gc.a = (qIdentity ? 0.72f : 1.f) * alpha;
+                            NVGcolor gc = green; gc.a = (qIdentity ? 0.72f : 1.f) * qAlpha;
                             nvgBeginPath(vg); nvgCircle(vg, c.x, c.y, rq);
                             nvgFillColor(vg, gc); nvgFill(vg);
                         }
@@ -1249,8 +1294,8 @@ struct MonsoonChangeAlleyV2Widget : ModuleWidget,
                     // module id and bakes (row, plane) into the setter, so undo lands on the row/plane
                     // actually edited. Equal old/new never records.
                     {
-                        uint8_t* tbl = (plane == 0) ? module->rhythmSrc
-                                     : (plane == 1) ? module->melodySrc : module->qmixSrc;
+                        uint8_t* tbl = (plane == 0) ? module->rhythmSrc.data()
+                                     : (plane == 1) ? module->melodySrc.data() : module->qmixSrc.data();
                         const char* nm = (plane == 0) ? "move rhythm pin"
                                        : (plane == 1) ? "move melody pin" : "move q-mix pin";
                         float oldV = (float)tbl[row];
@@ -1258,8 +1303,8 @@ struct MonsoonChangeAlleyV2Widget : ModuleWidget,
                             module, nm,
                             [row, plane](MonsoonChangeAlleyV2& m, float v) {
                                 uint8_t c = (uint8_t)math::clamp((int)std::lround(v), 0, CA::N_VOICES - 1);
-                                uint8_t* t = (plane == 0) ? m.rhythmSrc
-                                           : (plane == 1) ? m.melodySrc : m.qmixSrc;
+                                uint8_t* t = (plane == 0) ? m.rhythmSrc.data()
+                                           : (plane == 1) ? m.melodySrc.data() : m.qmixSrc.data();
                                 t[row] = c;
                             },
                             oldV, (float)col);
@@ -1300,10 +1345,9 @@ struct MonsoonChangeAlleyV2Widget : ModuleWidget,
     // actions. Same module-id resolution discipline as ResetPinsAction (survives deletion).
     struct TransformUndoAction : rack::history::Action {
         int64_t  moduleId;
-        uint8_t  beforeR[CA::N_VOICES], beforeM[CA::N_VOICES], beforeQ[CA::N_VOICES];
-        uint8_t  afterR[CA::N_VOICES],  afterM[CA::N_VOICES],  afterQ[CA::N_VOICES];
-        int64_t counterBefore[CA::N_SCATTER];
-        int64_t counterAfter [CA::N_SCATTER];
+        std::array<uint8_t, CA::N_VOICES> beforeR{}, beforeM{}, beforeQ{};
+        std::array<uint8_t, CA::N_VOICES> afterR{},  afterM{},  afterQ{};
+        std::array<int64_t, CA::N_SCATTER> counterBefore{}, counterAfter {};
         TransformUndoAction() { name = "Change Alley transform"; }
         MonsoonChangeAlleyV2* resolve() {
             return dynamic_cast<MonsoonChangeAlleyV2*>(APP->engine->getModule(moduleId));
@@ -1350,7 +1394,7 @@ struct MonsoonChangeAlleyV2Widget : ModuleWidget,
             ca->undoTail.store(t, std::memory_order_release);
         }
 
-        Monsoon* m = redDot::findMonsoonEitherSide(module);
+        Monsoon* m = redDot::lookupMonsoon(module);
         const int wantLight = (m && m->lightTheme) ? 1 : 0;
         if (wantLight != lastThemeLight) {
             lastThemeLight = wantLight;

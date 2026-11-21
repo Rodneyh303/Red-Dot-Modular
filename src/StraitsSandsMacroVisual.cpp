@@ -8,22 +8,46 @@
 //#include "MonsoonStraitsSands.hpp"
 #include "StraitsSandsMacroVisual.hpp"
 #include "dsp/SandsTopology.hpp"           // step 4b: Macro lock predicate via the resolver
+#include <algorithm>
 #include <cassert>
+#include <cstring>   // memcmp — the prob-CV out write-elimination bit-compare (perf fix)
 #include "MonsoonSandsVisualExpander.hpp"  // complete mono type + SandsMonoVisualIds for the tab-1 mono mirror
 #include "ui/SandsVisualEditorV4.hpp"
 #include "ui/TabButton.hpp"
 #include "ui/VisualExpanderHelpers.hpp"
 #include "ui/ModArcOverlay.hpp"
 #include "ui/OwnerCell.hpp"       // DirCell
+#include "ui/WarpCurveButton.hpp" // CC_PROMPT_04: the CRV-column popup trigger
+#include "ui/WarpCurvePopup.hpp"  // CC_PROMPT_04 STEP 3: the curve editor popup
 #include "dsp/engines/SequencerEngine.hpp"  // LaneDir
-#include "dsp/managers/PolySandsParameterManager.hpp"
+#include "dsp/managers/SandsParameterManager.hpp"
 #include "dsp/VoiceResolver.hpp"   // activeVoiceCount + voice identity, single source of truth for the tab→voice mapping and uniform 16-voice addressing for prob-out
-#include "dsp/LaneMapping.hpp"        // ENGINE_LANE_TO_EDITOR / MONO_PARAM_TO_EDITOR — single source of truth for lane order
+#include "dsp/LaneMapping.hpp"        // lane constants + strong types (identity — tables deleted Phase 3b)
+#include "MonsoonProfile.hpp"   // CC_PROMPT_cpu_section_profile: Suspect-A counter + section timers (no-op flag-off)
 
 using namespace rack;
 using namespace redDot;
 using namespace MonsoonIds;
 using namespace StraitsMacroVisualIds;
+
+#ifdef MONSOON_PROFILE
+// CC_PROMPT_cpu_section_profile — DIAGNOSTIC SCAFFOLDING (never ships; delete together
+// with the MONSOON_PROF_* call sites in StraitsSandsMacroVisual::process). TSC-tick
+// accumulators for the Macro module's process sections; the control-rate log (~50000
+// samples) converts to ns/sample. Aggregate across Macro instances — read RELATIVE shares.
+static uint64_t monsoonProfAcc_lookup = 0;   // Monsoon lookup (div /8) + dir-mod edge scan — per sample
+static uint64_t monsoonProfAcc_sweep = 0;    // spread publish + gate + resolver + 7-lane x nCh prob-CV sweep — PRIME SUSPECT A
+static uint64_t monsoonProfAcc_total = 0;    // WHOLE-process (CC_PROMPT_TILT_AND_RAIL_FEELTEST: restored safely — see the guard in process())
+static uint64_t monsoonProfWindow = 0;       // samples since the last log
+// The sweep's OWN effectiveProbability calls (engine thread) — the shared accessor
+// counter also tallies the bars' UI-thread refresh, so this split pins which consumer
+// a calls/sample number belongs to (the meter only sees the engine side).
+static uint64_t monsoonProfSweepCalls = 0;
+// The restored gate's fire accounting (CC_PROMPT_restore_sweepsig_gate_START — the
+// idle diagnostic): how many /32 ticks ran the resolve, and WHICH fingerprint field
+// fired (sweepSigWhy's first-match order). Acceptance: idle ⇒ runs ≈ 0.
+static uint64_t monsoonProfGateRuns = 0;
+#endif
 
 extern Plugin* pluginInstance;
 
@@ -48,9 +72,25 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
     dotModular::Compose<StraitsSandsMacroVisualWidget,
                         dotModular::ShapeQuery, dotModular::Bind, dotModular::Reload> {
     SandsVisualEditorV4*       visualEditor = nullptr;
-    PolySandsParameterManager* paramMgr     = nullptr;
+    SandsParameterManager*     paramMgr     = nullptr;
+    // UAS Stage-4 UI completion: the paint-stroke buffer (the before-state for the
+    // stroke's ONE history action — see onMaskToggle/onMaskStrokeEnd). STEPS_32 Stage 2a:
+    // the stroke plane is the DECIDED uint64 integer representation, ring-masked.
+    struct { bool active = false; int kind = 0; uint64_t bits = dotModular::kMaskLenMask; } maskStroke_;
+    // Stage 3: the voice-range strip's caption buffer (setRangeState stores the
+    // pointer — it must outlive the call, so it lives here, not on the stack).
+    char rangeLabel_[16] = "GLOBAL";
     TabButtonGroup*            tabGroup     = nullptr;
     int viewVoice = 0;   // which voice's resulting probabilities to DISPLAY (read-only)
+    // SEND VOICE publish guard (CC_FIX_SEND_VOICE_FROM_MACRO): the tab index whose voice
+    // was last published to the engine (setSendVoice) + Monsoon (macroViewVoice), and the
+    // Monsoon it was published TO. -1/null = nothing published yet (the init block
+    // publishes once, then step() publishes on every change — and on a HOST SWAP, where
+    // the surviving strip must re-publish to the new host or its sends sit at the V1
+    // default while the strip shows another tab). Macro owns the SENDS' voice — it NEVER
+    // touches displayedVoice.
+    int sentVoiceTab_ = -1;
+    Monsoon* publishedMon_ = nullptr;
     // (lastSendVoice removed: the per-voice send sync dance is gone -- StoreKnobs read/write
     //  the live view voice directly, so there is no proxy to re-sync on voice change.)
     bool                       initialized  = false;
@@ -70,7 +110,7 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
     std::function<Monsoon*()> storeResolver() {
         auto* self = this;
         return [self]() -> Monsoon* {
-            return self->module ? redDot::findMonsoonEitherSide(self->module) : nullptr; };
+            return self->module ? redDot::lookupMonsoon(self->module) : nullptr; };
     }
  std::vector<rack::Widget*> leftAttenuverters;  // 12 CV-depth knobs; hidden on tab-1 when mono attached
     void flushSpreadArcs() {
@@ -87,7 +127,7 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
             // same number) and after it (the store becomes authoritative). This removes the
             // arcs' dependence on paramId -- what made them a step-1d blocker.
             arc->getSetNorm = [mm, lane]() -> float {
-                Monsoon* mon = mm ? findMonsoonEitherSide(mm) : nullptr;
+                Monsoon* mon = mm ? redDot::lookupMonsoon(mm) : nullptr;
                 if (!mon) return 0.5f;
                 return rack::math::clamp((mon->getGlobalSpread(lane) + 1.f) * 0.5f, 0.f, 1.f);
             };
@@ -97,7 +137,7 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
             };
             arc->isActive = [mm, lane]() -> bool {
                 if (!mm || lane < 0 || lane >= dotModular::SandsGrid::POLY_LANES) return false;
-                Monsoon* mon = findMonsoonEitherSide(mm);
+                Monsoon* mon = redDot::lookupMonsoon(mm);
                 if (!mon || !mon->modVizMacro) return false;
                 // Gate on the spread CV jack actually being connected — NOT a
                 // set-vs-effective delta, which races during a manual knob turn
@@ -140,6 +180,73 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         visualEditor->layout.topPadding = 0.f;
         visualEditor->layout.botPadding = 0.f;
         visualEditor->showControlBar    = false;
+        // ── UNIFIED ADDRESSING Stage 3: the voice-range strip (top of the grid) ──
+        // ONE RANGE (the corrected model): the strip shows + drags the GLOBAL voice
+        // LOR row (editor.voiceLorMacro — the row every follow-Macro voice reads
+        // through, and the range the macro abs1 base gates against; no separate gate
+        // range exists). East's strip shows this row blocked when a voice follows
+        // Macro; the per-voice rows are authored on East's strip.
+        visualEditor->layout.rangeLaneH = mm2px(Vec(0.f, dotModular::SandsGrid::RANGE_LANE_H)).y;
+        visualEditor->onRangeEdit = [this](int L, int O, int R) {
+            if (auto* m = getMonsoon()) {
+                m->setVoiceLorMacro(0, (float)L);
+                m->setVoiceLorMacro(1, (float)O);
+                m->setVoiceLorMacro(2, (float)R);
+            }
+        };
+        visualEditor->onRangeCommit = [this](const int before[3], const int after[3]) {
+            auto* m = getMonsoon(); if (!m) return;
+            const int b0=before[0],b1=before[1],b2=before[2];
+            const int a0=after[0], a1=after[1], a2=after[2];
+            redDot::applyAndPushStoreEdit<Monsoon>(m, "Global voice range edit",
+                [b0,b1,b2, a0,a1,a2](Monsoon& mm, bool redo) {
+                    const int L = redo?a0:b0, O = redo?a1:b1, R = redo?a2:b2;
+                    mm.setVoiceLorMacro(0, (float)L);
+                    mm.setVoiceLorMacro(1, (float)O);
+                    mm.setVoiceLorMacro(2, (float)R);
+                },
+                false, true);
+        };
+        visualEditor->onRangeRightClick = [this](rack::math::Vec) -> bool {
+            return openVoiceRangeMenu();
+        };
+        // Stage 4 (the UI-completion fix): painting OVERRIDES the range-driven
+        // default — the first toggle of a stroke on a Range/Cycle row transitions it
+        // to Painted, the pattern seeded from the ENGINE's current effective global
+        // mask (cycle -> all-on; range -> the window bits), then the cell applies
+        // live. The whole stroke (kind + final bits) is ONE history action at the end.
+        // The MACRO tier is the GLOBAL mask every follow-Macro voice reads through.
+        maskStroke_.active = false;
+        visualEditor->onMaskToggle = [this](int cell, bool play) {
+            auto* m = getMonsoon(); if (!m) return;
+            if (!maskStroke_.active) {                        // capture the stroke's BEFORE state
+                maskStroke_.active = true;
+                maskStroke_.kind   = (int)std::lround(m->getMaskMacroKind());
+                maskStroke_.bits   = m->getMaskMacroPatternBits();   // the DECIDED uint64 (no float round-trip)
+                if (maskStroke_.kind != 2) {                  // the transition: seed from the effective mask
+                    maskStroke_.kind = 2;
+                    maskStroke_.bits = m->engine.effectiveOutputMaskMacro();
+                    m->setMaskMacroKind(2.f);
+                    m->setMaskMacroPatternBits(maskStroke_.bits);
+                }
+            }
+            m->setMaskMacroCell(cell, play);                  // apply live (the push lands next block)
+        };
+        visualEditor->onMaskStrokeEnd = [this]() {
+            auto* m = getMonsoon(); if (!m) return;
+            if (!maskStroke_.active) return;
+            maskStroke_.active = false;
+            const uint64_t afterBits = m->getMaskMacroPatternBits();   // the DECIDED uint64
+            if ((int)std::lround(m->getMaskMacroKind()) == maskStroke_.kind && afterBits == maskStroke_.bits)
+                return;   // nothing changed
+            const int bKind = maskStroke_.kind; const uint64_t bBits = maskStroke_.bits;
+            redDot::applyAndPushStoreEdit<Monsoon>(m, "Global mask paint",
+                [bKind, bBits, afterBits](Monsoon& mm, bool redo) {
+                    mm.setMaskMacroKind(redo ? 2.f : (float)bKind);
+                    mm.setMaskMacroPatternBits(redo ? afterBits : bBits);
+                },
+                false, true);
+        };
         addChild(visualEditor);
 
         // DRIVES the lane downstream (Mono or East). Ownership governs what reaches the ENGINE, not what
@@ -163,60 +270,55 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         visualEditor->onLorCommit = [this](int lane, const int before[3], const int after[3]) {
             auto* m = getMonsoon(); if (!m) return;
             if (lane < 0 || lane > 4) return;   // only MEL/OCT/REST/ACC/QMIX have global LOR (5 poly lanes)
-            const int engLane = dotModular::EDITOR_TO_ENGINE_LANE_QMIX[lane];
             const int bef0=before[0],bef1=before[1],bef2=before[2];
             const int aft0=after[0], aft1=after[1], aft2=after[2];
             auto* ed = visualEditor;
             redDot::applyAndPushStoreEdit<Monsoon>(m, "LOR edit",
-                [engLane, lane, bef0,bef1,bef2, aft0,aft1,aft2, ed](Monsoon& mm, float dir) {
-                    const bool redo = dir > 0.5f;
+                [lane, bef0,bef1,bef2, aft0,aft1,aft2, ed](Monsoon& mm, bool redo) {
+                    // Typed envelope: the undo/redo SELECTOR rides Rack history as a bool
+                    // (was a 0.f/1.f float decoded with `dir > 0.5f` — envelope abuse).
                     const int L = redo?aft0:bef0, O = redo?aft1:bef1, R = redo?aft2:bef2;
-                    mm.setGlobalLor(engLane, 0, (float)L);
-                    mm.setGlobalLor(engLane, 1, (float)O);
-                    mm.setGlobalLor(engLane, 2, (float)R);
+                    mm.setGlobalLor(lane, 0, (float)L);
+                    mm.setGlobalLor(lane, 1, (float)O);
+                    mm.setGlobalLor(lane, 2, (float)R);
                     if (ed && lane >= 0 && lane < dotModular::SandsGrid::POLY_LANES) {
                         ed->currentState.lanes[lane].length   = std::max(1, L);
                         ed->currentState.lanes[lane].offset   = O;
                         ed->currentState.lanes[lane].rotation = R;
                     }
                 },
-                0.f, 1.f);
+                false, true);
         };
 
         Module* mod_ = module;
         auto themeOut = [mod_](redDot::GoldPolyPort* p) {
-            p->lightTheme = [mod_]() { Monsoon* m = mod_ ? redDot::findMonsoonEitherSide(mod_) : nullptr;
+            p->lightTheme = [mod_]() { Monsoon* m = mod_ ? redDot::lookupMonsoon(mod_) : nullptr;
                                        return m && m->lightTheme; };
         };
 
         // ── CRITICAL lane-order note ──────────────────────────────────────────
-        // The panel ROWS are EDITOR order (top→bottom: MEL,OCT,QMIX,REST,ACC) and the
-        // anchors are editor-lane indexed (param_*_<el>). But EVERY store accessor here
-        // (getGlobalSpread/Atten/Tap, getMacroSend, cvId, PROB_OUT_REST) and the label
-        // arrays are ENGINE order (REST,MEL,OCT,ACC,QMIX). So for each editor row `el`
-        // we MUST convert el→engine lane via EDITOR_TO_ENGINE_LANE_QMIX and use THAT for
-        // the store + label. Passing `el` straight through was the "top row is MELODY but
-        // the knob is labelled/modulates REST" bug. Anchor name stays <el>.
-        // Strong-typed conversion: editor row → engine lane (the single editor↔engine crossing).
-        // EditorLane/EngineLane make a raw-int mixup a compile error; .v feeds the int-keyed store.
-        auto EL2ENG = [](int el){ return dotModular::toEngine(dotModular::EditorLane(el)).v; };
-        // Editor-ordered lane names for tooltips (top→bottom).
-        static const char* EDN[dotModular::SandsGrid::POLY_LANES] = {"MEL","OCT","QMIX","REST","ACC","VAR","LEG"};
+        // The panel ROWS, anchors and store accessors (getGlobalSpread/Atten/Tap,
+        // getMacroSend, cvId, PROB_OUT_REST) all use the ONE unified lane order
+        // (MEL,OCT,QMIX,REST,ACC top→bottom) — editor lane == engine lane (lane-index
+        // unification), so el passes through everywhere with NO conversion. (Historically
+        // the two orders differed and passing el straight through was the "top row is
+        // MELODY but the knob is labelled/modulates REST" bug.) Anchor stays <el>.
+        // Canonical lane names for tooltips (top→bottom).
+        static const char* const* EDN = dotModular::SandsLaneNames::EDITOR;
 
         // 5 poly probability CV outs — jack on editor row el drives engine lane's prob out.
         for (int el = 0; el < dotModular::SandsGrid::POLY_LANES; ++el)
             bindOutput<redDot::GoldPolyPort>(
                 "output_prob_" + std::to_string(el),
-                StraitsMacroVisualIds::PROB_OUT_REST + EL2ENG(el),
+                StraitsMacroVisualIds::PROB_OUT_START + el,
                 std::function<void(redDot::GoldPolyPort*)>(themeOut));
 
         // ── Left section: 5 poly lanes × (4 CV jacks + 4 attens + 1 spread) ──
-        // Anchor row = editor lane el; store/id = engine lane eng.
+        // Anchor row = editor lane el; store/id = the same lane (identity).
         for (int el = 0; el < dotModular::SandsGrid::POLY_LANES; ++el) {
-            const int eng = EL2ENG(el);
             for (int c = 0; c < 4; ++c)
                 bindInput<PJ301MPort>(
-                    "input_cv_" + std::to_string(el) + "_" + std::to_string(c), cvId(eng,c));
+                    "input_cv_" + std::to_string(el) + "_" + std::to_string(c), cvId(el,c));
             // STORE-BACKED (MVC step 1d): global attenuverters (engine-indexed store).
             for (int c = 0; c < 4; ++c) {
                 static const char* CN[4] = {"Length","Offset","Rotation","Spread"};
@@ -224,55 +326,51 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
                 auto* k = redDot::bindStoreKnob<Monsoon, redDot::Tag_Grey_Trim_Bar>(this,
                     "param_atten_" + std::to_string(el) + "_" + std::to_string(c), storeResolver(),
                     -1.f, 1.f, 0.f, albl,
-                    [eng, c](Monsoon& m)          { return m.getGlobalAtten(eng, c); },
-                    [eng, c](Monsoon& m, float v) { m.setGlobalAtten(eng, c, v); });
+                    [el, c](Monsoon& m)          { return m.getGlobalAtten(el, c); },
+                    [el, c](Monsoon& m, float v) { m.setGlobalAtten(el, c, v); });
                 if (k) leftAttenuverters.push_back(k);
             }
         }
 
-        // Per-lane global SPREAD trimpots — anchor param_spr_<el>, store engine lane.
+        // Per-lane global SPREAD trimpots — anchor param_spr_<el>, store the same lane.
         for (int el = 0; el < dotModular::SandsGrid::POLY_LANES; ++el) {
-            const int eng = EL2ENG(el);
             auto* sp = redDot::bindStoreKnob<Monsoon, redDot::Tag_Grey_Trim_Bar>(this,
                 "param_spr_" + std::to_string(el), storeResolver(),
                 -1.f, 1.f, 0.f, std::string(EDN[el]) + " spread",
-                [eng](Monsoon& m)          { return m.getGlobalSpread(eng); },
-                [eng](Monsoon& m, float v) { m.setGlobalSpread(eng, v); });
-            if (sp) pendingSpreadArcs.push_back({sp, eng});   // arc reads engine-lane spread
+                [el](Monsoon& m)          { return m.getGlobalSpread(el); },
+                [el](Monsoon& m, float v) { m.setGlobalSpread(el, v); });
+            if (sp) pendingSpreadArcs.push_back({sp, el});   // arc reads the lane's spread
         }
 
-        // Macro→voice MIX-IN send 2×2 grids — anchor param_send_<el>_<item>, store engine lane.
-        // STORE-BACKED: reads/writes editor.macroSend for the viewed voice (slot resolved LIVE).
-        for (int el = 0; el < dotModular::SandsGrid::POLY_LANES; ++el)
-            for (int item = 0; item < 4; ++item) {
-                const int eng = EL2ENG(el);
-                redDot::bindStoreKnob<Monsoon, redDot::Tag_Grey_Trim_Bar>(this,
-                    "param_send_" + std::to_string(el) + "_" + std::to_string(item),
-                    storeResolver(), -1.f, 1.f, 0.f,
-                    std::string(EDN[el]) + " mix-in " + std::to_string(item) + " (viewed voice)",
-                    [this, eng, item](Monsoon& m) {
-                        const int slot = dotModular::VoiceResolver::voiceSlot(viewVoice + 1);
-                        return m.getMacroSend(slot, eng, item);
-                    },
-                    [this, eng, item](Monsoon& m, float v) {
-                        const int slot = dotModular::VoiceResolver::voiceSlot(viewVoice + 1);
-                        m.setMacroSend(slot, eng, item, v);
-                    });
-            }
-        // PRE/POST CV taps per lane — anchor param_taplor_/tapspr_<el>, store engine lane.
+        // ── CC_PROMPT_04 STEP 1: w-level knobs (param_wlevel_<el>) — Macro's
+        //    Macro-delegated DEFAULT depth per lane (globalWarpW[lane]): the value every
+        //    ceded (owner()==MACRO) voice on that lane tracks (WarpBank's delegated mix).
+        //    Same delegation pattern as the spread base above (getGlobalSpread) — Macro
+        //    authors the default, always editable (its globals exist regardless of East).
+        //    The setter bumps Monsoon's pending warp-rebuild scope; process() performs
+        //    rebuildWarpMirrorLaneDelegating (that lane across DELEGATING voices only) on
+        //    the audio thread — prompt-03's "Macro curve/w edit" dirty scope.
         for (int el = 0; el < dotModular::SandsGrid::POLY_LANES; ++el) {
-            const int eng = EL2ENG(el);
             redDot::bindStoreKnob<Monsoon, redDot::Tag_Grey_Trim_Bar>(this,
-                "param_taplor_" + std::to_string(el), storeResolver(),
-                0.f, 1.f, 1.f, std::string(EDN[el]) + " LOR send tap (PRE-POST)",
-                [eng](Monsoon& m)          { return m.getGlobalTap(eng, 0); },
-                [eng](Monsoon& m, float v) { m.setGlobalTap(eng, 0, v); });
-            redDot::bindStoreKnob<Monsoon, redDot::Tag_Grey_Trim_Bar>(this,
-                "param_tapspr_" + std::to_string(el), storeResolver(),
-                0.f, 1.f, 1.f, std::string(EDN[el]) + " spread send tap (PRE-POST)",
-                [eng](Monsoon& m)          { return m.getGlobalTap(eng, 1); },
-                [eng](Monsoon& m, float v) { m.setGlobalTap(eng, 1, v); });
+                "param_wlevel_" + std::to_string(el), storeResolver(),
+                // THE BIDIRECTIONAL WARP (as amended): a SIGNED axis [−1,+1], 0 = no
+                // warp — positive blends uniform↔the selected distribution (as always),
+                // negative blends uniform↔its DUAL (the sign picks the reading).
+                -1.f, 1.f, 0.f, std::string(EDN[el]) + " warp level (delegated default)",
+                [el](Monsoon& m)          { return m.getGlobalWarpW(el); },
+                [el](Monsoon& m, float v) {
+                    m.setGlobalWarpW(el, v);
+                    m.requestWarpRebuildLaneDelegating(el);
+                });
         }
+
+        // ── THE SEND STRIP MOVED (CC_PROMPT_SANDS_DISTRIBUTION_EXPANDER_SPEC §"MACRO
+        //    PER-VOICE SENDS → their own subpanel" + §"The MACRO SEND-KNOB subpanel
+        //    ENCAPSULATES ALL Macro→East sends"): the 7x4 mix-in sends + the 7x2
+        //    PRE/POST taps now live on the SandsMacroSendSubpanel (they bind the SAME
+        //    editor.macroSend/macroTap stores — the move is a UI RELOCATION, zero
+        //    engine change; the distribution-param send amounts were born there).
+        //    The Macro panel is narrower for it — the spec's "Macro is already big".
 
         // ── Direction cells (param_dir_<lane>) — per-lane direction toggle (Fwd/Rev/Pend/PingPong).
         // Macro is the global editor → DirCell sets the MONO direction (laneDirPending_).
@@ -286,32 +384,49 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         };
         for (int el = 0; el < dotModular::SandsGrid::POLY_LANES; ++el) {
             // STORE-BACKED (MVC step 1: direction de-param). The DirCell reads/writes
-            // editor.globalDir via get/setGlobalDir. globalDir is ENGINE-indexed
-            // (REST/MEL/OCT/ACC/QMIX) — the manager reads getGlobalDir(engineLane) — but the
-            // panel ROW is EDITOR order. So the cell on editor row `el` must target engine lane
-            // eng = EDITOR_TO_ENGINE_LANE_QMIX[el]. (Was passing `el` straight in → the direction
-            // cell on the MELODY row drove REST's direction.) Anchor stays param_dir_<el>.
-            const int eng = EL2ENG(el);
+            // editor.globalDir via get/setGlobalDir; the manager reads getGlobalDir(lane).
+            // Editor row == engine lane (identity since lane-index unification), so the
+            // cell on editor row el targets engine lane el directly. (Historically
+            // the orders differed and passing el straight in made the MELODY-row cell
+            // drive REST's direction.) Anchor stays param_dir_<el>.
             bindWidget<DirCell>(
                 "param_dir_" + std::to_string(el),
-                std::function<void(DirCell*)>([this, el, eng](DirCell* w) {
+                std::function<void(DirCell*)>([this, el](DirCell* w) {
                     w->laneCol = editorDirCol[el];
-                    const float stepW = (ED_W - 2.f*6.f) / 16.f;
+                    const float stepW = (ED_W - 2.f*6.f) / (float)SandsVisualEditorV4::STEP_COUNT;   // STEPS_32 Stage 3: the cell width derives from the grid's column count (the parameterisation — 64 later is a constant change)
                     w->box.size = mm2px(Vec(stepW, ED_LANE_H * 0.9f));
-                    w->getStateFn = [this, eng]() -> int {
+                    w->getStateFn = [this, el]() -> int {
                         auto* mm = getMonsoon();
-                        return mm ? (int)std::lround(mm->getGlobalDir(eng)) & 3 : 0;
+                        return mm ? (int)std::lround(mm->getGlobalDir(el)) & 3 : 0;
                     };
-                    w->setStateFn = [this, eng](int v) {
-                        if (auto* mm = getMonsoon()) mm->setGlobalDir(eng, (float)(v & 3));
+                    w->setStateFn = [this, el](int v) {
+                        if (auto* mm = getMonsoon()) mm->setGlobalDir(el, (float)(v & 3));
                     };
-                    w->pushUndoFn = [this, eng](int oldV, int newV) {
+                    w->pushUndoFn = [this, el](int oldV, int newV) {
                         auto* mm = getMonsoon(); if (!mm) return;
                         redDot::applyAndPushStoreEdit<Monsoon>(mm, "direction",
-                            [eng](Monsoon& m, float val) { m.setGlobalDir(eng, val); },
+                            [el](Monsoon& m, float val) { m.setGlobalDir(el, val); },
                             (float)(oldV & 3), (float)(newV & 3));
                     };
                     w->lockWhen = [this]() { return !getMonsoon(); };
+                })
+            );
+        }
+
+        // ── CC_PROMPT_04 STEP 2: warp curve-editor trigger buttons (param_warpedit_<el>).
+        //    Macro's button is ALWAYS available — it edits Macro's own delegated-default
+        //    curve for the lane (the curve every ceded voice tracks) — locked only with no
+        //    Monsoon attached (the store lives on Monsoon; the DirCell lock precedent).
+        for (int el = 0; el < dotModular::SandsGrid::POLY_LANES; ++el) {
+            bindWidget<dotModular::WarpCurveButton>(
+                "param_warpedit_" + std::to_string(el),
+                std::function<void(dotModular::WarpCurveButton*)>([this, el](dotModular::WarpCurveButton* w) {
+                    w->laneCol = editorDirCol[el];
+                    Vec ctr = w->box.pos.plus(w->box.size.div(2.f));
+                    w->box.size = mm2px(Vec(6.5f, ED_LANE_H * 0.9f));   // the cell-column rhythm
+                    w->box.pos  = ctr.minus(w->box.size.div(2.f));
+                    w->lockWhen = [this]() { return !getMonsoon(); };
+                    w->onOpen   = [this, el]() { openWarpPopup(el); };
                 })
             );
         }
@@ -320,15 +435,60 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         {
             Module* mod_ = module;
             auto themeIn = [mod_](redDot::GoldPolyPort* p) {
-                p->lightTheme = [mod_]() { Monsoon* m = mod_ ? redDot::findMonsoonEitherSide(mod_) : nullptr;
-                                          return m && m->lightTheme; };
+                p->lightTheme = [mod_]() { Monsoon* m = mod_ ? redDot::lookupMonsoon(mod_) : nullptr;
+                                           return m && m->lightTheme; };
             };
             for (int lane = 0; lane < dotModular::SandsGrid::POLY_LANES; ++lane)
                 bindInput<redDot::GoldPolyPort>("input_dir_mod_" + std::to_string(lane),
                     dirModId(lane), std::function<void(redDot::GoldPolyPort*)>(themeIn));
+
+            // ── (B) VOICE-LOR PARITY: the Macro voice-row control line ─────────
+            //    The GLOBAL voice range's own hardware, next to the lane: 3 MONO L/O/R
+            //    CV jacks + 3 global attenuverters (the fold in Monsoon::process applies
+            //    them to the one row every follow-Macro voice reads) + the DIR cell
+            //    (voiceLorMacroDir) + the row's direction gate-mod. NO owner/deleg (the
+            //    Macro tier IS the global; East's voice row carries those) and NO
+            //    spread/warp. Silver — the strip's hue-neutral law.
+            static const char* vlorCN[3] = {"Length", "Offset", "Rotation"};
+            const NVGcolor vlorCol = nvgRGB(0xd8, 0xd8, 0xdc);
+            for (int item = 0; item < 3; ++item) {
+                bindInput<PJ301MPort>(
+                    "input_vlor_cv_" + std::to_string(item), vlCvId(item));
+                redDot::bindStoreKnob<Monsoon, redDot::Tag_Grey_Trim_Bar>(this,
+                    "param_vlor_atten_" + std::to_string(item), storeResolver(),
+                    -1.f, 1.f, 0.f, std::string("Voice range ") + vlorCN[item] + " CV depth",
+                    [item](Monsoon& m)          { return m.getVoiceLorAttenMacro(item); },
+                    [item](Monsoon& m, float v) { m.setVoiceLorAttenMacro(item, v); });
+            }
+            bindWidget<DirCell>(
+                "param_vlor_dir",
+                std::function<void(DirCell*)>([this, vlorCol](DirCell* w) {
+                    w->laneCol = vlorCol;
+                    Vec ctr = w->box.pos.plus(w->box.size.div(2.f));
+                    const float stepW = (ED_W - 2.f*6.f) / (float)SandsVisualEditorV4::STEP_COUNT;   // STEPS_32 Stage 3: the cell width derives from the grid's column count (the parameterisation — 64 later is a constant change)
+                    w->box.size = mm2px(Vec(stepW, dotModular::SandsGrid::RANGE_LANE_H * 0.9f));
+                    w->box.pos  = ctr.minus(w->box.size.div(2.f));
+                    w->getStateFn = [this]() -> int {
+                        auto* mm = getMonsoon();
+                        return mm ? (int)std::lround(mm->getVoiceLorMacroDir()) & 3 : 0;
+                    };
+                    w->setStateFn = [this](int v) {
+                        if (auto* mm = getMonsoon()) mm->setVoiceLorMacroDir((float)(v & 3));
+                    };
+                    w->pushUndoFn = [this](int oldV, int newV) {
+                        auto* mm = getMonsoon(); if (!mm) return;
+                        redDot::applyAndPushStoreEdit<Monsoon>(mm, "voice-range direction (Macro)",
+                            [](Monsoon& m, float val) { m.setVoiceLorMacroDir(val); },
+                            (float)(oldV & 3), (float)(newV & 3));
+                    };
+                    w->lockWhen = [this]() { return !getMonsoon(); };
+                })
+            );
+            bindInput<redDot::GoldPolyPort>("input_vlor_dir_mod",
+                vlorDirModId(), std::function<void(redDot::GoldPolyPort*)>(themeIn));
         }
 
-        paramMgr = new PolySandsParameterManager(nullptr, nullptr, nullptr, 7);
+        paramMgr = new SandsParameterManager(nullptr, nullptr, 7, 0, true);   // monoContext: V1 interpolates from the MONO draw
         flushSpreadArcs();   // attach spread mod-arcs on top of the trimpots
 
         // dot.modular connect mark (brand mark; greyed when no Monsoon attached).
@@ -338,17 +498,270 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         }
     }
 
-    ~StraitsSandsMacroVisualWidget() override { delete paramMgr; }
+    ~StraitsSandsMacroVisualWidget() override {
+        // The scrim + popup are SCENE children while open, and their lambdas
+        // capture this widget — detach + delete them now (immediate, not the
+        // deferred requestDelete path) so they can never outlive the host.
+        closeWarpPopup(/*immediate=*/true);
+        delete paramMgr;
+    }
+
+    // ── the StraitsBase wheel (task 84): Macro OWNS its subpanels ────────────
+    // StraitsLane models are base-spawned ONLY (unregistered — plugin.cpp);
+    // the base spawns them docked and owns their IDs forever. The same wheel,
+    // family-parameterised (ui/SandsSnap.hpp): the context menu spawns the
+    // send subpanel and the Distribution expander DOCKED (linked from birth —
+    // addModule runs updateExpanders), ADOPTS parked panels of those models
+    // instead of duplicating them, and untoggle removes them from the dock.
+    // The owned IDs live in the SAME runIds the snap cluster already walks.
+    redDot::SandsSnapHostState* snapState() {
+        auto* m = dynamic_cast<StraitsSandsMacroVisual*>(module);
+        return m ? &m->snap : nullptr;
+    }
+    // Macro's seating family — the step() cluster's fam, verbatim (BOTH right-
+    // side subpanels, the spec's "any order": the right chain is the order).
+    // The PHASE DIST subpanel joins (CC_PROMPT_PHASE_DISTORTION_PANEL TASK 1:
+    // the §14 store's authoring panel seats beside its family).
+    static bool macroSeatingFamily(rack::Module* x) {
+        return x && (x->model == modelSandsDistributionExpander
+                  || x->model == modelSandsMacroSendSubpanel
+                  || x->model == modelSandsPhaseDistSubpanel);
+    }
+    // The adopt-eligibility test: the candidate's LEFT neighbour must be loose —
+    // null, or neither a Sands host visual nor a Sands subpanel (never steal
+    // from another host's dock — East seats its own Distribution expander —
+    // never break into a parked pair's middle; its loose head is the adoptable
+    // one).
+    static bool macroLooseLeft(rack::Module* l) {
+        return !l || (l->model != modelStraitsEastSandsVisual
+                   && l->model != modelStraitsSandsMacroVisual
+                   && l->model != modelSandsDistributionExpander
+                   && l->model != modelSandsMacroSendSubpanel
+                   && l->model != modelSandsPhaseDistSubpanel);
+    }
+    bool hasSubpanel(Model* model) {
+        auto* st = snapState();
+        return st && redDot::sandsHasOwnedSubpanel(*st, macroSeatingFamily, model);
+    }
+    bool toggleSubpanel(Model* model) {
+        auto* st = snapState();
+        if (!st) return false;
+        const bool acted = redDot::sandsToggleSubpanel(this, *st, macroSeatingFamily, macroLooseLeft, model);
+        if (acted) st->needsResnap = true;   // the one-shot consumer re-seats the run
+        return acted;
+    }
 
     void appendContextMenu(Menu* menu) override {
         ModuleWidget::appendContextMenu(menu);
         auto* mod = dynamic_cast<StraitsSandsMacroVisual*>(module);
         if (!mod) return;
         // Spread interpolation target moved to the Monsoon module context menu.
+        // ── the StraitsBase wheel (task 84): subpanel dock toggles ──
+        menu->addChild(new MenuSeparator);
+        menu->addChild(createMenuLabel("Subpanels"));
+        menu->addChild(createCheckMenuItem("SENDS", "",
+            [this]() { return hasSubpanel(modelSandsMacroSendSubpanel); },
+            [this]() { toggleSubpanel(modelSandsMacroSendSubpanel); }));
+        menu->addChild(createCheckMenuItem("DISTRIBUTION", "",
+            [this]() { return hasSubpanel(modelSandsDistributionExpander); },
+            [this]() { toggleSubpanel(modelSandsDistributionExpander); }));
+        menu->addChild(createCheckMenuItem("PHASE DIST", "",
+            [this]() { return hasSubpanel(modelSandsPhaseDistSubpanel); },
+            [this]() { toggleSubpanel(modelSandsPhaseDistSubpanel); }));
+        // ── UNIFIED ADDRESSING Stage 2b: the MACRO (global) voice range ──────────
+        // Macro's GLOBAL voice-range row (the L/O/R+dir every FOLLOWING voice reads —
+        // the Macro tier of the global->voice map) is authored on the range surface
+        // (Stage 3); the reset lives here today. The Monsoon EDITOR store is the
+        // single authority; the engine picks it up next control block via
+        // pushVoiceLorEditor. Resetting to identity (16/0/0/Forward) restores the
+        // pass-through law by VALUE — the Stage-1/2a goldens' precondition.
+        if (auto* mm = getMonsoon()) {
+            menu->addChild(new MenuSeparator);
+            menu->addChild(createMenuLabel("Voice range (global, unified addressing)"));
+            {   // (bug 23) the menu text READS THE CAP (the identity sentinel is kPatternLengthCap)
+                static char idLbl[64];
+                std::snprintf(idLbl, sizeof idLbl, "Reset global range to identity (%d/0/0, fwd)", (int)dotModular::kPatternLengthCap);
+                menu->addChild(createMenuItem(idLbl, "",
+                    [mm]() { mm->resetVoiceLorMacro(); }));
+            }
+        }
+    }
+
+    // ── UNIFIED ADDRESSING Stage 3: the voice-range strip's context menu ────────
+    // Right-click on the strip (top of the grid): the MACRO tier's DIRECTION (the
+    // LaneDir order) + the identity reset. No delegation items here — this IS the
+    // Macro tier; the per-voice follow/independent switch lives on East's strip.
+    bool openVoiceRangeMenu() {
+        auto* m = getMonsoon();
+        if (!m) return false;
+        struct RangeDirItem : MenuItem {
+            StraitsSandsMacroVisualWidget* widget;
+            int dir;
+            void onAction(const event::Action& e) override {
+                if (auto* mm = widget->getMonsoon()) mm->setVoiceLorMacroDir((float)dir);
+            }
+        };
+        Menu* menu = createMenu();
+        menu->addChild(createMenuLabel("Voice range (global, unified addressing)"));
+        menu->addChild(new MenuSeparator);
+        static const char* const dirNames[4] =
+            { "Forward", "Reverse", "Pendulum", "PingPong" };
+        const int curDir = (int)std::lround(m->getVoiceLorMacroDir()) & 3;
+        for (int d = 0; d < 4; ++d) {
+            auto* it = new RangeDirItem;
+            it->text = dirNames[d];
+            it->rightText = (curDir == d) ? "✓" : "";
+            it->widget = this; it->dir = d;
+            menu->addChild(it);
+        }
+        menu->addChild(new MenuSeparator);
+        {   // (bug 23) the menu text READS THE CAP
+            static char idLbl2[64];
+            std::snprintf(idLbl2, sizeof idLbl2, "Reset global range to identity (%d/0/0, fwd)", (int)dotModular::kPatternLengthCap);
+            menu->addChild(createMenuItem(idLbl2, "",
+                [m]() { m->resetVoiceLorMacro(); }));
+        }
+        // ── Stage 4: the OUTPUT MASK (the MACRO tier — the GLOBAL mask every follow-
+        // Macro voice reads through). The per-voice masks live on East's strip menu.
+        {
+            struct MaskBitsItem : MenuItem {
+                StraitsSandsMacroVisualWidget* widget;
+                uint64_t bits;   // the DECIDED uint64 (STEPS_32 Stage 2a)
+                void onAction(const event::Action& e) override {
+                    if (auto* mm = widget->getMonsoon()) {
+                        const uint64_t oldB = mm->getMaskMacroPatternBits();
+                        mm->setMaskMacroPatternBits(bits);
+                        redDot::applyAndPushStoreEdit<Monsoon>(mm, "Global mask pattern",
+                            [](Monsoon& m2, uint64_t b) { m2.setMaskMacroPatternBits(b); }, oldB, bits);
+                    }
+                }
+            };
+            menu->addChild(new MenuSeparator);
+            menu->addChild(createMenuLabel("Output mask (global)"));
+            // THE BASE MODE — ONE choice (Rodney: "a choice, not two separate items"),
+            // a radio pair in a submenu (the East twin). (A4) Absolute-1's READ runs
+            // the FULL PHRASE (the playheads march the whole phrase; the OUTPUT plays the LOR
+            // window only); Cycle confines the read. The painted overlay is NOT a
+            // base — it composes on either; returning to Cycle with a pattern painted
+            // keeps the overlay (kind 2 = cycle + overlay).
+            menu->addChild(createSubmenuItem("Base mode", "",
+                [m](Menu* sub) {
+                    static const char* const baseNames[2] =
+                        { "Cycle — read cycles within the LOR",
+                          "Absolute-1 — full-phrase read, plays the LOR only" };
+                    for (int k = 0; k < 2; ++k) {
+                        const bool abs1 = (k == 1);
+                        sub->addChild(createCheckMenuItem(baseNames[k], "",
+                            [m, abs1]() {
+                                const int cur = (int)std::lround(m->getMaskMacroKind());
+                                return abs1 ? (cur == 1) : (cur != 1);
+                            },
+                            [m, abs1]() {
+                                const float oldK = m->getMaskMacroKind();
+                                const float newK = abs1 ? 1.f
+                                    : (m->getMaskMacroPatternBits() == dotModular::kMaskLenMask) ? 0.f : 2.f;
+                                if (oldK == newK) return;
+                                m->setMaskMacroKind(newK);
+                                redDot::applyAndPushStoreEdit<Monsoon>(m, "Global mask kind",
+                                    [](Monsoon& m2, float kk) { m2.setMaskMacroKind(kk); }, oldK, newK);
+                            }));
+                    }
+                }));
+            // (follow-R retired 2026-11-21: the painted pattern is static in global-step space)
+            menu->addChild(new MenuSeparator);
+            auto* allOn = new MaskBitsItem;
+            allOn->text = "Set mask all on";
+            allOn->widget = this; allOn->bits = dotModular::kMaskLenMask;   // the RING's all-on (Stage 2a — was 65535.f)
+            menu->addChild(allOn);
+            auto* fromRange = new MaskBitsItem;
+            fromRange->text = "Set mask from range";
+            fromRange->widget = this;
+            // the preset: the GLOBAL voice LOR window as the play set (the abs1 region — ONE range)
+            fromRange->bits = SequencerEngine::windowMaskBits(
+                std::max(1, (int)std::lround(m->getVoiceLorMacro(0))),
+                (int)std::lround(m->getVoiceLorMacro(1)));
+            menu->addChild(fromRange);
+            menu->addChild(createMenuItem("Reset mask to cycle (all on)", "",
+                [m]() { m->resetMaskMacro(); }));
+        }
+        return true;
     }
 
     Monsoon* getMonsoon() {
-        return module ? findMonsoonEitherSide(module) : nullptr;
+        return module ? redDot::lookupMonsoon(module) : nullptr;
+    }
+
+    // ── CC_PROMPT_04 STEP 3: the warp curve popup ──────────────────────────────────
+    // Macro's popup edits globalWarpF[lane] — ITS OWN delegated-default curve (the curve
+    // every ceded voice on that lane tracks; the button is always available). Closes on
+    // tab switch or Monsoon detach. Placed over the LEFT cluster (3..83mm) so the lane's
+    // bars + the w-level column stay visible; a module-sized scrim under it closes on any
+    // click. Every edit path commits setGlobalWarpF + bumps requestWarpRebuildLane-
+    // Delegating — the lane's bars across DELEGATING voices redistribute live (prompt-
+    // 03's "Macro curve/w edit" dirty scope).
+    // Z-ORDER (CC_PROMPT_04-FIX): the scrim + popup attach to APP->scene — the
+    // createMenu/MenuOverlay host — NOT to this module widget. A module child draws
+    // and receives events WITHIN the module's own layer: later-drawn module children,
+    // adjacent modules and cables render on top of it (controls show through) and
+    // higher layers intercept presses before the popup's knobs (can't grab / can't
+    // drag). As the scene's LAST children they float above everything and own their
+    // events; geometry is SCENE-space, converted from module-local via
+    // getAbsoluteOffset (the box.pos chain through rack scroll + zoom).
+    dotModular::WarpCurvePopup* warpPopup_ = nullptr;
+    rack::widget::Widget*       warpScrim_  = nullptr;
+    int warpPopupTab_ = -1;
+
+    void openWarpPopup(int lane) {
+        closeWarpPopup();
+        Monsoon* m = getMonsoon();
+        if (!m || lane < 0 || lane >= dotModular::SandsGrid::POLY_LANES) return;
+        const rack::math::Vec sceneOrigin = getAbsoluteOffset(rack::math::Vec(0.f, 0.f));
+        auto* scrim = new dotModular::WarpPopupScrim();
+        scrim->box.pos  = sceneOrigin;       // this module's rect, in SCENE coordinates
+        scrim->box.size = box.size;
+        scrim->onClick  = [this]() { closeWarpPopup(); };
+        APP->scene->addChild(scrim);         // BEFORE the popup → popup on top (draw + events)
+        auto* pop = new dotModular::WarpCurvePopup();
+        pop->resolveMon  = [this]() { return getMonsoon(); };
+        pop->slot        = dotModular::VoiceResolver::voiceSlot(viewVoice + 1);  // informational
+        pop->lane        = lane;
+        pop->macroGlobal = true;             // Macro authors the delegated default
+        pop->laneName    = dotModular::SandsLaneNames::EDITOR[lane];
+        pop->voiceName   = "MACRO";
+        pop->isLight     = [this]() { auto* mm = getMonsoon(); return mm && mm->lightTheme; };
+        pop->box.pos     = getAbsoluteOffset(mm2px(Vec(3.f, 16.f)));   // module-local → scene-space
+        APP->scene->addChild(pop);
+        pop->refresh();
+        warpScrim_  = scrim;
+        warpPopup_  = pop;
+        warpPopupTab_ = tabGroup ? tabGroup->getSelectedTab() : -1;
+    }
+    // Detach from the SCENE — the owner while open, NOT this module widget. The
+    // default path uses requestDelete (deferred to the scene's next step) because
+    // closeWarpPopup runs inside event dispatch (the scrim's own onButton) and
+    // inside step(): deleting a widget mid-dispatch invalidates the parent's child
+    // iteration. immediate=true (host destruction) detaches + deletes NOW via the
+    // widget's current parent.
+    void closeWarpPopup(bool immediate = false) {
+        if (warpScrim_) {
+            if (immediate) {
+                if (warpScrim_->parent) warpScrim_->parent->removeChild(warpScrim_);
+                delete warpScrim_;
+            } else {
+                warpScrim_->requestDelete();
+            }
+            warpScrim_ = nullptr;
+        }
+        if (warpPopup_) {
+            if (immediate) {
+                if (warpPopup_->parent) warpPopup_->parent->removeChild(warpPopup_);
+                delete warpPopup_;
+            } else {
+                warpPopup_->requestDelete();
+            }
+            warpPopup_ = nullptr;
+        }
+        warpPopupTab_ = -1;
     }
 
     // STEP 4b: ownership authority for the Macro widget's V1 view. Macro is present
@@ -382,7 +795,7 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         if (!module || !visualEditor) return;
         auto* mm = getMonsoon(); if (!mm) return;
         for (int l = 0; l < dotModular::SandsGrid::POLY_LANES; ++l) {   // l = engine lane
-            const auto& lane = visualEditor->currentState.lanes[dotModular::ENGINE_LANE_TO_EDITOR_QMIX[l]];
+            const auto& lane = visualEditor->currentState.lanes[l];
             mm->setGlobalLor(l, 0, (float)lane.length);
             mm->setGlobalLor(l, 1, (float)lane.offset);
             mm->setGlobalLor(l, 2, (float)lane.rotation);
@@ -392,64 +805,68 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         if (!module || !visualEditor) return;
         auto* mm = getMonsoon(); if (!mm) return;
         for (int l = 0; l < dotModular::SandsGrid::POLY_LANES; ++l) {   // l = engine lane
-            auto& lane = visualEditor->currentState.lanes[dotModular::ENGINE_LANE_TO_EDITOR_QMIX[l]];
+            auto& lane = visualEditor->currentState.lanes[l];
             lane.length   = std::max(1,(int)std::round(mm->getGlobalLor(l, 0)));
             lane.offset   = (int)std::round(mm->getGlobalLor(l, 1));
             lane.rotation = (int)std::round(mm->getGlobalLor(l, 2));
         }
     }
 
-    // Macro's OWN probability for a lane/step — the shared base draw with MACRO's own
-    // spread applied (NOT East's). Mirrors how Macro's LOR display uses macroBase instead
-    // of reading East's LOR: Macro shows its own modulation on the shared draw, never the
-    // East-spread-modulated shared final (rhythmRandom[] etc.). This enforces the one-way
-    // borrowing rule (East may borrow Macro; Macro never borrows East). See
-    // docs/design/DISPLAY_STORE_ENGINE_SEPARATION.md. engLane = PL_REST/MEL/OCT/ACC (0..3).
-    float macroOwnProbability(int engLane, int step, bool mono, int polyVoice) {
-        auto* mod = dynamic_cast<StraitsSandsMacroVisual*>(module);
-        Monsoon* mon = getMonsoon();
-        if (!mod || !mon) return 0.5f;
-        auto& pe = mon->engine.pe;
-        // Macro's own spread for this lane (base knob + send-tapped delta, clamped) — the
-        // SAME expression the engine's MACRO_SOLE branch uses (MonsoonExpanderManager.cpp).
-        const float sp = rack::math::clamp(mod->macroBase[engLane][3] + mod->macroSendDelta[engLane][3], -1.f, 1.f);
-        // The pre-spread base draw buffer for this lane (mono strand vs poly bank).
-        // The Change Alley pin remap now lives UPSTREAM in the slewed buffers
-        // (pe.remapSlewedByPins, pre-spread), so reading this voice's OWN slewed buffer
-        // already yields the pinned source's draw — Macro's own spread then applies on top.
-        // Plain own-voice read; no srcRow indirection here.
-        using PL = SequencerEngine;  // PL::PL_REST etc. (enum lives in SequencerEngine)
-        // Read PUBLISHED snapshots (pubSlewed*) — NOT the live slewed* arrays the audio thread
-        // is rewriting during recomputeEffective* (now ~116µs at r>0). Reading live arrays
-        // mid-rewrite → torn read → flicker. (East already reads published values; this brings
-        // Macro in line.)
-        float base;
-        if (mono) {
-            base = (engLane == PL::PL_REST)      ? pe.pubSlewedRhythm[step & 0x0F]
-                 : (engLane == PL::PL_MELODY)    ? pe.pubSlewedMelody[step & 0x0F]
-                 : (engLane == PL::PL_OCTAVE)    ? pe.pubSlewedOctave[step & 0x0F]
-                 : (engLane == PL::PL_ACCENT)    ? pe.pubSlewedAccent[step & 0x0F]
-                 : (engLane == PL::PL_QMIX)      ? pe.pubSlewedQmix[step & 0x0F]
-                 : (engLane == PL::PL_VARIATION) ? pe.pubSlewedVariation[step & 0x0F]
-                 :                                pe.pubSlewedLegato[step & 0x0F];
-        } else {
-            int v = rack::math::clamp(polyVoice, 0, 14);
-            base = (engLane == PL::PL_REST)      ? pe.pubSlewedPolyRhythm[v][step & 0x0F]
-                 : (engLane == PL::PL_MELODY)    ? pe.pubSlewedPolyMelody[v][step & 0x0F]
-                 : (engLane == PL::PL_OCTAVE)    ? pe.pubSlewedPolyOctave[v][step & 0x0F]
-                 : (engLane == PL::PL_ACCENT)    ? pe.pubSlewedPolyAccent[v][step & 0x0F]
-                 : (engLane == PL::PL_QMIX)      ? pe.pubSlewedPolyQmix[v][step & 0x0F]
-                 : (engLane == PL::PL_VARIATION) ? pe.pubSlewedPolyVariation[v][step & 0x0F]
-                 :                                pe.pubSlewedPolyLegato[v][step & 0x0F];
-        }
-        return redDot::SpreadInterp::applyAnchorV1Only(pe, engLane, step, base, sp);
+    // (macroOwnProbability DELETED — CC_PROMPT_UI_TO_RESOLVER_SPEC step 2. The bars
+    //  now call the ONE accessor directly — monsoon->engine.effectiveProbability(
+    //  voice, lane, step, SequencerEngine::ProbLens::MacroOwn) — the same call the
+    //  prob CV OUT makes through VoiceResolver::laneProbabilityAtStep. One producer,
+    //  both consumers; the widget-level wrapper had nowhere left to add value.)
+
+    // ── the resnap hardening, HOST side: this panel's own drag-end re-seats its
+    // subpanel run (the subpanel's own drag-end flags via SandsSnapGuest; the
+    // poll catches foreign inserts) ──
+    void onDragEnd(const rack::event::DragEnd& e) override {
+        ModuleWidget::onDragEnd(e);
+        if (auto* m = dynamic_cast<StraitsSandsMacroVisual*>(module))
+            m->snap.needsResnap = true;
     }
 
     void step() override {
         ModuleWidget::step();
+        // (CC_PROMPT_CADENCE_C1B STAGE C) publish the Macro-strip gesture snapshot
+        // (the zone→items law as East's): only the STRIP owner touches the Macro
+        // row; lane gestures edit the live per-voice lane stores (nothing to suspend).
+        if (auto* mm = dynamic_cast<StraitsSandsMacroVisual*>(module)) {
+            const auto& ld = visualEditor ? visualEditor->lorDrag : redDot::SandsRangeGestureCore::LorDragState{};
+            mm->lorGestureActive = ld.active && ld.owner == redDot::SandsRangeGestureCore::LorDragState::O_STRIP;
+            // (CC_PROMPT_LANE_RANGE_DISPLAY_UNIFY, FINAL MODEL) PER-ITEM suspend —
+            // the ONE zone→items map (lorGestureItemsFor) mirroring the reducer's
+            // per-zone writes: Z_WINDOW suspends OFFSET only, Z_START OFFSET+LENGTH,
+            // Z_END LENGTH only, Z_ROTATION ROTATION only. Was the coarse blanket
+            // ({zone != Z_ROTATION, ·, ·}) that froze offset+length for every drag.
+            mm->lorGestureItems  = redDot::SandsRangeGestureCore::lorGestureItemsFor(
+                mm->lorGestureActive, ld.zone);
+        }
         kitStep();   // kit: dev-mode live-reload poll (no-op unless enabled)
+        // ── the Sands subpanel snap cluster (ui/SandsSnap.hpp): 0.1 s adjacency
+        // poll + the event fast path + the one-shot consumer. The family run is
+        // BOTH right-side subpanels (the spec's "any order" — the right chain IS
+        // the canonical order): the Distribution expander AND the Macro send
+        // subpanel.
+        if (auto* m = dynamic_cast<StraitsSandsMacroVisual*>(module)) {
+            auto fam = [](rack::Module* x) {
+                return x && (x->model == modelSandsDistributionExpander
+                          || x->model == modelSandsMacroSendSubpanel);
+            };
+            auto take = [](rack::Module* x) -> bool {
+                auto* g = dynamic_cast<redDot::SandsSnapGuest*>(x);
+                return g && g->needsResnap.exchange(false, std::memory_order_relaxed);
+            };
+            redDot::sandsSnapStep(this, m->snap, fam, take);
+        }
         if (!module || !paramMgr || !visualEditor) return;
         Monsoon* monsoon = getMonsoon();
+        // CC_PROMPT_04: close the curve popup when its bound target goes away — tab
+        // switch or Monsoon detach.
+        if (warpPopup_ && (!monsoon || warpPopupTab_ < 0 ||
+                           (tabGroup && tabGroup->getSelectedTab() != warpPopupTab_)))
+            closeWarpPopup();
         if (!monsoon) { if (visualEditor) visualEditor->clearPlaySteps(); return; }
 
         // MVC step 1: the dual-write GLOBAL mirror is fully RETIRED. Every global-slice
@@ -504,6 +921,20 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
             // clobber the loaded direction with 0. (This is exactly the "widget must NOT
             // overwrite FROM the engine" rule noted below -- the old seed was safe only
             // because it wrote a re-derivable display proxy, not the authoritative store.)
+            // SEND VOICE reopen (CC_FIX_SEND_VOICE_FROM_MACRO): on construction/load the
+            // strip re-selects the STORED Macro voice (Monsoon::macroViewVoice, voice
+            // number 1..16) and publishes it as the sends' voice — one publish here, then
+            // step()'s diff below keeps it true. Tabs are pristine on this first frame
+            // (setActiveCount runs later in step), so selectTab cannot be refused; if the
+            // stored voice exceeds the active poly count, setActiveCount falls back below
+            // and the diff republishes the fallen-back tab.
+            const int storedVoice = std::max(1, std::min(monsoon->macroViewVoice, 16));
+            if (tabGroup) tabGroup->selectTab(storedVoice - 1);
+            viewVoice     = storedVoice - 1;
+            sentVoiceTab_ = viewVoice;
+            publishedMon_ = monsoon;
+            monsoon->macroViewVoice = storedVoice;
+            monsoon->engine.pe.setSendVoice(dotModular::VoiceResolver::slot(storedVoice));
             initialized = true;
         }
 
@@ -515,10 +946,10 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
 
         // Spread: processDNA has already applied CV offset to SPREAD_REST/MEL/OCT params.
         // Read effective values here for SpreadManager display.
-        paramMgr->spreadMgr.setSpread(0, mod->spreadEffective[0]);
-        paramMgr->spreadMgr.setSpread(1, mod->spreadEffective[1]);
-        paramMgr->spreadMgr.setSpread(2, mod->spreadEffective[2]);
-        paramMgr->spreadMgr.setSpread(3, mod->spreadEffective[3]);
+        paramMgr->setSpreadAll(0, mod->spreadEffective[0]);
+        paramMgr->setSpreadAll(1, mod->spreadEffective[1]);
+        paramMgr->setSpreadAll(2, mod->spreadEffective[2]);
+        paramMgr->setSpreadAll(3, mod->spreadEffective[3]);
         // (Spread target mode pulled from the engine by SpreadManager — no push needed.)
 
         // CV applied at control rate in Monsoon::process() — base + cv*atten*scale.
@@ -530,53 +961,51 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
             viewVoice = std::min(tabGroup->getSelectedTab(),
                                  monsoon->engine.numPolyVoices);   // 0..numPolyVoices
         }
+        // SEND VOICE publish (CC_FIX_SEND_VOICE_FROM_MACRO): the MACRO strip owns the
+        // sends' voice. On every tab change (and via the init block once on load) write
+        // BOTH homes — the persisted Monsoon field (voice number 1..16, saved with the
+        // patch) and the engine's sendVoice_ (what the send subpanel resolves live, the
+        // same slot(V) mint East uses for displayedVoice). Macro NEVER writes
+        // displayedVoice — that stays East's own selection.
+        if (monsoon && (viewVoice != sentVoiceTab_ || monsoon != publishedMon_)) {
+            sentVoiceTab_ = viewVoice;
+            publishedMon_ = monsoon;
+            monsoon->macroViewVoice = viewVoice + 1;
+            monsoon->engine.pe.setSendVoice(dotModular::VoiceResolver::slot(viewVoice + 1));
+        }
         // Voice NUMBER (1..16) for the displayed tab: tab 0 = V1 (mono), tab v = V(v+1).
-        // Mono/poly identity + bank mapping via VoiceResolver — one source of truth, not
-        // local viewVoice arithmetic (static/constexpr, no engine ref).
-        const int  viewVoiceNum = viewVoice + 1;
-        const bool onMonoTab = dotModular::VoiceResolver::isMono(viewVoiceNum);
-        // (v1Editable removed — its only use, hiding Macro attens on V1, was dropped in P1.)
-        const int  pv = dotModular::VoiceResolver::polyBankIndex(viewVoiceNum);  // -1 on mono
+        // CC_FIX_MACRO_NO_VOICE1_SPECIAL: the tab-kind flag and the poly-slot remap that
+        // used to fork the three display paths below are GONE — every viewed voice
+        // V1..V16 takes the ONE slot expression VoiceResolver::slot(viewVoice + 1);
+        // slot(1) mints the mono slot (the compile-time-pinned equality), so the single
+        // expression IS the poly expression applied to every voice. No V1 special case
+        // may creep back in — that is the anti-pattern the doc names. (v1Editable
+        // removed earlier — its only use, hiding Macro attens on V1, was dropped in P1.)
 
         // Mix-in sends: STORE-BACKED via the StoreKnobs above (they read/write
         // getMacroSend/setMacroSend for the live view voice directly). The old per-voice
         // load/store sync dance and its clobber guard are gone -- no display proxy to sync.
 
         saveLOR();
-        if (!onMonoTab)
-            paramMgr->syncPatternEngineToEditor(visualEditor->currentState, pv);
-        // Bug fix (same as East): the sync reads slewedPoly* which isn't populated for a voice
-        // when Macro owns the lane → blank lanes. Macro's editor is read-only (display only),
-        // so overwrite ALL displayed lanes from the resolver (polyRhythmRandom — the final
-        // output the sequencer plays, populated regardless of owner; the prob-outs use it too).
-        // POLY TAB: show MACRO's OWN probability (shared base draw + Macro's own spread),
-        // NOT resolver.laneProbabilityAtStep (which returns the shared final that East's spread
-        // writes on East-owned lanes → leak). One-way borrowing: Macro never borrows East.
-        // lane = engine PL lane; el = editor lane it displays into; pv = poly bank index.
-        if (!onMonoTab) {
+        // (syncPatternEngineToEditor DELETED — CC_PROMPT_UI_TO_RESOLVER_SPEC step 2: its
+        //  probability writes were dead the same frame — the loop below overwrote all 7
+        //  lanes from the ONE accessor — and its SpreadManager::getInterpolatedValue path
+        //  was the last SpreadInterp-in-UI bar composition outside the accessor.)
+        // ── The bars read the ONE accessor (CC_PROMPT_UI_TO_RESOLVER_SPEC step 2) ──
+        // Every lane, every step, the DISPLAYED voice's slot — ONE expression for
+        // V1..V16 (CC_FIX_MACRO_NO_VOICE1_SPECIAL: slot(viewVoice + 1), no mono arm;
+        // on the V1 tab it mints the mono slot 0, bit-identical to the old branch) —
+        // the SAME call the prob CV OUT makes through
+        // VoiceResolver::laneProbabilityAtStep (MacroOwn lens: the published base draw +
+        // Macro's OWN spread + the ONE warp composition; Macro never borrows East). One
+        // producer, both consumers — bars and out can no longer diverge.
+        {
+            const auto barVoice = dotModular::VoiceResolver::slot(viewVoice + 1);
             for (int lane = 0; lane < dotModular::SandsGrid::POLY_LANES; ++lane) {
-                int el = dotModular::ENGINE_LANE_TO_EDITOR_QMIX[lane];
                 for (int s = 0; s < SandsVisualEditorV4::STEP_COUNT; ++s)
-                    visualEditor->currentState.lanes[el].probabilities[s] =
-                        macroOwnProbability(lane, s, /*mono=*/false, /*polyVoice=*/pv);
-            }
-        } else {
-            // MONO TAB (V1): neither sync nor the resolver-overwrite above ran (both
-            // gated !onMonoTab), so V1's probability bars were NEVER populated from the
-            // engine — they showed stale currentState. That's why standalone-Macro spread
-            // looked dead: with numPolyVoices=0 the ONLY tab is V1. Read V1 per-step from
-            // the engine MONO final arrays (finalRandomByStrand — what Mono/East/standalone-
-            // Macro spread write), editor lane → engine strand via MONO_LANE_TO_STRAND.
-            // MONO TAB (V1): show MACRO's OWN probability — the shared base draw with Macro's
-            // OWN spread — NOT the shared finalRandomByStrand (which East's spread writes on an
-            // East-owned lane, leaking East's modulation into Macro's display). One-way
-            // borrowing: Macro never borrows East. el = EDITOR lane; macroOwnProbability wants
-            // the ENGINE PL lane → EDITOR_TO_ENGINE_LANE[el].
-            for (int el = 0; el < dotModular::SandsGrid::POLY_LANES; ++el) {
-                const int engLane = dotModular::EDITOR_TO_ENGINE_LANE_QMIX[el];
-                for (int s = 0; s < SandsVisualEditorV4::STEP_COUNT; ++s)
-                    visualEditor->currentState.lanes[el].probabilities[s] =
-                        macroOwnProbability(engLane, s, /*mono=*/true, /*polyVoice=*/0);
+                    visualEditor->currentState.lanes[lane].probabilities[s] =
+                        monsoon->engine.effectiveProbability(barVoice, dotModular::LaneId{lane}, s,
+                                                             SequencerEngine::ProbLens::MacroOwn);
             }
         }
 
@@ -590,11 +1019,13 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         // Display-only. (Lane base rings already come from Macro's own params via
         // loadLOR; this overlay now matches them.)
         auto& eng = monsoon->engine;
-        // Per-lane direction cue: use Macro's OWN macroLaneSign_ (always follows Macro's DirCell)
+        // Per-lane direction cue: (CC_PROMPT_RETIRE_MACRO_LANE_HOLDER) the derived
+        // view's sign (the macro ROW's frame authority + the lane's latched walk law —
+        // the holder is gone; the walk's own bounce sign IS Macro's direction law).
         for (int l = 0; l < dotModular::SandsGrid::POLY_LANES; ++l) {
-            int el = dotModular::ENGINE_LANE_TO_EDITOR_QMIX[l];
-            int strand = dotModular::MONO_LANE_TO_STRAND[el];
-            visualEditor->setLanePlayDir(el, eng.lastPlayDir * eng.macroLaneSign_[strand]);
+            int vt, vs;
+            eng.macroLaneDisplay(l, vt, vs);
+            visualEditor->setLanePlayDir(l, eng.lastPlayDir * vs);
         }
         // TAB-1 MONO MIRROR: view tab 1 = voice 1 = the mono master strand when Sands
         // Mono is attached. Show mono's LORS read-only (consistent treatment with the
@@ -609,7 +1040,7 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         // Macro V1 editing is locked PER-LANE via laneEditBlockedFn (set up in the
         // constructor): on the V1 tab with Mono attached, a lane is locked iff Mono owns
         // it; Macro-owned (delegated) lanes stay editable. This replaced the old blunt
-        // `readOnly = tab1Mono`, which locked ALL of Macro's V1 whenever Mono was present
+        // readOnly = tab1Mono, which locked ALL of Macro's V1 whenever Mono was present
         // (so Macro-owned lanes couldn't be edited in Mono+Macro). readOnly stays false.
         visualEditor->readOnly = false;
         // P1 (G1 no-hide): Macro's left attenuverters are ALWAYS visible — they were
@@ -618,34 +1049,116 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         // is handled by the delegation P-items (P4/P5/P6), not by hiding.
         for (rack::Widget* w : leftAttenuverters) if (w) w->visible = true;
         {
-            // Macro's V1 (and poly) LOR display ALWAYS shows MACRO's OWN global base +
-            // CV delta — the panel represents the Macro module's own state regardless of
-            // who owns the lane downstream (same principle as the poly display). Previously
-            // the tab1Mono branch showed MONO's LOR for Mono-owned lanes (and only 3 lanes,
-            // missing accent), so Macro's V1 page reflected Mono instead of Macro. l =
-            // engine lane (0=REST 1=MEL 2=OCT 3=ACC 4=QMIX) → editor lane.
+            // (CC_PROMPT_LANE_RANGE_DISPLAY_UNIFY Stage A) the lane-RANGE display reads
+            // the engine's LATCHED authority — effectiveLaneLor (base live + CV committed
+            // at the voice-frame edge) through the macro-row LOR representative, the SAME
+            // voice macroLaneDisplay uses — so the range, the playhead and the audio walk
+            // one window. Was `macroBase + macroCVDelta` (the manager's applyMacroCV
+            // recomputed it live every control block → the range glided at video rate).
+            // The send/tap deltas (macroPreDelta/macroPostDelta) keep their own reads;
+            // macroCVDelta remains the SEND source — only this RANGE display stopped
+            // reading it. l = editor lane == strand index (the unified addressing).
+            const int repVoice = eng.macroLaneRepVoice();
             for (int l = 0; l < dotModular::SandsGrid::POLY_LANES; ++l) {
-                int ownLen = (int)std::lround(mod->macroBase[l][0] + mod->macroCVDelta[l][0]);
-                int ownOff = (int)std::lround(mod->macroBase[l][1] + mod->macroCVDelta[l][1]);
-                int ownRot = (int)std::lround(mod->macroBase[l][2] + mod->macroCVDelta[l][2]);
+                int ownLen, ownOff, ownRot; SequencerEngine::LaneDir ownDir;
+                eng.effectiveLaneLor(dotModular::VoiceResolver::slot(repVoice + 1),
+                                     eng.strandLaneId(l), ownLen, ownOff, ownRot, ownDir);
                 ownLen = std::max(1, ownLen);
-                int el = dotModular::ENGINE_LANE_TO_EDITOR_QMIX[l];
-                visualEditor->currentState.lanes[el].setDisplayLOR(ownLen, ownOff, ownRot);
-                // Use Macro's OWN macroLaneTick_ — advanced by the engine in advancePlayhead
-                // using Macro's direction (macroLaneDir_), with full bounce support for
-                // Pendulum/PingPong. Same pattern as East's laneTickV_.
-                int strand = dotModular::MONO_LANE_TO_STRAND[el];
+                visualEditor->setLaneDisplayLOR(l, ownLen, ownOff, ownRot);
+                // (Stage B, the FINAL MODEL) the lane's WIREFRAME row — base + PENDING
+                // (the live-modulated window) through the SAME representative; drawn
+                // only when the surface's modViz flag is on AND it diverges from the
+                // committed window (no CV ⇒ no wireframe).
+                {
+                    int pl_, po_, pr_; SequencerEngine::LaneDir pd_;
+                    eng.effectiveLanePreview(dotModular::VoiceResolver::slot(repVoice + 1),
+                                             eng.strandLaneId(l), pl_, po_, pr_, pd_);
+                    visualEditor->setLanePreviewLOR(l, pl_, po_, pr_);
+                }
+                // (CC_PROMPT_RETIRE_MACRO_LANE_HOLDER) the DERIVED VIEW replaces the
+                // retired macroLaneTick_ holder: the macro ROW's frame authority mapped
+                // through the lane's FULL latched LOR from the per-voice path — the same
+                // law the holder maintained, computed on demand, O/R-correct.
                 // MVC: hide the playhead when stopped (match Mono's started ? tick : -1), so
                 // rotation CV only moves the chevron, not the playhead, when the seq is stopped.
-                int ph = (eng.stepIndex >= 0) ? eng.macroLaneTick_[strand] : -1;
-                visualEditor->setLanePlayStep(el, calcPlayhead(ph, ownLen, ownOff, ownRot));
+                int vt, vs;
+                eng.macroLaneDisplay(l, vt, vs);
+                int ph = eng.started() ? vt : -1;
+                // (fix/variation-scan-display) non-VAR lanes draw the SHARED window
+                // playhead (per-voice tick + LOR → the ONE law). The VAR lane draws
+                // THIS view-voice's SCANNED read index (engine stepAdvanceStrandIdx +
+                // signed scan delta): the gate-mode chevron creeps ahead of the shared
+                // playhead during a hold and rejoins on advance — in-window by
+                // construction (getStrandIdx folds mod len), not the retired global scan.
+                visualEditor->setLanePlayStep(
+                    l, (l == SequencerEngine::EDITOR_LANE_VARIATION)
+                            ? variationLanePlayheadForVoice(eng, dotModular::VoiceResolver::slot(viewVoice + 1))
+                            : calcPlayhead(ph, ownLen, ownOff, ownRot));
             }
+        }
+
+        // ── UNIFIED ADDRESSING Stage 3: the voice-range strip (the MACRO tier) ──
+        // The strip at the top of the grid shows + authors the GLOBAL voice range
+        // row (macroVoiceLor_ — the row every follow-Macro voice reads through).
+        // The animated read cell is the DISPLAYED VOICE's OWN read cell on EVERY
+        // tab (CC_FIX_MACRO_NO_VOICE1_SPECIAL — V1 included: its cell is the same
+        // slot-0 walk the engine runs for every follow-Macro voice, resolved
+        // through the same ONE LOR authority; no mono arm). The engine caches each
+        // read cell + walk sign per recompute. Never blocked: this is the tier's
+        // own panel.
+        {
+            // ONE RANGE (the corrected model): the GLOBAL voice-LOR row (the row every
+            // follower reads through — the same range the macro abs1 gates against).
+            // CC_FIX_MACRO_STRIP_VOICE_PLAYHEAD amendment: the Macro strip shows the
+            // macro range on EVERY tab — ONE range for all follow-Macro voices (L, O, R,
+            // direction = macroVoiceLor_, exactly like the other Macro controls); an
+            // East-local voice keeps its own range (voiceLorStore_) on EAST's strip.
+            // (CC_PROMPT_CADENCE_C4) the display reads the EFFECTIVE accessor — the
+            // C1b law (base live + CV committed at the phrase, suspended during a
+            // gesture): what the strip shows is what the engine PLAYS. Was the raw
+            // macroVoiceLor_ row (which smeared per-step under CV and ignored the
+            // cadence). The direction stays live (C3's slice).
+            int mL = 16, mO = 0, mR = 0;
+            {
+                int ml_, mo_, mr_; SequencerEngine::LaneDir md_;
+                se->effectiveMacroRowLor(ml_, mo_, mr_, md_);
+                mL = std::max(1, ml_); mO = mo_; mR = mr_;
+            }
+            // The read cell: the SHARED Macro frame's read cell + walk sign
+            // (eng.macroFrameRead/macroFrameSign — the strip IS the Macro tier's
+            // surface, one value for every tab). CC_FIX_MACRO_NO_VOICE1_SPECIAL removed
+            // the V1 arm (no mono branch anywhere in the strip); the
+            // CC_FIX_MACRO_STRIP_VOICE_PLAYHEAD amendment then moved the row playhead
+            // off the displayed voice's OWN cell — reading it made the row track
+            // whichever tab was selected (V1/V2/V3 diverged; global means
+            // voice-independent). CC_FIX_MACRO_LANE_SEED Part 2 completes the law: the
+            // frame is the MACRO ROW's walk (bounded by this mL/mO/mR), so the cell
+            // runs INSIDE the authored window (L=8 @ O=16 walks [16,24), the same
+            // frame value the Macro lanes' seed hangs under — one law, one walk).
+            int rp = eng.started() ? eng.macroFrameRead() : -1;
+            int sg = eng.macroFrameSign();
+            visualEditor->setRangeState(mL, mO, mR, rp, sg, false, rangeLabel_);
+            // (Stage B, the FINAL MODEL) the strip's WIREFRAME row — base + PENDING
+            // (the live-modulated window), the twin of the committed feed above;
+            // gated on the surface's existing modViz flag, drawn only when it
+            // diverges from what plays. The drag-time wireframe call (track vs
+            // freeze) stays the editor-side one-condition switch.
+            {
+                int pl_, po_, pr_; SequencerEngine::LaneDir pd_;
+                se->effectiveMacroRowPreview(pl_, po_, pr_, pd_);
+                visualEditor->setRangePreview(pl_, po_, pr_);
+            }
+            visualEditor->previewViz = monsoon->modVizMacro;
+            // The mask surface reads the ENGINE's effective pattern (the UI-completion
+            // unify — display-reads-engine, East's twin note): cycle = all-lit, range
+            // = the window, painted = the ANCHORED working copy (rotates with R when
+            // follow-R is on).
+            visualEditor->setRangeMask(true, eng.effectiveOutputMaskMacro());
         }
     }
 
-    // Mix-in SEND grid labels (NanoVG; panel carries no baked text). SANDS CONSOLIDATION Step 3:
-    // 6 send knobs in a single horizontal row per lane, 9mm pitch, row-aligned to each LED lane.
-    // Column headers (LEN/OFF/ROT/SPR/LOR/SPR) sit above lane 0. Geometry is owned by the generator.
+    // (the mix-in SEND grid labels MOVED with the strip — the send column headers
+    // now draw on the SandsMacroSendSubpanel. The CRV header stays here.)
     void draw(const DrawArgs& args) override {
         ModuleWidget::draw(args);
         NVGcontext* vg = args.vg;
@@ -668,40 +1181,56 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
             ok = false; return Vec(0, 0);
         };
 
-        // Column X positions from lane-0 anchors: items 0..3 = LEN/OFF/ROT/SPR sends,
-        // col 4 = LOR tap (param_taplor_0), col 5 = SPR tap (param_tapspr_0).
-        float colX[6] = {};
-        bool okAny = false;
-        for (int it = 0; it < 4; ++it) {
-            bool ok = false; Vec s = anchorMM("param_send_0_" + std::to_string(it), ok);
-            if (ok) { colX[it] = s.x; okAny = true; }
-        }
-        { bool ok = false; Vec l = anchorMM("param_taplor_0", ok);  if (ok) { colX[4] = l.x;  okAny = true; } }
-        { bool ok = false; Vec sp = anchorMM("param_tapspr_0", ok); if (ok) { colX[5] = sp.x; okAny = true; } }
-        if (!okAny) return;
-
-        // Column headers, sitting above lane 0 at the send columns' X.
-        const char* colName[6] = { "LEN", "OFF", "ROT", "SPR", "LOR", "SPR" };
+        // CC_PROMPT_04: the warp curve-editor ("CRV") column header, at the button column's X.
         nvgFontSize(vg, 6.0f);
         nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
         nvgFillColor(vg, head);
         const float headerY = mm2px(ED_Y - 3.0f);   // 11mm — above lane 0 (14), below the tab band
-        for (int c = 0; c < 6; ++c)
-            nvgText(vg, colX[c], headerY, colName[c], nullptr);
+        { bool ok = false; Vec cw = anchorMM("param_warpedit_0", ok);
+          if (ok) nvgText(vg, cw.x, headerY, "CRV", nullptr); }
     }
 };
+
+// (pubSlewedLane_ DELETED with the old change-fingerprint gate — CC_PROMPT_UI_TO_RESOLVER_SPEC
+//  step 3: the step cache reads the ONE accessor directly; nothing walks the raw
+//  pubSlewed twins here any more.)
 
 // ── Module process(): 3 poly probability CV outs (ch1 reserved, voices ch2+) ──
 void StraitsSandsMacroVisual::process(const ProcessArgs&) {
     using namespace StraitsMacroVisualIds;
-    // PERF (Rodney audit item 3): findMonsoonEitherSide walks the expander chain and ran
-    // every sample. Topology is control-rate, so cache it and refresh on a divider.
-    if (monLookupDiv.process()) cachedMon_ = redDot::findMonsoonEitherSide(this);
-    Monsoon* mon = cachedMon_;
+#ifdef MONSOON_PROFILE
+    // WHOLE-PROCESS avgNs, RESTORED SAFELY (CC_PROMPT_TILT_AND_RAIL_FEELTEST — Rodney noted
+    // it went missing): rdtsc bracket around ALL of process(), RAII so the no-Monsoon early
+    // return below is covered too; logged at the existing ~50k-sample window as process=.
+    // This is the MonsoonProfile.hpp SAFE FORM (now() = one rdtsc, chrono ONLY inside the
+    // window's calibrateNsPerTick) — NEVER the per-sample std::chrono pair that caused the
+    // 124%. Flag-off builds compile this guard to NOTHING (zero cost, byte-identical).
+    struct MonsoonProfTotal {
+        uint64_t t0 = monsoonProfile::now();
+        ~MonsoonProfTotal() { monsoonProfAcc_total += monsoonProfile::now() - t0; }
+    } monsoonProfTotal;
+#endif
+    MONSOON_PROF_BEGIN(lookup);   // lookup: the adjacency memo + dir-mod edge scan
+    // LOOKUP AUTHORITY (CC_PROMPT_MODULE_LOOKUP_AUTHORITY_START): findMonsoonEitherSide
+    // ran behind a /8 divider — a chain walk every 8 samples even on a STATIC rack. It
+    // is now the memoized lookupMonsoon: a hit costs one relaxed atomic load + two
+    // compares; the WALK runs once per topology generation (onExpanderChange bumped
+    // the epoch; the multi-hop fan-out is the epoch's whole point — see
+    // ui/ModuleLookupCore.hpp).
+    Monsoon* mon = redDot::lookupMonsoon(this);
     if (!mon) {
         for (int l = 0; l < dotModular::SandsGrid::POLY_LANES; ++l) {
-            outputs[PROB_OUT_REST + l].setChannels(1);
-            outputs[PROB_OUT_REST + l].setVoltage(0.f);
+            auto& out = outputs[PROB_OUT_START + l];
+            out.setChannels(1);
+            // WRITE-ELIMINATION (perf fix, same discipline as the sweep below): setVoltage
+            // only on BIT-difference. The port's own voltages[] is the last-written cache
+            // (Rack holds output values once set), so an identical write was a no-op store;
+            // comparing the LIVE port (not a shadow cache) makes this immune to
+            // setChannels' shrink-zeroing and cable events — a skipped write is provably
+            // one that would not have changed a bit.
+            const float zero = 0.f;
+            if (std::memcmp(&out.voltages[0], &zero, sizeof(float)) != 0)
+                out.setVoltage(0.f);
         }
         return;
     }
@@ -710,52 +1239,214 @@ void StraitsSandsMacroVisual::process(const ProcessArgs&) {
     // Cycles the dirDispId display proxy param; the widget's step() syncs to engine.
     {
         for (int el = 0; el < dotModular::SandsGrid::POLY_LANES; ++el) {
-            // dirModId(el) is the jack on editor row el; globalDir is ENGINE-indexed, so
-            // cycle engine lane eng = EDITOR_TO_ENGINE_LANE_QMIX[el]. (Was cycling el directly →
-            // the MELODY-row gate advanced REST's direction.)
-            const int eng = dotModular::EDITOR_TO_ENGINE_LANE_QMIX[el];
+            // dirModId(el) is the jack on editor row el; globalDir is lane-indexed and
+            // editor row == engine lane (identity), so eng = el directly. (Historically
+            // the orders differed and cycling el directly advanced REST's direction.)
             auto& in = inputs[dirModId(el)];
             if (!in.isConnected()) continue;
             bool high = in.getVoltage(0) > 1.f;
             if (high && !dirModPrev[el]) {
-                if (auto* mm = redDot::findMonsoonEitherSide(this)) {
-                    int cur = (int)std::lround(mm->getGlobalDir(eng));
-                    mm->setGlobalDir(eng, (float)((cur + 1) % 4));
+                if (auto* mm = redDot::lookupMonsoon(this)) {
+                    int cur = (int)std::lround(mm->getGlobalDir(el));
+                    mm->setGlobalDir(el, (float)((cur + 1) % 4));
                 }
             }
             dirModPrev[el] = high;
         }
+        // (B) VOICE-LOR PARITY: the voice row's direction gate-mod — the same mono-jack
+        // law, cycling the GLOBAL voiceLorMacroDir (the row every follow-Macro voice
+        // reads; the whole locked ensemble moves together).
+        {
+            auto& vin = inputs[vlorDirModId()];
+            if (vin.isConnected()) {
+                bool high = vin.getVoltage(0) > 1.f;
+                if (high && !vlorDirModPrev) {
+                    if (auto* mm = redDot::lookupMonsoon(this)) {
+                        int cur = (int)std::lround(math::clamp(mm->getVoiceLorMacroDir(), 0.f, 3.f));
+                        mm->setVoiceLorMacroDir((float)((cur + 1) % 4));
+                    }
+                }
+                vlorDirModPrev = high;
+            }
+        }
     }
+    MONSOON_PROF_END(lookup);
+    MONSOON_PROF_BEGIN(sweep);   // sweep: the /32 fingerprint gate + the change-driven resolve + the 7-lane prob-CV out writes
     const float scaleV = (mon->probOutScale == 0) ? 1.f : (mon->probOutScale == 1) ? 5.f : 10.f;
-    const bool sh = mon->probOutSampleHold;
     auto& eng = mon->engine;
     const int nV = eng.numPolyVoices;
     const int nCh = 1 + nV;
-    const int gs = eng.stepIndex;
-    dotModular::VoiceResolver resolver(eng);
-    for (int l = 0; l < dotModular::SandsGrid::POLY_LANES; ++l) {   // 5 poly lanes incl QMIX
-        auto& out = outputs[PROB_OUT_REST + l];
-        out.setChannels(nCh < 1 ? 1 : nCh);
-        // Macro's OWN global LOR step for this lane (from macroBase+CVDelta — identical
-        // to Macro's editor playhead, independent of East/ownership). Same step for
-        // every voice (Macro's view is global); each voice contributes its own draw.
-        int ownLen = std::max(1, (int)std::lround(macroBase[l][0] + macroCVDelta[l][0]));
-        int ownOff = (int)std::lround(macroBase[l][1] + macroCVDelta[l][1]);
-        int ownRot = (int)std::lround(macroBase[l][2] + macroCVDelta[l][2]);
-        int step = calcPlayhead(gs, ownLen, ownOff, ownRot) & 0x0F;
-        // Uniform addressing: VCV channel ch carries voice ch+1. ch0 → voice 1 (mono;
-        // the resolver ignores the explicit step and returns the master draw) — was a 0V
-        // stub. ch v → voice v+1 (poly), sampled at Macro's global step.
-        for (int ch = 0; ch < nCh; ++ch) {
-            const int voice = ch + 1;                 // 1..16
-            float raw = resolver.laneProbabilityAtStep(voice, l, step);
-            float val;
-            if (sh) {
-                if (step != probLastStep[l][ch]) { probHeld[l][ch] = raw; probLastStep[l][ch] = step; }
-                val = probHeld[l][ch];
-            } else val = raw;
-            out.setVoltage(rack::math::clamp(val, 0.f, 1.f) * scaleV, ch);
+    // Channel count is set EVERY sample (polyphony takes effect at once), all 7 lanes.
+    for (int l = 0; l < dotModular::SandsGrid::POLY_LANES; ++l)
+        outputs[PROB_OUT_START + l].setChannels(nCh < 1 ? 1 : nCh);
+    // ── THE SWEEP GATE (CC_PROMPT_cpu_section_profile Part 3 — RESTORED by
+    //    CC_PROMPT_restore_sweepsig_gate_START) ─────────────────────────────────────
+    // 70dd837 deleted this gate for a step-cache keyed on the step NUMBER — it fired
+    // at every step edge but could SKIP nothing else, and Rodney's bisect put
+    // Macro-only back at ~3% CPU (this gate's idle skip was the 0.4%). A /32 throttle
+    // ALONE was tried and reverted (e0981d5): throttling frequency still resolves
+    // UNCONDITIONALLY every tick ≈ 22.7 µs/tick ≈ 0.7 µs/sample ≈ 3.4%. The
+    // SKIP-ON-UNCHANGED fingerprint is the mechanism: the resolve (VoiceResolver::
+    // laneProbabilityAtStep → effectiveProbability, MacroOwn lens) is a PURE FUNCTION
+    // of its inputs, so when they are bit-unchanged since the last run the recomputed
+    // outs are bit-identical and the whole resolve is skipped — the rows hold the
+    // exact bits the last run wrote. INPUT ENUMERATION + the deliberate drops live in
+    // ui/SweepSigGate.hpp (the gate IS the tested logic — test_sweepsig_gate): the
+    // per-lane masked steps, the pubSlewed cells at those steps (slots 0..nV — the
+    // anchor's row-0 target included), the LIVE eng.macroOwnSpread store (the manager's
+    // publishGlobal owns the publish — NOT restored here), the bank pointer + ONLY
+    // Macro's GLOBAL warp cells (warpDisplayMixMacroOwn is delegated=TRUE pure
+    // selection — the East-authorable own-slot stores and the delegation matrix are
+    // NOT inputs of this lens, deliberately NOT fingerprinted), and nV. Scale and
+    // channel-count changes do NOT re-resolve: the out-write epoch below re-walks the
+    // SAME cached values at the new transform. Steady state: stopped+idle ≈ 0
+    // resolves; playing ≈ step-rate (8-16 Hz × 22.7 µs ≈ 0.02%). Polyphony changes
+    // land at the next tick (≤ 0.7 ms — the shipped pre-70dd837 behaviour).
+    // RATE MANAGER (S5): the Control tier is fed by the probOutDiv edge (the wrapper
+    // pattern — /32, same cadence + phase as before), and the sweep resolve is the
+    // DECLARED producer: the SweepSig gate IS the fingerprint (a one-byte changed-flag
+    // image — true resolves, false skips; the post-run re-snapshot re-evaluates the
+    // gate AFTER the capture, so the shadow settles to "unchanged" until an input
+    // really moves). The gate arithmetic (stepArr) runs in the fingerprint; the resolve
+    // recomputes it identically (a pure expression — a few ns, bit-identical).
+    rateManager.advance(redDot::Rate::Control, probOutDiv.process());
+    rateManager.dispatch(redDot::Rate::Control);
+    // The OUT reads the CACHED value. WRITE-ELIMINATION (the perf fix, KEPT — now
+    // ROW-scoped, the FINISH2 CPU fix): setVoltage ONLY on bit-difference, and the
+    // per-channel bit-diff WALK itself runs only when the gate re-resolved the row
+    // (or the scale or the channel count changed) since the last walk. Steady state
+    // per sample is one lane compare instead of (1+N) clamp+memcmp iterations — at 16
+    // channels that walk was ~112 iterations/sample, the dominant per-sample cost on
+    // this module's meter. A walk that DOES run keeps the LIVE-port compare (not a
+    // shadow cache), so it re-heals any external port mutation: setChannels'
+    // shrink-zeroing rides the nCh change, which forces the walk; cable events leave
+    // held voltages intact. Steady state: zero walks, zero writes.
+    for (int l = 0; l < dotModular::SandsGrid::POLY_LANES; ++l) {
+        StepProbRow& row = stepProb_[l];
+        auto& out = outputs[PROB_OUT_START + l];
+        if (!row.outFresh || scaleV != row.outScale || nCh != row.outCh) {
+            for (int ch = 0; ch < nCh; ++ch) {
+                const float v = rack::math::clamp(row.val[ch], 0.f, 1.f) * scaleV;
+                if (std::memcmp(&out.voltages[ch], &v, sizeof(float)) != 0)
+                    out.setVoltage(v, ch);
+            }
+            row.outFresh = true;
+            row.outScale = scaleV;
+            row.outCh = nCh;
         }
+    }
+    MONSOON_PROF_END(sweep);
+#ifdef MONSOON_PROFILE
+    // CC_PROMPT_cpu_section_profile — section log (every ~50000 samples, ~1 s @ 48k).
+    // Suspect-A (the old 124%) RESOLVED by CC_PROMPT_UI_TO_RESOLVER_SPEC: the
+    // effectiveProbability resolve is STEP-cached above. Expected reads:
+    //   engine step-cache ≈ 0.00x calls/sample at idle; when playing ≈
+    //   7×(1+N)/steps-per-second ÷ 48000 (a fraction of the old control-rate-throttle number);
+    //   total= also counts the bars' UI-thread refresh (7 lanes × 16 steps per UI
+    //   frame — NOT on the audio meter; step-cache= is the meter's number).
+    if (++monsoonProfWindow >= 50000) {
+        monsoonProfWindow = 0;
+        const double npt = monsoonProfile::calibrateNsPerTick(monsoonProfile::now());
+        // (process= below reads the accumulator BEFORE this call's RAII guard folds its
+        // ticks in — one call of 50000 lags, a 0.002% bookkeeping detail, not a lie.)
+        static uint64_t prevCalls = 0, prevSweep = 0;
+        const uint64_t calls =
+            monsoonProfile::effProbCalls.load(std::memory_order_relaxed);
+        const uint64_t swp = monsoonProfSweepCalls;
+        const double cps  = double(calls - prevCalls) / 50000.0;  // total calls/sample this window
+        const double scps = double(swp - prevSweep) / 50000.0;    // engine-thread (step cache) share
+        prevCalls = calls;
+        prevSweep = swp;
+        const double perStep = 7.0 * (1.0 + (double)nV);          // POLY_LANES x (1+N) per STEP
+        if (npt > 0.0)
+            INFO("[MONSOON PROFILE] Macro ns/sample: lookup=%.0f sweep=%.0f sum=%.0f process=%.0f "
+                 "| effProbability calls/sample=%.3f (engine step-cache=%.3f, UI bars=%.3f) "
+                 "(step-rate 7x(1+N)=%.1f per step, N=%d)",
+                 monsoonProfAcc_lookup * npt / 50000.0, monsoonProfAcc_sweep * npt / 50000.0,
+                 (monsoonProfAcc_lookup + monsoonProfAcc_sweep) * npt / 50000.0,
+                 monsoonProfAcc_total * npt / 50000.0,
+                 cps, scps, cps - scps, perStep, nV);
+        else
+            INFO("[MONSOON PROFILE] Macro: effProbability calls/sample=%.3f (engine step-cache=%.3f, "
+                 "UI bars=%.3f) (step-rate 7x(1+N)=%.1f per step, N=%d); TSC calibrating",
+                 cps, scps, cps - scps, perStep, nV);
+        monsoonProfAcc_lookup = monsoonProfAcc_sweep = monsoonProfAcc_total = 0;
+    }
+#endif
+}
+
+// ── RATE MANAGER (S5): the sweep producer halves ──────────────────────────────
+size_t StraitsSandsMacroVisual::sweepFingerprint_(void* dst) {
+    // The SweepSig gate AS the fingerprint: a one-byte changed-flag image. The gate
+    // arithmetic is the SAME step expressions the resolve indexes with (the old block
+    // computed them once; the fingerprint/produce split recomputes — a pure expression,
+    // bit-identical). The post-run re-snapshot re-evaluates the gate AFTER the capture
+    // (inside the produce), so the shadow settles to "unchanged" until an input moves.
+    Monsoon* mon = redDot::lookupMonsoon(this);
+    uint8_t changed = 0;
+    if (mon) {
+        auto& eng = mon->engine;
+        const int nV = eng.numPolyVoices;
+        std::array<int, dotModular::SandsGrid::POLY_LANES> stepArr{};
+        // (CC_PROMPT_LANE_RANGE_DISPLAY_UNIFY Stage A) the sweep's step cells read the
+        // latched authority through the macro-row LOR representative — the SAME window
+        // the lanes' range display and the audio walk use. Was macroBase+macroCVDelta
+        // (applyMacroCV's live compose → the fingerprint churned at video rate).
+        const int repVoice = eng.macroLaneRepVoice();
+        for (int l = 0; l < dotModular::SandsGrid::POLY_LANES; ++l) {
+            int ownLen, ownOff, ownRot; SequencerEngine::LaneDir ownDir;
+            eng.effectiveLaneLor(dotModular::VoiceResolver::slot(repVoice + 1),
+                                 eng.strandLaneId(l), ownLen, ownOff, ownRot, ownDir);
+            stepArr[l] = calcPlayhead(eng.playedColumn(), std::max(1, ownLen), ownOff, ownRot) & 0x0F;
+        }
+        const bool ch = sweepSigChanged(sweepSig_, eng, stepArr.data(), nV);
+#ifdef MONSOON_PROFILE
+        if (ch) {   // the idle diagnostic: name WHICH fingerprint field fired
+            ++monsoonProfGateRuns;
+        }
+#endif
+        changed = ch ? 1 : 0;
+    }
+    std::memcpy(dst, &changed, sizeof changed);
+    return sizeof changed;
+}
+
+void StraitsSandsMacroVisual::sweepProduce_() {
+    Monsoon* mon = redDot::lookupMonsoon(this);
+    if (!mon) return;
+    auto& eng = mon->engine;
+    const int nV = eng.numPolyVoices;
+    const int nCh = 1 + nV;
+    std::array<int, dotModular::SandsGrid::POLY_LANES> stepArr{};
+    // (Stage A, the sweep twin) the latched authority through the LOR representative —
+    // the capture and the fingerprint read the SAME window (one compose, both sites).
+    const int repVoice = eng.macroLaneRepVoice();
+    for (int l = 0; l < dotModular::SandsGrid::POLY_LANES; ++l) {
+        int ownLen, ownOff, ownRot; SequencerEngine::LaneDir ownDir;
+        eng.effectiveLaneLor(dotModular::VoiceResolver::slot(repVoice + 1),
+                             eng.strandLaneId(l), ownLen, ownOff, ownRot, ownDir);
+        stepArr[l] = calcPlayhead(eng.playedColumn(), std::max(1, ownLen), ownOff, ownRot) & 0x0F;
+    }
+    // Capture the sig exactly as the resolve is about to consume it (the resolve is
+    // read-only on every fingerprinted input, so the placement here is free).
+    sweepSigCapture(sweepSig_, eng, stepArr.data(), nV);
+    dotModular::VoiceResolver resolver(eng);
+    for (int l = 0; l < dotModular::SandsGrid::POLY_LANES; ++l) {   // 7 poly lanes (MEL/OCT/QMIX/REST/ACC/VAR/LEG)
+        StepProbRow& row = stepProb_[l];
+        row.valid = true;
+        row.step = stepArr[l];
+        row.nVoices = nV;
+        row.outFresh = false;   // new values: the out walk must run once
+        // Uniform addressing: VCV channel ch carries voice ch+1; ch0 → voice 1 (mono).
+        // Every channel is Macro-OWN at Macro's global step — the resolver routes to
+        // the ONE accessor (effectiveProbability, MacroOwn lens) — the SAME source the
+        // bars read. East's spread on an East-owned lane cannot reach this out
+        // (one-way borrowing); only the step latch + scale differ from the bars, by design.
+        for (int ch = 0; ch < nCh; ++ch)
+            row.val[ch] = resolver.laneProbabilityAtStep(ch + 1, l, stepArr[l]);
+#ifdef MONSOON_PROFILE
+        monsoonProfSweepCalls += (uint64_t)nCh;   // this lane's resolve count
+#endif
     }
 }
 

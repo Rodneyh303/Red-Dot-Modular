@@ -1,5 +1,6 @@
 #pragma once
 #include <rack.hpp>
+#include "ui/ModuleLookupCore.hpp"   // THE lookup authority: the topology epoch (CC_PROMPT_MODULE_LOOKUP_AUTHORITY_START)
 #include "Monsoon.hpp"
 
 using namespace rack;
@@ -21,7 +22,7 @@ using namespace MonsoonIds;
 // LOCAL id pool — re-homed out of the shared MonsoonIds pool so Causeway can be
 // right-sized (was claiming all 152 param + all input slots for 34 params + 2 inputs).
 // Names deliberately DIFFER from the MonsoonIds ones (…_ATT vs …_MOD_ATT): this file has
-// `using namespace MonsoonIds` at file scope, so identical names would be ambiguous.
+// using namespace MonsoonIds at file scope, so identical names would be ambiguous.
 namespace CausewayIds {
     enum ParamIds {
         MONO_REST_ATT = 0,                                   // voice 1 (mono) rest
@@ -43,6 +44,12 @@ namespace CausewayIds {
 }
 
 struct MonsoonCausewayPolyExpander : Module {
+    // THE LOOKUP AUTHORITY: the event bumps the global topology epoch — adjacency
+    // (the lookup* memos) re-resolves on the next read.
+    void onExpanderChange(const ExpanderChangeEvent& e) override {
+        redDot::bumpTopologyEpoch();
+    }
+
     MonsoonCausewayPolyExpander() {
         config(CausewayIds::NUM_PARAMS, CausewayIds::NUM_INPUTS, 0, 0);
         for (int i = 0; i < 15; ++i) {

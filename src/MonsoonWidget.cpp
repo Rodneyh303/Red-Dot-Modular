@@ -10,6 +10,7 @@
 #include "ui/ModArcOverlay.hpp"
 #include "ui/HostBadge.hpp"                 // shared connection-identity badge (CONNECTION_MODEL_SPEC §4)
 #include "dsp/managers/MonsoonScaleManager.hpp"
+#include "dsp/LaneMapping.hpp"            // canonical lane names (spread-target menu)
 
 using namespace rack;
 using namespace MonsoonIds;
@@ -467,12 +468,28 @@ MonsoonWidget::MonsoonWidget(Monsoon* module) {
         // Was a C++ formula (RCX/RCY/RLED at 162,30,r14). Now each LED binds to its
         // light_STEPn_LIGHT anchor emitted by monsoon_art.py, so the ring geometry
         // lives in the generator table (single source of truth). Colour pattern is
-        // preserved: every 4th step (downbeat) is red, the rest green.
+        // preserved: every 4th step (downbeat) is red, the rest green. The ring STAYS
+        // 16 lamps (the D15 16-stay form): lamp k carries masters k and k+16, the
+        // current lap from the playhead's half — the twice-around feed lives in
+        // SequencerEngine::getStepLightBrightness. The `i % 4` red rule is MUSICAL
+        // (quarters at the clock's 16th resolution); 16 ≡ 0 (mod 4), so the two bars'
+        // quarters coincide on the same four lamps (the D15 accepted loss).
         for (int i = 0; i < 16; ++i) {
             const std::string id = "light_STEP" + std::to_string(i) + "_LIGHT";
             if (i % 4 == 0) bindLight<SmallLight<RedLight>>  (id, MonsoonIds::STEP_LIGHTS_START + i);
             else            bindLight<SmallLight<GreenLight>>(id, MonsoonIds::STEP_LIGHTS_START + i);
         }
+
+        // ── BAR 1 / BAR 2 — the inner-disc bar indicator (D10 (2) as amended by D15) ──
+        // Two LEDs INSIDE the ring's unused center: upper = bar 1, lower = bar 2 (the
+        // disc's hemisphere cut). Anchors emitted by monsoon_art.py next to the STEP
+        // family (the generator table stays the single source of truth). Amber — a
+        // third colour, distinct from the ring's red-quarter/green-rest content code.
+        // Brightness from SequencerEngine::getBarLightBrightness via the UIManager
+        // (lit exclusively; the inactive bar dims; both silent with no discrete
+        // playhead — mode D — and before the first tick).
+        bindLight<SmallLight<YellowLight>>("light_BAR1_LIGHT", MonsoonIds::BAR1_LIGHT);
+        bindLight<SmallLight<YellowLight>>("light_BAR2_LIGHT", MonsoonIds::BAR2_LIGHT);
 
         // ── Mode button + lights: right strip, bound by ANCHOR ────────────────
         // MODE_COLLAPSE_6_TO_3: THREE timing origins (clock/gate/phase = lights A/B/C). Pitch origin
@@ -595,6 +612,19 @@ MonsoonWidget::MonsoonWidget(Monsoon* module) {
         // now emits param_PHASE_PARAM, so it binds like every other control. Plain small cog,
         // no theme swap (fine for this control). Placement lives in the generator table.
         bindParam<redDot::Dark_Small_Cog>("param_PHASE_PARAM", MonsoonIds::PHASE_PARAM);
+
+        // ── PHASE TIER Stage 2 — the SUBPHASE CALIBRATION knob, one step left of PHASE ──
+        // The pair reads as a pair (the transport's PHASE, then the tier's SUBPH). Same
+        // plain small cog, no theme swap. The anchor lives in the generator table
+        // (monsoon_art.py SUBPHASE_CAL_XY), so the SVG, this bind and the caption draw
+        // share the one position source.
+        bindParam<redDot::Dark_Small_Cog>("param_SUBPHASE_CAL_PARAM", MonsoonIds::SUBPHASE_CAL_PARAM);
+
+        // ── §14 SET INDICES — NO KNOBS (Rodney: "No new knobs on monsoon. Context
+        // menu choice for index only.") — PHASE_SET_PARAM / SUBPHASE_SET_PARAM stay
+        // ENGINE params (the landed routing reads them; Rack auto-persists them with
+        // the patch), but they carry NO panel widget: the pick lives in
+        // appendContextMenu (below), the only UI for the index.
 
         // ── Host-identity badge (CONNECTION_MODEL_SPEC §2/§4) ────────────────────────────────────
         // The Monsoon shows its OWN pairId colour+number so a bound expander's matching badge can be
@@ -856,7 +886,10 @@ void MonsoonWidget::draw(const DrawArgs& args) {
         };
 
         setNvgFontSize(2.5f);
-        { for(int i=0;i<NUM_NOTE_VALUES;++i) arcLabel("param_NOTE_VALUE_PARAM",16.f,22.f,13.5f,-225.f+i*(270.f/(NUM_NOTE_VALUES-1)),NOTE_VALUES[i].label,150,150,135); }
+        // DOTTED BUILD: the dial walks DIAL_ORDER (the spec's grouped reading —
+        // families together: base, triplet, then the next family's dotted); the
+        // engine table itself stays in strict duration order.
+        { for(int k=0;k<NUM_NOTE_VALUES;++k) arcLabel("param_NOTE_VALUE_PARAM",16.f,22.f,13.5f,-225.f+k*(270.f/(NUM_NOTE_VALUES-1)),NOTE_VALUES[DIAL_ORDER[k]].label,150,150,135); }
         setNvgFontSize(2.8f);
         arcLabel("param_VARIATION_PARAM",42.f,22.f,13.f,-225.f,"LONGER",130,130,120); arcLabel("param_VARIATION_PARAM",42.f,22.f,13.f,45.f,"SHORTER",130,130,120);
         arcLabel("param_LEGATO_PARAM",68.f,22.f,12.f,-225.f,"0%",130,130,120);        arcLabel("param_LEGATO_PARAM",68.f,22.f,12.f,45.f,"100%",130,130,120);
@@ -870,6 +903,12 @@ void MonsoonWidget::draw(const DrawArgs& args) {
         labelAt("param_BPM_PARAM", 12.f, "BPM"); labelAt("param_PATTERN_LENGTH_PARAM", 12.f, "LEN"); labelAt("param_PATTERN_OFFSET_PARAM", 12.f, "OFFSET");
         // Mode E phase knob — now one step left of BPM on the phase row; label matches the others.
         labelAt("param_PHASE_PARAM", 12.f, "PHASE");
+        // PHASE TIER Stage 2 — the subphase tier's calibration, labelled beside its partner.
+        labelAt("param_SUBPHASE_CAL_PARAM", 12.f, "SUBPH");
+
+        // (The §14 set indices draw NOTHING here — no knobs on Monsoon (Rodney);
+        // the index pick lives in appendContextMenu, the store's sets on the
+        // Sands phase-dist subpanel.)
 
         // ── Control-row labels — ONE per control, centred ABOVE it (y≈81), anchor-relative ──
         // The row was consolidated into a single y=87 row (panel_src/monsoon_art.py ROW). Every
@@ -1043,10 +1082,10 @@ void MonsoonWidget::appendContextMenu(ui::Menu* menu) {
             add("Monsoon — pitch/octave sliders", &m->modVizMonsoonMelody);
             add("Monsoon — knobs (probability, slew, mix)", &m->modVizMonsoonOther);
             sm->addChild(new ui::MenuSeparator);
-            add("Straits East (per-voice)", &m->modVizEast);
+            add("Straits East (per-voice + range)", &m->modVizEast);   // (FINAL MODEL) now also gates the LOR-range pending wireframe
             add("Straits West (per-voice)", &m->modVizWest);
-            add("Sands Macro (spread)", &m->modVizMacro);
-            add("Sands Mono (spread)", &m->modVizMono);
+            add("Sands Macro (spread + range)", &m->modVizMacro);      // (FINAL MODEL) now also gates the LOR-range pending wireframe
+            add("Sands Mono (spread)", &m->modVizMono);   // the Mono grid's own range overlay is the flagged follow-up — label unchanged until it draws
             add("Change Alley (grain/step)", &m->modVizChangeAlley);
         }));
         // Rhythm behaviour: the two leading-edge policy toggles (RHYTHM_BEHAVIOUR_POLICIES.md).
@@ -1068,9 +1107,16 @@ void MonsoonWidget::appendContextMenu(ui::Menu* menu) {
             // redraws only tying OUT; a rest arrival ends the chain). OFF = abutting-gates-only
             // (sample-accurate: overlap / <=1-sample gap ties, >=2-sample gap is fresh).
             add("Tie across rests", &m->engine.tieAcrossRests);
-            // "Advance playhead on tie-into-rest" — OFF (default). On a gate fall with a pending
-            // slur, advance one step into the incoming-rest and re-draw legato there (the sole
-            // advance-on-fall; opt-in). See docs/design/LEGATO_GATE_GAP_BUG.md (§345/§425).
+            // "Advance playhead on tie-into-rest" — OFF (default). ON = PROBABILISTIC
+            // fall-advance (option 2, CC_PROMPT_TIE_INTO_REST_PROBABILISTIC_ADVANCE):
+            // the fall into a tie-rest advances with probability = the rest step's
+            // Variation draw (the same mechanism as the rise step-advance), so the rest
+            // re-draws (and may end the slur chain) probabilistically; BIPOLAR — the
+            // fall direction follows the Variation-governed motion (backward when
+            // negative, hold near 0). OFF = never fall-advance. OPTION 3 (future, if
+            // Rodney decides the flag isn't worth keeping): drop the flag, always
+            // probabilistically fall-advance. See docs/design/LEGATO_GATE_GAP_BUG.md
+            // (§345/§425).
             add("Advance playhead on tie-into-rest", &m->engine.advanceOnTieIntoRest);
             sm->addChild(new ui::MenuSeparator);
             // OFF (default): CONTINUE — gate carries across the loop, laps can differ. ON:
@@ -1230,7 +1276,16 @@ void MonsoonWidget::appendContextMenu(ui::Menu* menu) {
 
             sub->addChild(new ui::MenuSeparator);
 
-            { 
+            struct QMI : ui::MenuItem { Monsoon* module=nullptr; int value=0;
+              void onAction(const event::Action&) override { if(module) module->switchQmixMode(); }
+              void step() override { if(module) rightText=(module->qmixMode==value)?"✔":""; ui::MenuItem::step(); } };
+            { auto* l = new ui::MenuLabel; l->text = "Q-Mix Mode"; sub->addChild(l);
+              auto* it4=createMenuItem<QMI>("Dice (static)"); it4->module=m; it4->value=0; sub->addChild(it4);
+              auto* it5=createMenuItem<QMI>("Realtime");      it5->module=m; it5->value=1; sub->addChild(it5); }
+
+            sub->addChild(new ui::MenuSeparator);
+
+            {
                 auto* l = new ui::MenuLabel; l->text = "Mute Behavior"; sub->addChild(l);
                 sub->addChild(createBoolPtrMenuItem("Restart on unmute", "", &m->restartOnUnmute));
                 sub->addChild(createBoolPtrMenuItem("Inverted Mute logic (GATE 2)", "", &m->invertMuteLogic));
@@ -1455,13 +1510,26 @@ void MonsoonWidget::appendContextMenu(ui::Menu* menu) {
                 void onAction(const event::Action&) override { if(module) module->noteVariationMask ^= (1<<bit); }
                 void step() override { rightText=(module&&(module->noteVariationMask&(1<<bit)))?"✔":""; ui::MenuItem::step(); } };
               auto add=[&](const char* t,int b){auto* it=createMenuItem<MaskItem>(t);it->module=m;it->bit=b;sub->addChild(it);};
-              add("Allow 1/4T",0); add("Allow 1/8T",1); add("Allow 1/32",2); }
+              // DOTTED BUILD (spec v3): per-value toggles, bits 3..7 — individual
+              // like the legacy triplets, all DEFAULT OFF (existing patches
+              // byte-identical until flipped). A dotted/triplet BASE note always
+              // plays (varyNoteIndex keeps the base rung regardless of its bit).
+              add("Allow 1/4T",0); add("Allow 1/8T",1); add("Allow 1/16T",7);
+              add("Allow 1/32",2);
+              add("Allow 1/2.",3); add("Allow 1/4.",4); add("Allow 1/8.",5); add("Allow 1/16.",6); }
             sub->addChild(new ui::MenuSeparator);
             { auto* l = new ui::MenuLabel; l->text = "PPQN"; sub->addChild(l);
               struct PItem : ui::MenuItem { Monsoon* module=nullptr; int value=4;
                 void onAction(const event::Action&) override { if(module) module->ppqnSetting=value; }
                 void step() override { if(module) rightText=(module->ppqnSetting==value)?"✔":""; ui::MenuItem::step(); } };
-              for (int v : {24,48,96}){auto* it=createMenuItem<PItem>(string::f("%d",v).c_str());it->module=m;it->value=v;sub->addChild(it);} }
+              // PPQN: 24 / 48 (CC_PROMPT_PPQN_48 — re-arms the decision the PPQN_48_96_NOT_SAFE
+              // doc parked). A STEP is PULSES_PER_STEP (6) pulses, FIXED: at 24 a step is a
+              // 1/16, at 48 it is a 1/32 — the step rate doubles at the same BPM, nothing
+              // double-speeds (the external clock multiplies ×ppqn/24, the internal clock
+              // subdivides the 1/16 into ppqn/4 pulses). All 13 note values resolve at both
+              // settings (integer pulse counts); 96 is out of scope. PPQN is SAVED in the
+              // patch (ppqnSetting round-trips raw) and restored on load.
+              for (int v : {24, 48}){auto* it=createMenuItem<PItem>(string::f("%d",v).c_str());it->module=m;it->value=v;sub->addChild(it);} }
         }));
 
         // ── Spread target modes (SPREAD_TARGET_MODES.md "Per-lane menu (Rodney)").
@@ -1469,7 +1537,7 @@ void MonsoonWidget::appendContextMenu(ui::Menu* menu) {
         // (-1/0/+1), apply-on-mode-change toggle, apply-now action. "Needs a CA" advisory
         // cue (greyed text, still selectable — persisted). Module-level apply-to-all.
         {
-            const char* laneNames[7] = {"REST", "MELODY", "OCTAVE", "ACCENT", "QMIX", "VARIATION", "LEGATO"};
+            const char* const* laneNames = dotModular::SandsLaneNames::EDITOR_LONG;
             bool caReachable = (m->expanderManager.cachedChangeAlleyV2 != nullptr);
             menu->addChild(createSubmenuItem("Spread target", "", [=](ui::Menu* sub) {
                 for (int lane = 0; lane < 7; ++lane) {   // 7 = POLY_LANES (REST/MEL/OCT/ACC/QMIX/VAR/LEG)
@@ -1541,6 +1609,40 @@ void MonsoonWidget::appendContextMenu(ui::Menu* menu) {
                 // ── Module-level: apply each lane's own current-mode default ──
                 sub->addChild(createMenuItem("Apply defaults to all lanes", "",
                     [=]() { for (int l = 0; l < 5; ++l) m->applySpreadDefault(l); }));
+            }));
+        }
+
+        // ── §14 SET INDICES — the context menu is the ONLY index UI (Rodney: "No
+        // new knobs on monsoon. Context menu choice for index only."). The two
+        // ENGINE params (PHASE_SET_PARAM / SUBPHASE_SET_PARAM — the landed routing
+        // reads them at the Control-tier tick, round+clamp, so a pick lands at a
+        // block boundary like every set change) carry NO panel widget; Rack
+        // auto-persists the params, so the picks save with the patch. INDEX ONLY:
+        // the sets themselves are authored on the Sands PHASE DIST subpanel (the
+        // store's owner), never here.
+        {
+            menu->addChild(createSubmenuItem("Phase-distortion sets", "", [=](ui::Menu* sub) {
+                sub->addChild(createMenuLabel("Which store set distorts each tier"));
+                // ── the phase tier's set index, 1..8 (radio) ──
+                sub->addChild(createSubmenuItem("Phase set", "", [=](ui::Menu* sm) {
+                    for (int i = 1; i <= 8; ++i) {
+                        sm->addChild(createCheckMenuItem(rack::string::f("Set %d", i).c_str(), "",
+                            [=]() { return (int)std::lround(m->params[MonsoonIds::PHASE_SET_PARAM].getValue()) == i; },
+                            [=]() { m->params[MonsoonIds::PHASE_SET_PARAM].setValue((float)i); }));
+                    }
+                }));
+                // ── the subphase tier's set index, 1..8 (radio) ──
+                sub->addChild(createSubmenuItem("Subphase set", "", [=](ui::Menu* sm) {
+                    for (int i = 1; i <= 8; ++i) {
+                        sm->addChild(createCheckMenuItem(rack::string::f("Set %d", i).c_str(), "",
+                            [=]() { return (int)std::lround(m->params[MonsoonIds::SUBPHASE_SET_PARAM].getValue()) == i; },
+                            [=]() { m->params[MonsoonIds::SUBPHASE_SET_PARAM].setValue((float)i); }));
+                    }
+                }));
+                sub->addChild(new ui::MenuSeparator);
+                // The advisory cue (greyed label, the Spread-target idiom): where the
+                // sets are authored — INDEX ONLY here, per Rodney.
+                sub->addChild(createMenuLabel("Author the sets on the PHASE DIST subpanel"));
             }));
         }
     }

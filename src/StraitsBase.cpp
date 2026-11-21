@@ -1,26 +1,35 @@
-// StraitsBase — the frame + IO + voice count, NO lane knobs.
-// This is a REFACTOR of the working Straits widget (MonsoonStraitsExpander.cpp):
-// the IO bindings, voice-count knob, connect mark, and step() logic are COPIED
-// from MonsoonStraitsExpanderWidget — only the lane knob bindings are removed.
-// The base module IS a StraitsStraitsExpander subclass (same config, same params,
-// same IO). Lane expanders are UNREGISTERED — the base spawns them via context menu
-// and owns persistence (save/load the lane list).
+// StraitsBase — the ONE base surface: frame + IO + voice count, the lane run's
+// owner, AND (CC_PROMPT_SUBGATE_MERGE_ONTO_STRAITS_BASE) the subgate consumer
+// group's GLOBAL tier — the 8 global knobs + their mod jacks, the source
+// switches, and the subgate-panel wheel. The retired StraitsSubgateBase's
+// module logic, menu, and wheel are folded HERE (one base owns poly/outputs/
+// snapping/voice-select; the subgate tier joins it); the per-voice panels
+// (StraitsSubgatePanel.cpp) attach to THIS base, docking after the lane run.
+// Lane expanders are base-spawned; the base owns persistence for both lists.
 //
 // See docs/design/STRAITS_CAUSEWAY_LANE_EXTENSIONS.md REFINED MODEL + METHOD:REFACTOR.
 #include <rack.hpp>
 #include "Monsoon.hpp"
 #include "MonsoonStraitsExpander.hpp"
-#include "ui/VisualExpanderHelpers.hpp"
+#include "ui/ModuleLookup.hpp"   // THE module-lookup authority: lookupMonsoon — memoized, event-driven (CC_PROMPT_MODULE_LOOKUP_AUTHORITY_START)
 #include "ui/SvgPanelKit.hpp"
 #include "ui/ConnectMark.hpp"
 #include "ui/Controls.hpp"
 #include <algorithm>   // std::sort
+#include <atomic>      // std::atomic — the resnap fast-path flags cross engine → UI threads
+#include <cmath>       // std::fabs — the subgate global-delta publish
 #include "StraitsLaneExpander.hpp"
+#include "StraitsSubgatePanel.hpp"  // SUBGATE MERGE: the subgate panel module + ids (the base module is retired)
+#include "StraitsQmixOctPanel.hpp"  // QMIX_OCTAVE Stage 3: the qmix-octave per-voice panel + ids
 #include "ui/StraitsSeamFiller.hpp"
+#include "ui/StoreBound.hpp"        // bindStoreKnob — the de-param law (the subgate globals)
+#include "ui/StraitsSubgateArt.hpp" // addSubgateCaption + subgateTint — the merged panel's lettering
 
 using namespace rack;
 
 // Helper: is this module a compatible StraitsR panel (for seam detection)?
+// SUBGATE MERGE: the subgate per-voice panels joined the chain family — they
+// dock after the lane run, so the base's right neighbour can be one.
 static bool isStraitsRPanel(rack::Module* m) {
     if (!m) return false;
     return m->model == modelStraitsBase
@@ -28,10 +37,19 @@ static bool isStraitsRPanel(rack::Module* m) {
         || m->model == modelStraitsLaneREST
         || m->model == modelStraitsLaneACCENT
         || m->model == modelStraitsLaneVARIATION
-        || m->model == modelStraitsLaneLEGATO;
+        || m->model == modelStraitsLaneLEGATO
+        || m->model == modelStraitsSubgatePanelRatchetRest
+        || m->model == modelStraitsSubgatePanelRatchetLegato
+        || m->model == modelStraitsSubgatePanelRatchetAccent
+        || m->model == modelStraitsSubgatePanelRatchetAdvance
+        || m->model == modelStraitsSubgatePanelGhostRest
+        || m->model == modelStraitsSubgatePanelGhostLegato
+        || m->model == modelStraitsSubgatePanelGhostAccent
+        || m->model == modelStraitsSubgatePanelGhostAdvance;
 }
 using namespace MonsoonIds;
 using namespace StraitsIds;
+namespace SKns = dotModular::SubgateKnobs;   // SUBGATE MERGE — the globals' tier constants
 
 // ── StraitsBaseModule — subclass with lane persistence ───────────────────────
 // Adds dataToJson/dataFromJson to save/restore the list of attached lane
@@ -44,6 +62,59 @@ struct StraitsBaseModule : MonsoonStraitsExpander {
     std::vector<int64_t> orderedLaneIds_;  // owned lane module IDs, in dock order
     bool needsResnap = false;   // set by onDragEnd, cleared by step() (one-shot)
     bool initialized = false;   // false until the widget's first step runs
+    // SUBGATE MERGE (CC_PROMPT_SUBGATE_MERGE_ONTO_STRAITS_BASE): the subgate
+    // panel list (the straitLanes shape) + the global-delta publish shadow.
+    std::vector<std::string> pendingSubgates_;   // panel slugs to spawn on the widget's first step (restore)
+    std::vector<int64_t> orderedSubgateIds_;     // owned subgate panel IDs, in dock order
+    // QMIX_OCTAVE Stage 3 (CC_PROMPT_QMIX_OCTAVE): the qmix-octave per-voice
+    // panel — the SAME shape, docked AFTER the subgate panels (the run's last
+    // tier: lanes → subgate panels → qmix-oct panel). ONE panel type; the list
+    // shape keeps the subgate wheel's restore/adopt order guarantees verbatim.
+    std::vector<std::string> pendingQmixOct_;    // panel slugs to spawn on the widget's first step (restore)
+    std::vector<int64_t> orderedQmixOctIds_;     // owned qmix-oct panel IDs, in dock order
+    float lastGlob_[SKns::LEVELS][SKns::DECS] = {};   // change-gated publishing; audio thread only
+    // RESNAP FAST PATH (CC_PROMPT_STRAITS_RESNAP_HARDENING): set by onExpanderChange —
+    // Rack's own adjacency-change signal (the head-adjacent insertion event no drag-end
+    // covers). Only marks DIRTY; the exact chainIntact() evaluation runs UI-side in the
+    // widget's step (orderedLaneIds_ is UI-thread data). Relaxed atomic (the
+    // topologyEpoch house pattern) — the writer may be the engine thread.
+    std::atomic<bool> topologyDirty{false};
+
+    // SUBGATE MERGE: the 8 global mod inputs live in the SHARED StraitsIds
+    // namespace (StraitsIds::SG_MOD_0) — Rack's config() may be called ONCE per
+    // module (the re-call from the first attempt ASSERTED — Rodney's Rack run
+    // caught it). The parent's single config() already sized them; this ctor
+    // only adds the tooltips (the Causeway mod path's labels — the captions are
+    // the one authority shared with the retired base's strips).
+    StraitsBaseModule() {
+        for (int l = 0; l < SKns::LEVELS; ++l)
+            for (int d = 0; d < SKns::DECS; ++d)
+                configInput(StraitsIds::SG_MOD_0 + l * SKns::DECS + d,
+                    std::string(SKns::LEVEL_CAPTIONS[l]) + " " + SKns::DEC_CAPTIONS[d]
+                    + " mod (±10V → ±1 threshold)");
+    }
+
+    // THE one process (the merge's poly/output clause): the parent's is empty —
+    // Monsoon writes the poly-cable outputs via the cached pointer — so this
+    // override carries the subgate GLOBAL-delta publish + heartbeat slot 0 (the
+    // retired base's process, verbatim: change-gated, publish-overwrites; the
+    // heartbeat vouches for liveness and MONSOON's watchdog drops the plane if
+    // it freezes — publisher gone).
+    void process(const ProcessArgs& args) override {
+        MonsoonStraitsExpander::process(args);
+        Monsoon* m = redDot::lookupMonsoon(this);
+        if (!m) return;   // isolated: heartbeat freezes → the watchdog drops what we last published
+        for (int l = 0; l < SKns::LEVELS; ++l)
+            for (int d = 0; d < SKns::DECS; ++d) {
+                const int id = SG_MOD_0 + l * SKns::DECS + d;
+                const float delta = inputs[id].isConnected() ? inputs[id].getVoltage() * 0.1f : 0.f;
+                if (std::fabs(delta - lastGlob_[l][d]) > 1e-6f) {
+                    m->setSubgateGlobalDelta(l, d, delta);
+                    lastGlob_[l][d] = delta;
+                }
+            }
+        ++m->editor.subgate.publishSeq[0];
+    }
 
     json_t* dataToJson() override {
         json_t* rootJ = MonsoonStraitsExpander::dataToJson();
@@ -60,6 +131,31 @@ struct StraitsBaseModule : MonsoonStraitsExpander {
             }
         }
         json_object_set_new(rootJ, "straitLanes", lanesJ);
+        // SUBGATE MERGE: the owned subgate panel list (the same shape; the
+        // retired base's "subgatePanels" key, so its saves restore here).
+        json_t* sgJ = json_array();
+        for (int64_t id : orderedSubgateIds_) {
+            rack::Module* m = APP->engine->getModule(id);
+            if (m) {
+                auto* panel = dynamic_cast<StraitsSubgatePanelModule*>(m);
+                if (panel)
+                    json_array_append_new(sgJ,
+                        json_string(StraitsSubgateIds::panelSlug(panel->level, panel->dec)));
+            }
+        }
+        json_object_set_new(rootJ, "subgatePanels", sgJ);
+        // QMIX_OCTAVE Stage 3: the owned qmix-oct panel list (the same shape;
+        // the "subgatePanels" key's sibling).
+        json_t* qoJ = json_array();
+        for (int64_t id : orderedQmixOctIds_) {
+            rack::Module* m = APP->engine->getModule(id);
+            if (m) {
+                auto* panel = dynamic_cast<StraitsQmixOctPanelModule*>(m);
+                if (panel)
+                    json_array_append_new(qoJ, json_string(StraitsQmixOctIds::panelSlug()));
+            }
+        }
+        json_object_set_new(rootJ, "qmixOctPanels", qoJ);
         return rootJ;
     }
 
@@ -73,6 +169,33 @@ struct StraitsBaseModule : MonsoonStraitsExpander {
                 if (s) pendingLanes.push_back(s);
             }
         }
+        // SUBGATE MERGE: the subgate panel slugs (spawned on the widget's first
+        // step; legacy per-LEVEL slugs parse false and skip gracefully).
+        json_t* sgJ = json_object_get(rootJ, "subgatePanels");
+        if (sgJ) {
+            size_t i; json_t* v;
+            json_array_foreach(sgJ, i, v) {
+                const char* s = json_string_value(v);
+                if (s) pendingSubgates_.push_back(s);
+            }
+        }
+        // QMIX_OCTAVE Stage 3: the qmix-oct panel slugs (spawned on the
+        // widget's first step, after the subgate pendings — the dock order).
+        json_t* qoJ = json_object_get(rootJ, "qmixOctPanels");
+        if (qoJ) {
+            size_t i; json_t* v;
+            json_array_foreach(qoJ, i, v) {
+                const char* s = json_string_value(v);
+                if (s) pendingQmixOct_.push_back(s);
+            }
+        }
+    }
+
+    // RESNAP FAST PATH: Rack fires this after an expander is added/removed/changed on
+    // either side of us. Chains the base-class epoch bump (the lookup authority).
+    void onExpanderChange(const ExpanderChangeEvent& e) override {
+        MonsoonStraitsExpander::onExpanderChange(e);
+        topologyDirty.store(true, std::memory_order_relaxed);
     }
 };
 
@@ -87,6 +210,7 @@ struct StraitsBaseWidget : ModuleWidget,
     int lastThemeLight = -1;
     bool lanesSpawned_ = false;   // false until auto-spawn/pending-spawn runs
     Vec lastBasePos_;             // detect base movement for one-shot re-snap
+    double lastAdjacencyCheck_ = -1.0;   // periodic chain-poll cadence (system::getTime)
     redDot::StraitsSeamFiller* leftFiller = nullptr;
     redDot::StraitsSeamFiller* rightFiller = nullptr;
 
@@ -132,11 +256,80 @@ struct StraitsBaseWidget : ModuleWidget,
                 k->lightWhen = [this](){ return themeLight_; };
             }));
 
+        // ── QMIX_OCTAVE Stage 2 (CC_PROMPT_QMIX_OCTAVE): the GLOBAL Qmix-octave knob ──
+        // Store-backed (the de-param law — no Rack param; the bank lives in Monsoon's
+        // editor.qmixOctave). The octave axis's cross-voice threshold: with the
+        // follow-degree source switch at its default this knob is INERT (the octave
+        // threshold IS the voice's degree qmix level — today's behaviour); flipping the
+        // switch (the context menu) hands the octave axis to THIS knob. Default 0.5
+        // (mid — the crossfade midpoint; inert until the switch flips). No mod jack
+        // (adjudication 4: the spec asks a knob; modulation is Causeway and not in
+        // scope). Caption drawn below, the qmix violet (it IS a qmix read).
+        {
+            auto resolveMon = [this]() -> Monsoon* { return redDot::lookupMonsoon(module); };
+            redDot::bindStoreKnob<Monsoon, redDot::Tag_Grey_Trim_Bar>(
+                this, "param_qoct_g",
+                resolveMon, 0.f, 1.f, dotModular::QmixOctave::kDefaultThreshold,
+                "Q-MIX OCT (global octave threshold)",
+                [](Monsoon& m) { return m.getQmixOctGlobal(); },
+                [](Monsoon& m, float x) { m.setQmixOctGlobal(x); });
+        }
+
+        // ── SUBGATE MERGE: the 8 GLOBAL store knobs + their mod jacks ──────────
+        // (the retired StraitsSubgateBaseWidget's binds — the Causeway mod coverage
+        // law: each knob ships with its jack, born together). BIPOLAR SCOPE (the
+        // CC_PROMPT_STEP_ADVANCE_FREEZE_AND_BIPOLAR update): the ADVANCE columns are
+        // ALWAYS bipolar — single-use (step-advance only; no clock/phase meaning to
+        // protect): [-1,+1] centered at 0 (hold; + = forward advance prob, -
+        // = backward). REST/LEGATO/ACCENT stay [0,1].
+        {
+            auto resolveMon = [this]() -> Monsoon* { return redDot::lookupMonsoon(module); };
+            for (int l = 0; l < SKns::LEVELS; ++l)
+                for (int d = 0; d < SKns::DECS; ++d) {
+                    const bool isAdv = (d == SKns::ADVANCE);
+                    const std::string cap = std::string(SKns::LEVEL_CAPTIONS[l]) + " " + SKns::DEC_CAPTIONS[d];
+                    redDot::bindStoreKnob<Monsoon, redDot::Tag_Grey_Trim_Bar>(
+                        this, "param_sbg_" + std::to_string(l) + "_" + std::to_string(d),
+                        resolveMon, isAdv ? -1.f : 0.f, isAdv ? +1.f : 1.f,
+                        isAdv ? 0.f : SKns::kDefaultThreshold,
+                        "Subgate " + cap + (isAdv ? " (global, bipolar)" : " (global)"),
+                        [l, d](Monsoon& m) { return m.getSubgateGlobal(l, d); },
+                        [l, d](Monsoon& m, float x) { m.setSubgateGlobal(l, d, x); });
+                    bindInput<PJ301MPort>("mod_sbg_" + std::to_string(l) + "_" + std::to_string(d),
+                                          StraitsIds::SG_MOD_0 + l * SKns::DECS + d);
+                }
+        }
+
         if (auto* s = findNamed("light_connect")) {
             connectMark = redDot::makeConnectMark(module, centerOf(s), mm2px(8.f));
             addChild(connectMark);
         }
+
+        // ── SUBGATE MERGE lettering (the Cantonment idiom; coordinates match
+        // gen_straits_base.py's merged layout: W=81.28, MARGIN_L=17, COL_PITCH
+        // 14.82, knob rows 30/48, mod rows 63/77, voice 91, IO 111.1). The
+        // "MOD" label moves to the GUTTER (the centre band now carries the
+        // voice knob); "VOICES" labels it from below.
+        {
+            constexpr float Wmm = 81.28f, MARGIN_L = 17.0f, COL_PITCH = 59.28f / 4.f;
+            auto ink = [this]() { return themeLight_ ? nvgRGB(0x30, 0x34, 0x3a) : nvgRGB(0xc8, 0xcd, 0xd4); };
+            redDot::addSubgateCaption(this, "SUBGATE", Wmm * 0.5f, 16.5f, 9.f, ink);
+            for (int d = 0; d < SKns::DECS; ++d)
+                redDot::addSubgateCaption(this, SKns::DEC_CAPTIONS[d], MARGIN_L + COL_PITCH * (d + 0.5f), 21.0f, 6.f, ink);
+            for (int l = 0; l < SKns::LEVELS; ++l)
+                redDot::addSubgateCaption(this, SKns::LEVEL_CAPTIONS[l], 8.8f, 30.f + 18.f * l, 7.f,
+                                  [l]() { return redDot::subgateTint(l); });
+            redDot::addSubgateCaption(this, "MOD", 8.8f, 70.f, 6.f, ink);
+            redDot::addSubgateCaption(this, "VOICES", Wmm * 0.5f, 101.f, 6.f, ink);
+            // QMIX_OCTAVE Stage 2: the global knob's caption (the qmix violet — it IS a
+            // qmix read), under the knob, the VOICES caption's row.
+            constexpr float QOCT_X_MM = 17.0f + (59.28f / 4.f) * 0.5f;   // gen_straits_base.py QOCT_X
+            redDot::addSubgateCaption(this, "Q-MIX OCT (global)", QOCT_X_MM, 101.f, 5.5f,
+                              []() { return nvgRGB(0x80, 0x60, 0xc0); });
+        }
     }
+
+    Monsoon* mon() { return module ? redDot::lookupMonsoon(module) : nullptr; }
 
     // ── Context menu: lane presence checkboxes ───────────────────────────────
     // Lanes are UNIQUE (at most one each). Checkboxes toggle presence.
@@ -166,7 +359,7 @@ struct StraitsBaseWidget : ModuleWidget,
                     if (lw) APP->scene->rack->removeModule(lw);
                     APP->engine->removeModule(m);
                     baseMod->orderedLaneIds_.erase(baseMod->orderedLaneIds_.begin() + i);
-                    resnapLanes();   // close the gap — reposition remaining lanes
+                    resnapRun();   // close the gap — reposition the remaining run
                     return;
                 }
             }
@@ -195,6 +388,80 @@ struct StraitsBaseWidget : ModuleWidget,
         menu->addChild(createCheckMenuItem("LEGATO", "",
             [this]() { return hasLane("StraitsLaneLEGATO"); },
             [this]() { toggleLane("StraitsLaneLEGATO"); }));
+
+        // ── SUBGATE MERGE: the source switches + the per-voice panels + clear ──
+        // (the retired StraitsSubgateBaseWidget's menu, verbatim.)
+        Monsoon* mm = mon();
+        menu->addChild(new MenuSeparator);
+        menu->addChild(createMenuLabel("Subgate source (when no own subpanel)"));
+        if (mm) {
+            // The per-decision SWITCH (the spec's set-and-forget routing choice):
+            // tier 2a global vs tier 2b follow-main. Default FOLLOW MAIN (the
+            // least-surprising default — the subgate inherits the main lane until
+            // the user opts to a global subgate value or attaches a subpanel).
+            // Attached always wins (tier 1) — no switch needed.
+            for (int l = 0; l < SKns::LEVELS; ++l) {
+                menu->addChild(createMenuLabel(SKns::LEVEL_CAPTIONS[l]));
+                for (int d = 0; d < SKns::DECS; ++d) {
+                    const std::string cap = std::string(SKns::DEC_CAPTIONS[d]);
+                    menu->addChild(createCheckMenuItem(cap + " — follow main", "",
+                        [this, l, d]() { Monsoon* m2 = mon(); return m2 ? m2->isSubgateFollowMain(l, d) : true; },
+                        [this, l, d]() { if (auto* m2 = mon()) m2->setSubgateFollowMain(l, d, true); }));
+                    menu->addChild(createCheckMenuItem(cap + " — global knob", "",
+                        [this, l, d]() { Monsoon* m2 = mon(); return m2 ? !m2->isSubgateFollowMain(l, d) : false; },
+                        [this, l, d]() { if (auto* m2 = mon()) m2->setSubgateFollowMain(l, d, false); }));
+                }
+            }
+        } else {
+            menu->addChild(createMenuLabel("(no Monsoon attached)"));
+        }
+
+        // ── QMIX_OCTAVE Stage 2 (CC_PROMPT_QMIX_OCTAVE): the octave axis's source
+        // switch (the subgate per-decision switch idiom — the routing choice is a menu
+        // check item, not a panel control). Rodney's option list, verbatim mapping:
+        // "follow main qmix poly voice subpanel for both pitch and octave" = FOLLOW
+        // DEGREE (default — the octave threshold IS the voice's degree qmix level, so
+        // the two decisions are the same comparison: today's behaviour, bit-identical);
+        // "global knob on straits for octave" = the GLOBAL tier (the Q-MIX OCT knob on
+        // this panel). "own sub panel" is tier 1 — the Stage 3 subpanel, which wins
+        // outright when attached (no switch needed).
+        menu->addChild(new MenuSeparator);
+        menu->addChild(createMenuLabel("Q-MIX OCT source (when no own subpanel)"));
+        if (mm) {
+            menu->addChild(createCheckMenuItem("follow degree q-mix", "",
+                [this]() { Monsoon* m2 = mon(); return m2 ? m2->isQmixOctFollowDegree() : true; },
+                [this]() { if (auto* m2 = mon()) m2->setQmixOctFollowDegree(true); }));
+            menu->addChild(createCheckMenuItem("global knob (Q-MIX OCT)", "",
+                [this]() { Monsoon* m2 = mon(); return m2 ? !m2->isQmixOctFollowDegree() : false; },
+                [this]() { if (auto* m2 = mon()) m2->setQmixOctFollowDegree(false); }));
+        } else {
+            menu->addChild(createMenuLabel("(no Monsoon attached)"));
+        }
+        menu->addChild(new MenuSeparator);
+        menu->addChild(createMenuLabel("Subgate per-voice panels"));
+        for (int l = 0; l < SKns::LEVELS; ++l) {
+            menu->addChild(createMenuLabel(SKns::LEVEL_CAPTIONS[l]));
+            for (int d = 0; d < SKns::DECS; ++d) {
+                menu->addChild(createCheckMenuItem(
+                    std::string("   ") + SKns::DEC_CAPTIONS[d] + " panel", "",
+                    [this, l, d]() { return hasSubgatePanel(l, d); },
+                    [this, l, d]() { toggleSubgatePanel(l, d); }));
+            }
+        }
+        // QMIX_OCTAVE Stage 3 (CC_PROMPT_QMIX_OCTAVE): the per-voice tier for
+        // the octave axis — "an optional per voice subpanel, qmix octave"
+        // (Rodney). Check item = spawn/remove (the subgate panels' toggle
+        // idiom); ONE panel of 16 knobs, docked after the subgate panels.
+        menu->addChild(createCheckMenuItem("Q-MIX OCTAVE per-voice panel", "",
+            [this]() { return hasQmixOctPanel(); },
+            [this]() { toggleQmixOctPanel(); }));
+        menu->addChild(new MenuSeparator);
+        // The menu's un-claim path (the touch-is-claim law's complement). QMIX_OCTAVE
+        // Stage 3: ALL per-voice claims on this base's family — the subgate cells AND
+        // the qmix-octave cells (the item's semantic is "clear per-voice overrides",
+        // not "clear subgate overrides").
+        menu->addChild(createMenuItem("Clear per-voice overrides", "",
+            [this]() { if (auto* m2 = mon()) { m2->clearSubgateOwnAll(); m2->clearQmixOctOwnAll(); } }));
     }
 
     // ── Spawn a lane expander module and dock it right ───────────────────────
@@ -235,10 +502,165 @@ struct StraitsBaseWidget : ModuleWidget,
         APP->scene->rack->addModule(laneW);
     }
 
+    // ── SUBGATE MERGE: the subgate-panel wheel (the retired StraitsSubgateBase's,
+    // family-parameterised to the merged base — the StraitsLane law) ────────────
+    static Model* subgatePanelModel(int level, int dec) {
+        switch (level * SKns::DECS + dec) {
+            case SKns::RATCHET * SKns::DECS + 0: return modelStraitsSubgatePanelRatchetRest;
+            case SKns::RATCHET * SKns::DECS + 1: return modelStraitsSubgatePanelRatchetLegato;
+            case SKns::RATCHET * SKns::DECS + 2: return modelStraitsSubgatePanelRatchetAdvance;
+            case SKns::RATCHET * SKns::DECS + 3: return modelStraitsSubgatePanelRatchetAccent;
+            case SKns::GHOST   * SKns::DECS + 0: return modelStraitsSubgatePanelGhostRest;
+            case SKns::GHOST   * SKns::DECS + 1: return modelStraitsSubgatePanelGhostLegato;
+            case SKns::GHOST   * SKns::DECS + 2: return modelStraitsSubgatePanelGhostAdvance;
+            case SKns::GHOST   * SKns::DECS + 3: return modelStraitsSubgatePanelGhostAccent;
+        }
+        return nullptr;
+    }
+    static bool sameSubgatePanel(StraitsSubgatePanelModule* p, int level, int dec) {
+        return p && p->level == level && p->dec == dec;
+    }
+    bool hasSubgatePanel(int level, int dec) {
+        auto* baseMod = dynamic_cast<StraitsBaseModule*>(module);
+        if (!baseMod) return false;
+        for (int64_t id : baseMod->orderedSubgateIds_) {
+            rack::Module* m = APP->engine->getModule(id);
+            if (m) {
+                auto* panel = dynamic_cast<StraitsSubgatePanelModule*>(m);
+                if (sameSubgatePanel(panel, level, dec)) return true;
+            }
+        }
+        return false;
+    }
+    void spawnSubgatePanel(int level, int dec) {
+        if (!module) return;
+        Model* model = subgatePanelModel(level, dec);
+        if (!model) return;
+        // spawnLane's verbatim order: engine module FIRST, ID pushed, widget
+        // created, box.pos set BEFORE the rack addModule → addModule preserves
+        // pos + runs updateExpanders → LINKED FROM BIRTH.
+        engine::Module* panelMod = model->createModule();
+        APP->engine->addModule(panelMod);
+        if (auto* baseMod = dynamic_cast<StraitsBaseModule*>(module))
+            baseMod->orderedSubgateIds_.push_back(panelMod->id);
+        ModuleWidget* panelW = model->createModuleWidget(panelMod);
+        // Position: the END of the whole run — right of the rightmost owned lane
+        // OR panel (the dock order: lanes first, then subgate panels; a later
+        // resnapRun restores lanes → subgate → qmix-oct order, so targeting the
+        // run's end keeps the spawned panel inside the contiguous run).
+        float rightX = box.getTopRight().x;
+        if (auto* baseMod = dynamic_cast<StraitsBaseModule*>(module)) {
+            for (int64_t id : baseMod->orderedLaneIds_) {
+                ModuleWidget* w = APP->scene->rack->getModule(id);
+                if (w) rightX = std::max(rightX, w->box.getTopRight().x);
+            }
+            for (int64_t id : baseMod->orderedSubgateIds_) {
+                if (id == panelMod->id) continue;   // skip self (just added)
+                ModuleWidget* w = APP->scene->rack->getModule(id);
+                if (w) rightX = std::max(rightX, w->box.getTopRight().x);
+            }
+            for (int64_t id : baseMod->orderedQmixOctIds_) {
+                ModuleWidget* w = APP->scene->rack->getModule(id);
+                if (w) rightX = std::max(rightX, w->box.getTopRight().x);
+            }
+        }
+        panelW->box.pos = Vec(rightX, box.pos.y);
+        APP->scene->rack->addModule(panelW);
+    }
+    void removeSubgatePanel(int level, int dec) {
+        auto* baseMod = dynamic_cast<StraitsBaseModule*>(module);
+        if (!baseMod) return;
+        for (size_t i = 0; i < baseMod->orderedSubgateIds_.size(); ++i) {
+            int64_t id = baseMod->orderedSubgateIds_[i];
+            rack::Module* m = APP->engine->getModule(id);
+            if (m) {
+                auto* panel = dynamic_cast<StraitsSubgatePanelModule*>(m);
+                if (sameSubgatePanel(panel, level, dec)) {
+                    ModuleWidget* pw = APP->scene->rack->getModule(id);
+                    if (pw) APP->scene->rack->removeModule(pw);
+                    APP->engine->removeModule(m);
+                    baseMod->orderedSubgateIds_.erase(baseMod->orderedSubgateIds_.begin() + i);
+                    resnapRun();   // close the gap
+                    return;
+                }
+            }
+        }
+    }
+    void toggleSubgatePanel(int level, int dec) {
+        if (hasSubgatePanel(level, dec)) removeSubgatePanel(level, dec);
+        else spawnSubgatePanel(level, dec);
+    }
+
+    // ── QMIX_OCTAVE Stage 3 (CC_PROMPT_QMIX_OCTAVE): the qmix-oct panel's
+    // wheel — the subgate wheel's shape verbatim for ONE panel type. Dock
+    // order: lanes → subgate panels → THIS (the run's last tier): its spawn
+    // positions right of EVERYTHING (lanes + subgate panels + prior qmix-oct
+    // panels), the resnap + chain checks walk its list after the subgate list.
+    bool hasQmixOctPanel() {
+        auto* baseMod = dynamic_cast<StraitsBaseModule*>(module);
+        if (!baseMod) return false;
+        for (int64_t id : baseMod->orderedQmixOctIds_) {
+            rack::Module* m = APP->engine->getModule(id);
+            if (m && dynamic_cast<StraitsQmixOctPanelModule*>(m)) return true;
+        }
+        return false;
+    }
+    void spawnQmixOctPanel() {
+        if (!module) return;
+        // spawnLane's verbatim order: engine module FIRST, ID pushed, widget
+        // created, box.pos set BEFORE the rack addModule → addModule preserves
+        // pos + runs updateExpanders → LINKED FROM BIRTH.
+        engine::Module* panelMod = modelStraitsQmixOctPanel->createModule();
+        APP->engine->addModule(panelMod);
+        if (auto* baseMod = dynamic_cast<StraitsBaseModule*>(module))
+            baseMod->orderedQmixOctIds_.push_back(panelMod->id);
+        ModuleWidget* panelW = modelStraitsQmixOctPanel->createModuleWidget(panelMod);
+        // Position: the END of the whole run — right of the rightmost owned
+        // lane OR subgate panel OR qmix-oct panel (the dock order law).
+        float rightX = box.getTopRight().x;
+        if (auto* baseMod = dynamic_cast<StraitsBaseModule*>(module)) {
+            for (int64_t id : baseMod->orderedLaneIds_) {
+                ModuleWidget* w = APP->scene->rack->getModule(id);
+                if (w) rightX = std::max(rightX, w->box.getTopRight().x);
+            }
+            for (int64_t id : baseMod->orderedSubgateIds_) {
+                ModuleWidget* w = APP->scene->rack->getModule(id);
+                if (w) rightX = std::max(rightX, w->box.getTopRight().x);
+            }
+            for (int64_t id : baseMod->orderedQmixOctIds_) {
+                if (id == panelMod->id) continue;   // skip self (just added)
+                ModuleWidget* w = APP->scene->rack->getModule(id);
+                if (w) rightX = std::max(rightX, w->box.getTopRight().x);
+            }
+        }
+        panelW->box.pos = Vec(rightX, box.pos.y);
+        APP->scene->rack->addModule(panelW);
+    }
+    void removeQmixOctPanel() {
+        auto* baseMod = dynamic_cast<StraitsBaseModule*>(module);
+        if (!baseMod) return;
+        for (size_t i = 0; i < baseMod->orderedQmixOctIds_.size(); ++i) {
+            int64_t id = baseMod->orderedQmixOctIds_[i];
+            rack::Module* m = APP->engine->getModule(id);
+            if (m && dynamic_cast<StraitsQmixOctPanelModule*>(m)) {
+                ModuleWidget* pw = APP->scene->rack->getModule(id);
+                if (pw) APP->scene->rack->removeModule(pw);
+                APP->engine->removeModule(m);
+                baseMod->orderedQmixOctIds_.erase(baseMod->orderedQmixOctIds_.begin() + i);
+                resnapRun();   // close the gap
+                return;
+            }
+        }
+    }
+    void toggleQmixOctPanel() {
+        if (hasQmixOctPanel()) removeQmixOctPanel();
+        else spawnQmixOctPanel();
+    }
+
     void step() override {
         // ── step() logic COPIED from MonsoonStraitsExpanderWidget, plus lane sync ──
         if (module) {
-            Monsoon* mm = redDot::findMonsoonEitherSide(module);
+            Monsoon* mm = redDot::lookupMonsoon(module);
             themeLight_ = (mm && mm->lightTheme);
             // ── Seam filler: toggle based on neighbour detection ──
             NVGcolor bg = themeLight_ ? nvgRGB(0xdc, 0xdc, 0xdc) : nvgRGB(0x14, 0x17, 0x1b);
@@ -267,11 +689,15 @@ struct StraitsBaseWidget : ModuleWidget,
             while (right) {
                 auto* lane = dynamic_cast<StraitsLaneExpander*>(right);
                 if (!lane || !lane->desc) break;
+                // RIGHT-SIZE remap (CC_PROMPT_LANE_EXPANDER_RIGHTSIZE): READ the
+                // lane's LOCAL ids, WRITE the base's MonsoonIds slots — the engine's
+                // read target is the base (unchanged), so the values arrive
+                // bit-identically; only the lane-side addressing moved.
                 module->params[lane->desc->monoParamId].setValue(
-                    right->params[lane->desc->monoParamId].getValue());
+                    right->params[StraitsLaneIds::MONO_MIRROR_PARAM].getValue());
                 for (int i = 0; i < 15; i++) {
                     module->params[lane->desc->polyParamIdBase + i].setValue(
-                        right->params[lane->desc->polyParamIdBase + i].getValue());
+                        right->params[StraitsLaneIds::POLY_PARAM_1 + i].getValue());
                 }
                 right = right->rightExpander.module;
             }
@@ -294,8 +720,91 @@ struct StraitsBaseWidget : ModuleWidget,
                     // Auto-spawn QMIX if no lanes attached (first creation, no save)
                     if (baseMod->orderedLaneIds_.empty())
                         spawnLane("StraitsLaneQMIX");
+                    // SUBGATE MERGE: adopt the subgate panels (the run continues
+                    // right of the lanes — the SAME walk cursor), then spawn any
+                    // pending restore slugs (legacy per-LEVEL slugs parse false
+                    // and skip). No auto-spawn: the per-voice tier is OPT-IN.
+                    while (right) {
+                        auto* panel = dynamic_cast<StraitsSubgatePanelModule*>(right);
+                        if (!panel) break;
+                        baseMod->orderedSubgateIds_.push_back(right->id);
+                        right = right->rightExpander.module;
+                    }
+                    for (const std::string& slug : baseMod->pendingSubgates_) {
+                        int l, d;
+                        if (!StraitsSubgateIds::parsePanelSlug(slug, l, d)) continue;
+                        if (!hasSubgatePanel(l, d)) spawnSubgatePanel(l, d);
+                    }
+                    baseMod->pendingSubgates_.clear();
+                    // QMIX_OCTAVE Stage 3: adopt the qmix-oct panel(s) — the
+                    // cursor CONTINUES from where the subgate walk stopped (the
+                    // dock order: lanes → subgate panels → qmix-oct panel),
+                    // then spawn any pending restore slugs.
+                    while (right) {
+                        auto* qoPanel = dynamic_cast<StraitsQmixOctPanelModule*>(right);
+                        if (!qoPanel) break;
+                        baseMod->orderedQmixOctIds_.push_back(right->id);
+                        right = right->rightExpander.module;
+                    }
+                    for (const std::string& slug : baseMod->pendingQmixOct_) {
+                        if (!StraitsQmixOctIds::parsePanelSlug(slug)) continue;
+                        if (!hasQmixOctPanel()) spawnQmixOctPanel();
+                    }
+                    baseMod->pendingQmixOct_.clear();
                 }
                 lanesSpawned_ = true;
+            }
+
+            // ── Resnap triggers (CC_PROMPT_STRAITS_RESNAP_HARDENING) ──────────────
+            // FAST PATH — event-driven (~1 frame): the base's onExpanderChange sets
+            // topologyDirty on ANY adjacency change around the base (head-adjacent
+            // insertions/removals/moves), and the LANES' hooks flag their own
+            // left-link violations (mid-chain insertions the base cannot see).
+            // Consumed here, UI-side, where orderedLaneIds_ lives: run the EXACT
+            // chainIntact() and set the existing needsResnap on a real break.
+            // BACKSTOP — a 0.1s poll (Rodney's ruling): heals anything the events
+            // might miss within ~100ms; ten ≤5-pointer walks per second — negligible.
+            // BOTH defer while ANY drag is in progress (getDraggedWidget covers
+            // module drags — the only position changes; knob drags set it too,
+            // harmlessly): mid-drag topology flips stay flagged, consumption lands
+            // the frame after release — never fight the drag. Both skip until
+            // lanesSpawned_ (never race Rack's restore placement / first-frame
+            // adoption). They only SET the existing flag; the one-shot block below
+            // consumes it.
+            if (lanesSpawned_) {
+                auto* trigBase = dynamic_cast<StraitsBaseModule*>(module);
+                if (trigBase) {
+                    const bool eventDirty = trigBase->topologyDirty.load(std::memory_order_relaxed);
+                    const double now = system::getTime();
+                    const bool pollDue = lastAdjacencyCheck_ < 0.0 || now - lastAdjacencyCheck_ >= 0.1;
+                    if ((eventDirty || pollDue) && !APP->event->getDraggedWidget()) {
+                        if (eventDirty) trigBase->topologyDirty.store(false, std::memory_order_relaxed);
+                        if (pollDue) lastAdjacencyCheck_ = now;
+                        // The exact chain check (BOTH runs) + the panels' own
+                        // left-link flags (mid-chain insertions the base cannot see).
+                        bool broken = !chainIntact(trigBase);
+                        if (!broken) {
+                            for (int64_t pid : trigBase->orderedSubgateIds_) {
+                                rack::Module* pm = APP->engine->getModule(pid);
+                                if (pm) {
+                                    auto* panel = dynamic_cast<StraitsSubgatePanelModule*>(pm);
+                                    if (panel && panel->needsResnap.load(std::memory_order_relaxed)) { broken = true; break; }
+                                }
+                            }
+                        }
+                        if (!broken) {
+                            for (int64_t pid : trigBase->orderedQmixOctIds_) {
+                                rack::Module* pm = APP->engine->getModule(pid);
+                                if (pm) {
+                                    auto* panel = dynamic_cast<StraitsQmixOctPanelModule*>(pm);
+                                    if (panel && panel->needsResnap.load(std::memory_order_relaxed)) { broken = true; break; }
+                                }
+                            }
+                        }
+                        if (broken)
+                            trigBase->needsResnap = true;
+                    }
+                }
             }
 
             // ── One-shot re-snap: fires ONLY when a needsResnap flag is set
@@ -314,9 +823,13 @@ struct StraitsBaseWidget : ModuleWidget,
                         }
                     }
                 }
-                if (needSnap) {
+                // Drag guard (the fast path's safety): topology events fire MID-DRAG
+                // too — a module dragged through the chain flips expanders
+                // continuously — so defer consumption to the frame after release;
+                // consuming here would fight the user's drag.
+                if (needSnap && !APP->event->getDraggedWidget()) {
                     if (baseMod) baseMod->needsResnap = false;
-                    // Clear lane flags
+                    // Clear lane + subgate-panel flags
                     for (int64_t laneId : baseMod->orderedLaneIds_) {
                         rack::Module* m = APP->engine->getModule(laneId);
                         if (m) {
@@ -324,14 +837,28 @@ struct StraitsBaseWidget : ModuleWidget,
                             if (lane) lane->needsResnap = false;
                         }
                     }
-                    resnapLanes();
+                    for (int64_t pid : baseMod->orderedSubgateIds_) {
+                        rack::Module* pm = APP->engine->getModule(pid);
+                        if (pm) {
+                            auto* panel = dynamic_cast<StraitsSubgatePanelModule*>(pm);
+                            if (panel) panel->needsResnap.store(false, std::memory_order_relaxed);
+                        }
+                    }
+                    for (int64_t pid : baseMod->orderedQmixOctIds_) {
+                        rack::Module* pm = APP->engine->getModule(pid);
+                        if (pm) {
+                            auto* panel = dynamic_cast<StraitsQmixOctPanelModule*>(pm);
+                            if (panel) panel->needsResnap.store(false, std::memory_order_relaxed);
+                        }
+                    }
+                    resnapRun();
                 }
             }
         }
         ModuleWidget::step();
         kitStep();
         if (!module) return;
-        Monsoon* m = redDot::findMonsoonEitherSide(module);
+        Monsoon* m = redDot::lookupMonsoon(module);
         int wantLight = (m && m->lightTheme) ? 1 : 0;
         if (wantLight != lastThemeLight) {
             lastThemeLight = wantLight;
@@ -344,10 +871,13 @@ struct StraitsBaseWidget : ModuleWidget,
         }
     }
 
-    // ── Re-snap helper: sort by canonical order, position via Rack's API ──────
+    // ── Re-snap helper: the ONE run — lanes then subgate panels ────────────────
     // Uses setModulePosForce (Rack's placement-with-shoving) instead of raw
-    // box.pos — pushes other modules aside, no overlap.
-    void resnapLanes() {
+    // box.pos — pushes other modules aside, no overlap. SUBGATE MERGE: lanes in
+    // arcLane order, THEN the subgate panels in level-major/decision-major order
+    // (RATCHET REST/LEGATO/ADVANCE/ACCENT, then GHOST), positioned sequentially
+    // from the base's right edge — the dock order: base → lanes → panels.
+    void resnapRun() {
         auto* baseMod = dynamic_cast<StraitsBaseModule*>(module);
         if (!baseMod) return;
         std::sort(baseMod->orderedLaneIds_.begin(), baseMod->orderedLaneIds_.end(),
@@ -358,6 +888,14 @@ struct StraitsBaseWidget : ModuleWidget,
                 int ob = (mb && mb->desc) ? mb->desc->arcLane : 99;
                 return oa < ob;
             });
+        std::sort(baseMod->orderedSubgateIds_.begin(), baseMod->orderedSubgateIds_.end(),
+            [&](int64_t a, int64_t b) {
+                auto* ma = dynamic_cast<StraitsSubgatePanelModule*>(APP->engine->getModule(a));
+                auto* mb = dynamic_cast<StraitsSubgatePanelModule*>(APP->engine->getModule(b));
+                int oa = ma ? ma->level * SKns::DECS + ma->dec : 99 * SKns::DECS;
+                int ob = mb ? mb->level * SKns::DECS + mb->dec : 99 * SKns::DECS;
+                return oa < ob;
+            });
         float expectedX = box.getTopRight().x;
         for (int64_t laneId : baseMod->orderedLaneIds_) {
             ModuleWidget* lw = APP->scene->rack->getModule(laneId);
@@ -366,6 +904,82 @@ struct StraitsBaseWidget : ModuleWidget,
             APP->scene->rack->setModulePosForce(lw, Vec(expectedX, box.pos.y));
             expectedX = lw->box.getTopRight().x;
         }
+        for (int64_t panelId : baseMod->orderedSubgateIds_) {
+            ModuleWidget* pw = APP->scene->rack->getModule(panelId);
+            if (!pw) continue;
+            APP->scene->rack->setModulePosForce(pw, Vec(expectedX, box.pos.y));
+            expectedX = pw->box.getTopRight().x;
+        }
+        // QMIX_OCTAVE Stage 3: the qmix-oct panels dock AFTER the subgate
+        // panels (the dock order: base → lanes → subgate panels → qmix-oct).
+        for (int64_t panelId : baseMod->orderedQmixOctIds_) {
+            ModuleWidget* pw = APP->scene->rack->getModule(panelId);
+            if (!pw) continue;
+            APP->scene->rack->setModulePosForce(pw, Vec(expectedX, box.pos.y));
+            expectedX = pw->box.getTopRight().x;
+        }
+    }
+
+    // ── Periodic-poll predicate: is the lane chain intact? ────────────────────
+    // Exact + ownership-aware: the lanes come from OUR orderedLaneIds_ and the
+    // links are checked by POINTER identity (leftExpander.module), so a foreign
+    // Straits chain parked adjacent to ours can never confuse it. One pass checks
+    // contiguity (a gap or an inserted module breaks a left-link) AND canonical
+    // order (the same comparator as resnapLanes). Dead IDs (deleted modules) are
+    // skipped, matching the flag-poll loop in step().
+    bool chainIntact(StraitsBaseModule* baseMod) {
+        std::vector<StraitsLaneExpander*> lanes;
+        lanes.reserve(baseMod->orderedLaneIds_.size());
+        for (int64_t id : baseMod->orderedLaneIds_) {
+            rack::Module* m = APP->engine->getModule(id);
+            if (!m) continue;
+            auto* lane = dynamic_cast<StraitsLaneExpander*>(m);
+            if (lane) lanes.push_back(lane);
+        }
+        std::vector<StraitsSubgatePanelModule*> panels;
+        panels.reserve(baseMod->orderedSubgateIds_.size());
+        for (int64_t id : baseMod->orderedSubgateIds_) {
+            rack::Module* m = APP->engine->getModule(id);
+            if (!m) continue;
+            auto* panel = dynamic_cast<StraitsSubgatePanelModule*>(m);
+            if (panel) panels.push_back(panel);
+        }
+        // QMIX_OCTAVE Stage 3: the qmix-oct panels walk after the subgate
+        // panels (the dock order — the chain's contiguity check must cover
+        // the whole run).
+        std::vector<StraitsQmixOctPanelModule*> qoPanels;
+        qoPanels.reserve(baseMod->orderedQmixOctIds_.size());
+        for (int64_t id : baseMod->orderedQmixOctIds_) {
+            rack::Module* m = APP->engine->getModule(id);
+            if (!m) continue;
+            auto* panel = dynamic_cast<StraitsQmixOctPanelModule*>(m);
+            if (panel) qoPanels.push_back(panel);
+        }
+        if (lanes.empty() && panels.empty() && qoPanels.empty()) return true;
+        std::sort(lanes.begin(), lanes.end(),
+            [](const StraitsLaneExpander* a, const StraitsLaneExpander* b) {
+                int oa = (a->desc) ? a->desc->arcLane : 99;
+                int ob = (b->desc) ? b->desc->arcLane : 99;
+                return oa < ob;
+            });
+        std::sort(panels.begin(), panels.end(),
+            [](const StraitsSubgatePanelModule* a, const StraitsSubgatePanelModule* b) {
+                return a->level * SKns::DECS + a->dec < b->level * SKns::DECS + b->dec;
+            });
+        rack::Module* prev = module;   // lane[0]'s left neighbour must be the base (us)
+        for (StraitsLaneExpander* lane : lanes) {
+            if (lane->leftExpander.module != prev) return false;
+            prev = lane;
+        }
+        for (StraitsSubgatePanelModule* panel : panels) {
+            if (panel->leftExpander.module != prev) return false;
+            prev = panel;
+        }
+        for (StraitsQmixOctPanelModule* panel : qoPanels) {
+            if (panel->leftExpander.module != prev) return false;
+            prev = panel;
+        }
+        return true;
     }
 
     // ── onDragEnd: set the resnap flag (fires once on drag completion) ──────────

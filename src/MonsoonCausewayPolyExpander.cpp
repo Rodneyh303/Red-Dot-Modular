@@ -2,6 +2,7 @@
 #include "Monsoon.hpp"
 #include "MonsoonCausewayPolyExpander.hpp"
 #include "ui/VisualExpanderHelpers.hpp"
+#include "ui/ModuleLookup.hpp"   // THE lookup authority: lookupMonsoon (CC_PROMPT_MODULE_LOOKUP_AUTHORITY_START)
 #include "ui/SvgPanelKit.hpp"
 #include "ui/ConnectMark.hpp"
 #include "ui/Controls.hpp"   // redDot::Dimmable<> for voice-count dimming
@@ -73,13 +74,13 @@ struct MonsoonCausewayPolyExpanderWidget : ModuleWidget,
         // reads activeVoices_, and ModuleWidget::step() draws them. (Same frame-order
         // reasoning as Straits' theme swap -- do it after and the dim lags a frame.)
         if (module) {
-            Monsoon* mm = redDot::findMonsoonEitherSide(module);
+            Monsoon* mm = redDot::lookupMonsoon(module);
             activeVoices_ = mm ? mm->engine.numPolyVoices : -1;
         }
         ModuleWidget::step();
         kitStep();
         if (!module) return;
-        Monsoon* m = redDot::findMonsoonEitherSide(module);
+        Monsoon* m = redDot::lookupMonsoon(module);
         int wantLight = (m && m->lightTheme) ? 1 : 0;
         if (wantLight != lastThemeLight) {
             lastThemeLight = wantLight;

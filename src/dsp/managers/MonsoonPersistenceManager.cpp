@@ -1,5 +1,8 @@
 #include "MonsoonPersistenceManager.hpp"
+#include "../VoiceResolver.hpp"   // CC_PROMPT_STRONG_TYPES: VoiceSlot minting
+#include "../NoteValues.hpp"      // DOTTED BUILD: legacyNoteValueIndex (the patch remap)
 #include "../../Monsoon.hpp"
+#include <cmath>                  // std::round (the note-value remap)
 #include <cstdio>
 #include <cstdlib>
 
@@ -40,6 +43,9 @@ json_t* PersistenceManager::toJson(Monsoon* m) {
     json_object_set_new(root, "restartOnUnmute", json_boolean(m->restartOnUnmute));
     json_object_set_new(root, "reseedOnRestart", json_boolean(m->reseedOnRestart));
     json_object_set_new(root, "noteVariationMask", json_integer(m->noteVariationMask));
+    // DOTTED BUILD: the schema marker — its ABSENCE on load means a pre-dotted save,
+    // which triggers the NOTE_VALUE_PARAM legacy remap below.
+    json_object_set_new(root, "noteValueSchema", json_integer(2));
     json_object_set_new(root, "ppqnSetting", json_integer(m->ppqnSetting));
     json_object_set_new(root, "modeSelect", json_integer(m->modeSelect));
     json_object_set_new(root, "lightTheme", json_boolean(m->lightTheme));
@@ -120,11 +126,11 @@ json_t* PersistenceManager::toJson(Monsoon* m) {
     json_t* prarr = json_array();
     json_t* pmarr = json_array();
     json_t* poarr = json_array();
-    for (int v = 0; v < 15; v++) {
+    for (int v = 1; v < 16; v++) {
         for (int i = 0; i < 16; i++) {
-            json_array_append_new(prarr, json_real(m->engine.pe.polyRandom(v, SequencerEngine::PL_REST)[i]));
-            json_array_append_new(pmarr, json_real(m->engine.pe.polyRandom(v, SequencerEngine::PL_MELODY)[i]));
-            json_array_append_new(poarr, json_real(m->engine.pe.polyRandom(v, SequencerEngine::PL_OCTAVE)[i]));
+            json_array_append_new(prarr, json_real(m->engine.pe.polyRandom(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{SequencerEngine::PL_REST})[i]));
+            json_array_append_new(pmarr, json_real(m->engine.pe.polyRandom(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{SequencerEngine::PL_MELODY})[i]));
+            json_array_append_new(poarr, json_real(m->engine.pe.polyRandom(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{SequencerEngine::PL_OCTAVE})[i]));
         }
     }
     json_object_set_new(root, "polyRhythmRandom", prarr);
@@ -158,14 +164,13 @@ json_t* PersistenceManager::toJson(Monsoon* m) {
         json_object_set_new(root, "mixLatchedQ", json_real(m->engine.pe.qmixMixLatched));   // Task 4d
     }
 
-    // ── Rhythm and Pitch Arrays ──
-    json_t* rarr = json_array();
+    // ── Pitch Array ── (the rhythmPattern LED-cache save RETIRED —
+    // CC_PROMPT_RHYTHMPATTERN_DELETE_AND_POLARITY ITEM 1; old patches' key is simply
+    // absent going forward, and a stale key in an old patch is ignored on load)
     json_t* marr = json_array();
     for (int i = 0; i < 16; ++i) {
-        json_array_append_new(rarr, json_integer(m->rhythmPattern[i] ? 1 : 0));
         json_array_append_new(marr, json_real(m->melodyPitchV[i]));
     }
-    json_object_set_new(root, "rhythmPattern", rarr);
     json_object_set_new(root, "melodyPitchV", marr);
 
     // EditorState.laneDir (migrated out of params[]; params were auto-saved, fields are not).
@@ -182,16 +187,27 @@ json_t* PersistenceManager::toJson(Monsoon* m) {
     // Old patches with editorVarlegAtten are still migrated on load (see the load block).
 
     // MACRO owner (112) + send (448) + atten (448), migrated out of params[]. SANDS
-    // CONSOLIDATION Step 2: 7 poly lanes (REST/MEL/OCT/ACC/QMIX/VAR/LEG) — VAR/LEG atten
-    // now shares macroAtten (was 320 at 5 lanes; getMacroAtten already read a 7-lane stride
-    // into the 320 array → OOB, fixed). Own/send save loops stay at the 5-lane count because
-    // VAR/LEG are East-only (never Macro-owned), so their own/send slots are always 0.
+    // Per-voice Macro banks — ALL 7 lanes, every lane uniform (the old 5-lane counts here
+    // were vestigial from the pre-consolidation Mono-owns-VAR/LEG era and silently dropped
+    // lanes 5/6 from every save).
+    // BOOLEAN MODEL (Rodney, 2026-10-22): ownership saves as JSON BOOLEANS under the
+    // polarity-explicit key "editorEastOwns" (true = East owns). NOT patch-compatible
+    // with the old "editorMacroOwn" 0.0/1.0 float array — compatibility is explicitly
+    // not kept (Rodney); a stale patch fails the new key lookup and keeps the defaulted
+    // store. No version shim, no numeric fallback.
     json_t* mo = json_array();
-    for (int i = 0; i < 80; ++i) json_array_append_new(mo, json_real(m->editor.macroOwn[i]));
-    json_object_set_new(root, "editorMacroOwn", mo);
+    for (int i = 0; i < 112; ++i) json_array_append_new(mo, json_boolean(m->editor.eastOwns[i]));   // 16 × 7
+    json_object_set_new(root, "editorEastOwns", mo);
     json_t* ms = json_array();
-    for (int i = 0; i < 320; ++i) json_array_append_new(ms, json_real(m->editor.macroSend[i]));
+    for (int i = 0; i < 448; ++i) json_array_append_new(ms, json_real(m->editor.macroSend[i]));  // 16 × 7 × 4
     json_object_set_new(root, "editorMacroSend", ms);
+    // SEND VOICE (CC_FIX_SEND_VOICE_FROM_MACRO): the MACRO strip's voice-tab selection
+    // (voice number 1..16) — the sends' addressing reopens on it after a reload. Missing
+    // key on load ⟹ V1 (old patches byte-identical on load; nothing else reads it).
+    json_object_set_new(root, "macroViewVoice", json_integer(m->macroViewVoice));
+    // P9b: the per-voice send-tap bank (missing key on load ⟹ all voices 1.0 = POST,
+    // so pre-fix patches sound identical).
+    dotModular::MacroTapBank::serialize(m->editor.macroTap, root, "editorMacroTap");
     json_t* ma = json_array();
     for (int i = 0; i < 448; ++i) json_array_append_new(ma, json_real(m->editor.macroAtten[i]));
     json_object_set_new(root, "editorMacroAtten", ma);
@@ -207,6 +223,24 @@ json_t* PersistenceManager::toJson(Monsoon* m) {
     for (int i = 0; i < 112; ++i) json_array_append_new(sp, json_real(m->editor.spread[i]));
     json_object_set_new(root, "editorSpread", sp);
 
+    // Warp-F bank (CC_PROMPT_02 step 4): per-voice warp curves + depths, the drawn-curve
+    // pool (keyed by index), and Macro's global default — the bank owns the codec
+    // (WarpBank::serialize/parse; the unit test drives these same functions). Missing
+    // keys on load ⟹ all-IdentityWarp + w=0 (old patches unchanged).
+    dotModular::WarpBank::serialize(m->editor.warp, root, "editor");
+
+    // Subgate-tier bank (CC_PROMPT_STRAITS_SUBGATE_KNOBS_SPEC): authored cells
+    // only (globals/followMain/own/ownActive — deltas stay session-lived). The
+    // bank owns the codec; absent keys ⟹ follow-main defaults (old patches
+    // byte-identical).
+    dotModular::SubgateKnobs::SubgateBank::serialize(m->editor.subgate, root, "editorSubgate");
+
+    // QMIX-OCTAVE tier bank (CC_PROMPT_QMIX_OCTAVE Stages 2-3): authored cells only
+    // (global/followDegree/own/ownActive — no delta planes exist for this bank). The
+    // bank owns the codec; absent keys ⟹ follow-degree defaults (old patches
+    // byte-identical — the octave threshold keeps following the degree qmix level).
+    dotModular::QmixOctave::Bank::serialize(m->editor.qmixOctave, root, "editorQmixOct");
+
     // GLOBAL slice (MVC step 1). Macro's globals used to be params, which gave save/restore
     // for free; now they are store fields and must be persisted explicitly.
     auto saveArr = [&](const char* key, const float* a, int n) {
@@ -214,26 +248,63 @@ json_t* PersistenceManager::toJson(Monsoon* m) {
         for (int i = 0; i < n; ++i) json_array_append_new(j, json_real(a[i]));
         json_object_set_new(root, key, j);
     };
-    // Sizes track the QMIX-widened EditorState arrays: 5 poly lanes, 7 mono lanes.
-    saveArr("editorGlobalLor",    m->editor.globalLor,    15);   // 5 poly lanes × 3
-    saveArr("editorGlobalSpread", m->editor.globalSpread,  5);   // 5 poly lanes
-    saveArr("editorGlobalAtten",  m->editor.globalAtten,  20);   // 5 poly lanes × 4 cols
-    saveArr("editorGlobalTap",    m->editor.globalTap,    10);   // 5 poly lanes × 2
-    saveArr("editorGlobalDir",    m->editor.globalDir,     5);   // 5 poly lanes
-    saveArr("editorMonoAtten",    m->editor.monoAtten,    28);   // 7 mono lanes × 4 cols
-    saveArr("editorMonoOwner",    m->editor.monoOwner,     5);   // 5 poly lanes
+    // All 7 lanes everywhere (the 5-lane counts were the same vestige).
+    saveArr("editorGlobalLor",    m->editor.globalLor,     21);   // 7 lanes × 3
+    saveArr("editorGlobalSpread", m->editor.globalSpread,   7);   // 7 lanes
+    saveArr("editorGlobalAtten",  m->editor.globalAtten,   28);   // 7 lanes × 4 cols
+    saveArr("editorGlobalTap",    m->editor.globalTap,     14);   // 7 lanes × 2
+    saveArr("editorGlobalDir",    m->editor.globalDir,      7);   // 7 lanes
+    saveArr("editorMonoAtten",    m->editor.monoAtten,     28);   // 7 mono lanes × 4 cols
+    saveArr("editorMonoOwner",    m->editor.monoOwner,      7);   // 7 lanes
+    // UNIFIED ADDRESSING voice-range rows (Stage 2b): the Macro (global) voice range
+    // + the per-voice East rows + the delegation flags. Absent keys ⟹ the ctor
+    // defaults (identity cap/0/0 (the bug-23 cap), dir 0, follow-Macro) — pre-2b patches byte-identical.
+    saveArr("editorVoiceLorMacro",     m->editor.voiceLorMacro,      3);   // the Macro (global) voice range L/O/R
+    saveArr("editorVoiceLorMacroDir", &m->editor.voiceLorMacroDir,  1);   // Macro tier direction (LaneDir order)
+    saveArr("editorVoiceLorEast",      m->editor.voiceLorEast,      48);   // 16 voices × {L,O,R}
+    saveArr("editorVoiceLorEastDir",   m->editor.voiceLorEastDir,   16);   // 16 voices (LaneDir order)
+    saveArr("editorVoiceLorLocalEast", m->editor.voiceLorLocalEast, 16);   // 0 = follow Macro, !=0 = own East row
+    // (B) VOICE-LOR PARITY: the L/O/R CV-depth rows (absent keys ⟹ all-zero depths —
+    // the fold's byte-neutral default, pre-parity patches unchanged).
+    saveArr("editorVoiceLorAttenMacro", m->editor.voiceLorAttenMacro,  3); // the Macro jacks' depths
+    saveArr("editorVoiceLorAttenEast",  m->editor.voiceLorAttenEast, 48); // 16 voices × {L,O,R} depths
+    // UNIFIED ADDRESSING output-mask rows (Stage 4): the one output layer (cycle /
+    // dynamic range-as-mask / painted fixed-rotatable + follow-R). Absent keys ⟹ the
+    // ctor defaults (CYCLE everywhere, all-on patterns) — no gating, pre-4 patches
+    // byte-identical.
+    saveArr("editorMaskMacroKind",        &m->editor.maskMacroKind,        1);
+    saveArr("editorMaskMacroFollowR",     &m->editor.maskMacroFollowR,     1);
+    saveArr("editorMaskEastKind",         m->editor.maskEastKind,         16);
+    saveArr("editorMaskEastFollowR",      m->editor.maskEastFollowR,      16);
+    saveArr("editorMaskLocalEastMask",    m->editor.maskLocalEastMask,    16);
+    // STEPS_32 Stage 2a (the DECIDED persistence law): the mask PATTERNS save under
+    // FRESH integer keys — the uint64 bit pattern cast to json_integer (Jansson's
+    // integer is int64-wide; the two's-complement cast round-trips every uint64
+    // exactly, values above 2^63 merely read negative in JSON tooling). The OLD float
+    // keys ("editorMask{Macro,East}PatternBits") are NOT written and NOT read: a mask
+    // wider than 16 bits does not round-trip a float's 24-bit mantissa (the
+    // float-precision wall), and per the DECIDED block old float-keyed saves are
+    // simply not read — a pre-2a patch loads the all-on default. Values are clamped
+    // on the RING at load (the store boundary — same law the setters/push apply).
+    auto saveMaskU64 = [&](const char* key, const uint64_t* a, int n) {
+        json_t* j = json_array();
+        for (int i = 0; i < n; ++i) json_array_append_new(j, json_integer((long long)a[i]));
+        json_object_set_new(root, key, j);
+    };
+    saveMaskU64("editorMaskMacroPatternBitsI64", &m->editor.maskMacroPatternBits, 1);
+    saveMaskU64("editorMaskEastPatternBitsI64",  m->editor.maskEastPatternBits,  16);
 
     // Spread target modes (SPREAD_TARGET_MODES.md): per-lane target mode, per-mode defaults
-    // (-1/0/+1), and the apply-on-mode-change toggle. All per-lane (5 lanes).
+    // (-1/0/+1), and the apply-on-mode-change toggle. All per-lane, 7 lanes.
     {
         json_t* stm = json_array();
-        for (int i = 0; i < 5; ++i) json_array_append_new(stm, json_integer(m->editor.spreadTargetMode[i]));
+        for (int i = 0; i < 7; ++i) json_array_append_new(stm, json_integer(m->editor.spreadTargetMode[i]));
         json_object_set_new(root, "editorSpreadTargetMode", stm);
         json_t* sdef = json_array();
-        for (int i = 0; i < 10; ++i) json_array_append_new(sdef, json_real(m->editor.spreadDefault[i]));
+        for (int i = 0; i < 14; ++i) json_array_append_new(sdef, json_real(m->editor.spreadDefault[i]));
         json_object_set_new(root, "editorSpreadDefault", sdef);
         json_t* saom = json_array();
-        for (int i = 0; i < 5; ++i) json_array_append_new(saom, json_boolean(m->editor.spreadApplyOnModeChange[i]));
+        for (int i = 0; i < 7; ++i) json_array_append_new(saom, json_boolean(m->editor.spreadApplyOnModeChange[i]));
         json_object_set_new(root, "editorSpreadApplyOnModeChange", saom);
     }
 
@@ -280,6 +351,22 @@ void PersistenceManager::fromJson(Monsoon* m, json_t* root) {
     if (auto j = json_object_get(root, "restartOnUnmute")) m->restartOnUnmute = (bool)json_boolean_value(j);
     if (auto j = json_object_get(root, "reseedOnRestart")) m->reseedOnRestart = (bool)json_boolean_value(j);
     if (auto j = json_object_get(root, "noteVariationMask")) m->noteVariationMask = (int)json_integer_value(j);
+    // DOTTED BUILD — the note-value table grew 8 → 12 (dotted values interleaved at
+    // their duration positions), shifting dial indices 2..7. New saves carry
+    // noteValueSchema=2 (written in toJson); its ABSENCE means a pre-dotted save, so
+    // translate the stored NOTE_VALUE_PARAM through the legacy map — released
+    // patches' dials keep their exact musical values. (Rack loads params BEFORE this
+    // dataFromJson hook runs, so the raw stored value is already in m->params here.
+    // Idempotent: the remapped value is what a subsequent save persists, WITH the
+    // marker.)
+    if (!json_object_get(root, "noteValueSchema")) {
+        // Old saves store the legacy ENGINE index; the param now stores the DIAL
+        // SLOT — map legacy engine → current engine → slot (the same musical value,
+        // at the dial position that reads identically).
+        const float legacyV = m->params[MonsoonIds::NOTE_VALUE_PARAM].getValue();
+        const int engineIdx = legacyNoteValueIndex((int)std::round(legacyV));
+        m->params[MonsoonIds::NOTE_VALUE_PARAM].setValue((float)DIAL_SLOT_OF[engineIdx]);
+    }
     if (auto j = json_object_get(root, "ppqnSetting")) {
         int v = (int)json_integer_value(j);
         // Migrate legacy values (1/4/24 = old input-divider semantics) onto the
@@ -290,6 +377,13 @@ void PersistenceManager::fromJson(Monsoon* m, json_t* root) {
     }
     if (auto j = json_object_get(root, "modeSelect")) m->modeSelect = (int)json_integer_value(j);
     if (auto j = json_object_get(root, "lightTheme")) m->lightTheme = (bool)json_boolean_value(j);
+    // SEND VOICE (CC_FIX_SEND_VOICE_FROM_MACRO): absent key ⟹ V1 (the construction
+    // default stands). Out-of-range values clamp to the nearest valid voice rather than
+    // trusting the file — the Macro visual's tab re-selection guards again anyway.
+    if (auto j = json_object_get(root, "macroViewVoice")) {
+        const int v = (int)json_integer_value(j);
+        m->macroViewVoice = (v >= 1 && v <= 16) ? v : 1;
+    }
     if (m->scaleManager) {
         if (auto j = json_object_get(root, "scaleRoot")) m->scaleManager->scaleRoot = (int)json_integer_value(j);
         if (auto j = json_object_get(root, "lastSelectedScale")) m->scaleManager->lastSelectedScale = (int)json_integer_value(j);
@@ -337,7 +431,10 @@ void PersistenceManager::fromJson(Monsoon* m, json_t* root) {
     if (auto j = json_object_get(root, "qmixSeedPendingFloat")) m->engine.pe.qmixSeedPendingFloat = (float)json_real_value(j);
 
     // ── DNA Random Buffers ──
-    auto loadArr = [&](const char* name, float* target) {
+    // STEPS_32 Stage 2a: the references ride the engine's STORAGE width (kStepStorage);
+    // the persisted format stays 16-long (patches load identically — cells beyond the
+    // ring keep their ctor values, the ring-bounded reads never see them).
+    auto loadArr = [&](const char* name, std::array<float, dotModular::kStepStorage>& target) {
         if (auto j = json_object_get(root, name)) {
             if (json_is_array(j)) {
                 for (size_t i = 0; i < 16 && i < json_array_size(j); ++i)
@@ -354,27 +451,34 @@ void PersistenceManager::fromJson(Monsoon* m, json_t* root) {
     loadArr("qmixRandom", m->engine.pe.qmixRandom);   // Task 4d
 
     // ── Poly DNA Random Buffers ──
-    // target is the unified random_ store (written per-element via polyRandom, since random_[1..15]
-    // isn't a contiguous [15][16] block); source is still a plain [15][16] slew-cache array.
-    auto loadPolyArr = [&](const char* name, int engLane, float source[15][16]) {
+    // COLLAPSE: source arrays are now [16][16] — V2..V16 at [1..15]. v=0 → [v+1]=V2.
+    // STEPS_32 Stage 2a: the staging reference rides the engine's STORAGE width; the
+    // persisted format stays 16 cells per voice.
+    auto loadPolyArr = [&](const char* name, int engLane, std::array<std::array<float, dotModular::kStepStorage>, PatternEngine::kVoiceSlots>& source) {
         if (auto j = json_object_get(root, name)) {
             if (json_is_array(j)) {
-                for (int v = 0; v < 15; v++) {
+                for (int v = 1; v < 16; v++) {
                     for (int i = 0; i < 16; i++) {
                         json_t* val = json_array_get(j, v * 16 + i);
                         if (val) {
                             float x = (float)json_real_value(val);
-                            m->engine.pe.polyRandom(v, engLane)[i] = x;
-                            source[v][i] = x;
+                            m->engine.pe.polyRandom(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{engLane})[i] = x;
+                            source[v + 1][i] = x;
                         }
                     }
                 }
             }
         }
     };
-    loadPolyArr("polyRhythmRandom", SequencerEngine::PL_REST,   m->engine.pe.polyRhythmSource);
-    loadPolyArr("polyMelodyRandom", SequencerEngine::PL_MELODY, m->engine.pe.polyMelodySource);
-    loadPolyArr("polyOctaveRandom", SequencerEngine::PL_OCTAVE, m->engine.pe.polyOctaveSource);
+    loadPolyArr("polyRhythmRandom", SequencerEngine::PL_REST,   m->engine.pe.rhythmSource);
+    loadPolyArr("polyMelodyRandom", SequencerEngine::PL_MELODY, m->engine.pe.melodySource);
+    loadPolyArr("polyOctaveRandom", SequencerEngine::PL_OCTAVE, m->engine.pe.octaveSource);
+    // Warp mirror (CC_PROMPT_05): the loaders above rewrote random_ (the w=0 basis)
+    // — rebuild ALL lanes' mirror cells so a bank already wired (preset drag onto a
+    // running module) never observes the pre-load mixture. No-op without a bank
+    // (fresh-load path: the first wire's rebuild covers it). Every random_ writer
+    // rebuilds the cells it wrote — the 03 rule, now for ALL lanes.
+    m->engine.pe.rebuildWarpMirrorAll();
 
     //  Scrub model: restore the scrub state (counter, slew, mix, firstDraw) and recompute the
     //  effective pattern from it. No A/B endpoints to restore -- the pattern is re-derived from
@@ -406,13 +510,8 @@ void PersistenceManager::fromJson(Monsoon* m, json_t* root) {
         m->pendingRegenB = true;   // finalize: re-apply counter post-seed, then recomputeEffective*
     }
 
-    // ── Rhythm and Pitch Arrays ──
-    if (auto j = json_object_get(root, "rhythmPattern")) {
-        if (json_is_array(j)) {
-            for (size_t i = 0; i < 16 && i < json_array_size(j); ++i)
-                m->rhythmPattern[i] = (json_integer_value(json_array_get(j, i)) != 0);
-        }
-    }
+    // ── Pitch Array ── (the rhythmPattern read RETIRED — ITEM 1; an old patch's
+    // "rhythmPattern" key is simply never read — json ignores unknown keys, no error)
     if (auto j = json_object_get(root, "melodyPitchV")) {
         if (json_is_array(j)) {
             for (size_t i = 0; i < 16 && i < json_array_size(j); ++i)
@@ -452,16 +551,26 @@ void PersistenceManager::fromJson(Monsoon* m, json_t* root) {
                     }
         }
     }
-    if (auto j = json_object_get(root, "editorMacroOwn")) {
+    // BOOLEAN MODEL: "editorEastOwns" entries are JSON true/false. A legacy
+    // "editorMacroOwn" float patch fails the key lookup → the store stays defaulted
+    // (compatibility not kept, per Rodney). There is NO numeric fallback and NO >0.5f
+    // here — the threshold class is fully retired from the ownership pipeline, undo
+    // included: the undo envelope is typed (StoreEditAction carries bool natively),
+    // so no float boundary remains anywhere in the pipeline.
+    if (auto j = json_object_get(root, "editorEastOwns")) {
         if (json_is_array(j))
-            for (size_t i = 0; i < 80 && i < json_array_size(j); ++i)    // 16 × 5 poly lanes
-                m->editor.macroOwn[i] = (float)json_real_value(json_array_get(j, i));
+            for (size_t i = 0; i < 112 && i < json_array_size(j); ++i) {   // 16 × 7
+                json_t* cell = json_array_get(j, i);
+                if (json_is_boolean(cell)) m->editor.eastOwns[i] = json_boolean_value(cell) != 0;
+            }
     }
     if (auto j = json_object_get(root, "editorMacroSend")) {
         if (json_is_array(j))
-            for (size_t i = 0; i < 320 && i < json_array_size(j); ++i)   // 16 × 5 × 4 items
+            for (size_t i = 0; i < 448 && i < json_array_size(j); ++i)   // 16 × 7 × 4
                 m->editor.macroSend[i] = (float)json_real_value(json_array_get(j, i));
     }
+    // P9b: per-voice send-tap bank. Absent key (pre-fix patch) → every voice POST (1.0).
+    dotModular::MacroTapBank::parse(root, "editorMacroTap", m->editor.macroTap);
     if (auto j = json_object_get(root, "editorMacroAtten")) {
         if (json_is_array(j))
             for (size_t i = 0; i < 448 && i < json_array_size(j); ++i)   // 16 × 7 × 4 cols
@@ -477,6 +586,13 @@ void PersistenceManager::fromJson(Monsoon* m, json_t* root) {
             for (size_t i = 0; i < 112 && i < json_array_size(j); ++i)   // 16 × 7 poly lanes
                 m->editor.spread[i] = (float)json_real_value(json_array_get(j, i));
     }
+    // Warp-F bank: absent keys keep the constructed defaults (all-identity, w=0 — the
+    // CC_PROMPT_02 no-warp guarantee for pre-warp patches).
+    dotModular::WarpBank::parse(root, "editor", m->editor.warp);
+    dotModular::SubgateKnobs::SubgateBank::parse(root, "editorSubgate", m->editor.subgate);
+    // QMIX-OCTAVE tier bank: absent keys keep the constructed defaults (follow-degree —
+    // the CC_PROMPT_QMIX_OCTAVE no-new-surface guarantee for pre-qmix-octave patches).
+    dotModular::QmixOctave::Bank::parse(root, "editorQmixOct", m->editor.qmixOctave);
     auto loadArrN = [&](const char* key, float* a, int n) {
         if (auto j = json_object_get(root, key)) {
             if (json_is_array(j))
@@ -484,29 +600,61 @@ void PersistenceManager::fromJson(Monsoon* m, json_t* root) {
                     a[i] = (float)json_real_value(json_array_get(j, i));
         }
     };
-    // Sizes track the QMIX-widened EditorState arrays: 5 poly lanes, 7 mono lanes.
-    loadArrN("editorGlobalLor",    m->editor.globalLor,    15);   // 5 poly lanes × 3
-    loadArrN("editorGlobalSpread", m->editor.globalSpread,  5);   // 5 poly lanes
-    loadArrN("editorGlobalAtten",  m->editor.globalAtten,  20);   // 5 poly lanes × 4 cols
-    loadArrN("editorGlobalTap",    m->editor.globalTap,    10);   // 5 poly lanes × 2
-    loadArrN("editorGlobalDir",    m->editor.globalDir,     5);   // 5 poly lanes
-    loadArrN("editorMonoAtten",    m->editor.monoAtten,    28);   // 7 mono lanes × 4 cols
-    loadArrN("editorMonoOwner",    m->editor.monoOwner,     5);   // 5 poly lanes
+    // All 7 lanes everywhere.
+    loadArrN("editorGlobalLor",    m->editor.globalLor,     21);   // 7 lanes × 3
+    loadArrN("editorGlobalSpread", m->editor.globalSpread,   7);   // 7 lanes
+    loadArrN("editorGlobalAtten",  m->editor.globalAtten,   28);   // 7 lanes × 4 cols
+    loadArrN("editorGlobalTap",    m->editor.globalTap,     14);   // 7 lanes × 2
+    loadArrN("editorGlobalDir",    m->editor.globalDir,      7);   // 7 lanes
+    loadArrN("editorMonoAtten",    m->editor.monoAtten,     28);   // 7 mono lanes × 4 cols
+    loadArrN("editorMonoOwner",    m->editor.monoOwner,      7);   // 7 lanes
+    // UNIFIED ADDRESSING voice-range rows (Stage 2b): absent keys ⟹ ctor defaults
+    // (identity cap/0/0 (the bug-23 cap), dir 0, follow-Macro) — pre-2b patches byte-identical.
+    loadArrN("editorVoiceLorMacro",     m->editor.voiceLorMacro,      3);
+    loadArrN("editorVoiceLorMacroDir", &m->editor.voiceLorMacroDir,  1);
+    loadArrN("editorVoiceLorEast",      m->editor.voiceLorEast,      48);
+    loadArrN("editorVoiceLorEastDir",   m->editor.voiceLorEastDir,   16);
+    loadArrN("editorVoiceLorLocalEast", m->editor.voiceLorLocalEast, 16);
+    // (B) VOICE-LOR PARITY: the L/O/R CV-depth rows — absent keys ⟹ the all-zero
+    // defaults stand (the fold is a no-op; the pushed base plays).
+    loadArrN("editorVoiceLorAttenMacro", m->editor.voiceLorAttenMacro,  3);
+    loadArrN("editorVoiceLorAttenEast",  m->editor.voiceLorAttenEast, 48);
+    // UNIFIED ADDRESSING output-mask rows (Stage 4): absent keys ⟹ ctor defaults
+    // (CYCLE everywhere, all-on patterns) — pre-4 patches byte-identical.
+    loadArrN("editorMaskMacroKind",        &m->editor.maskMacroKind,        1);
+    loadArrN("editorMaskMacroFollowR",     &m->editor.maskMacroFollowR,     1);
+    loadArrN("editorMaskEastKind",         m->editor.maskEastKind,         16);
+    loadArrN("editorMaskEastFollowR",      m->editor.maskEastFollowR,      16);
+    loadArrN("editorMaskLocalEastMask",    m->editor.maskLocalEastMask,    16);
+    // STEPS_32 Stage 2a: the mask PATTERNS load from the FRESH integer keys (the
+    // DECIDED persistence law — the old float keys "editorMask{Macro,East}PatternBits"
+    // are NOT read; a pre-2a patch leaves the keys absent ⟹ the ctor all-on default
+    // stands). The two's-complement int64 ⟷ uint64 cast round-trips exactly; the
+    // ring clamp on load is the store boundary (the same law the setters/push apply).
+    auto loadMaskU64 = [&](const char* key, uint64_t* a, int n) {
+        if (auto j = json_object_get(root, key)) {
+            if (json_is_array(j))
+                for (size_t i = 0; i < (size_t)n && i < json_array_size(j); ++i)
+                    a[i] = (uint64_t)json_integer_value(json_array_get(j, i)) & dotModular::kMaskLenMask;
+        }
+    };
+    loadMaskU64("editorMaskMacroPatternBitsI64", &m->editor.maskMacroPatternBits, 1);
+    loadMaskU64("editorMaskEastPatternBitsI64",  m->editor.maskEastPatternBits,  16);
     // Spread target modes (SPREAD_TARGET_MODES.md): per-lane target mode + defaults +
     // apply-on-mode-change toggle. Missing keys → keep defaults (anchor V1, 0/+1, true).
     if (auto j = json_object_get(root, "editorSpreadTargetMode")) {
         if (json_is_array(j))
-            for (size_t i = 0; i < 5 && i < json_array_size(j); ++i)
+            for (size_t i = 0; i < 7 && i < json_array_size(j); ++i)
                 m->editor.spreadTargetMode[i] = (uint8_t)json_integer_value(json_array_get(j, i));
     }
     if (auto j = json_object_get(root, "editorSpreadDefault")) {
         if (json_is_array(j))
-            for (size_t i = 0; i < 10 && i < json_array_size(j); ++i)
+            for (size_t i = 0; i < 14 && i < json_array_size(j); ++i)
                 m->editor.spreadDefault[i] = (float)json_real_value(json_array_get(j, i));
     }
     if (auto j = json_object_get(root, "editorSpreadApplyOnModeChange")) {
         if (json_is_array(j))
-            for (size_t i = 0; i < 5 && i < json_array_size(j); ++i)
+            for (size_t i = 0; i < 7 && i < json_array_size(j); ++i)
                 m->editor.spreadApplyOnModeChange[i] = json_boolean_value(json_array_get(j, i));
     }
 }

@@ -31,6 +31,7 @@
 #include <string>
 
 #include "engines/SequencerEngine.hpp"
+#include "VoiceResolver.hpp"   // CC_PROMPT_STRONG_TYPES: VoiceSlot minting
 #include "engines/ClockEngine.hpp"
 
 #define SUITE(n) std::cout << "\n\033[1;34m[" << (n) << "]\033[0m\n"
@@ -55,13 +56,23 @@ static PatternInput makeInput() {
     return in;
 }
 
-// A clock/phase view with a 1/16 edge asserted — exactly what the module layer passes into
-// engine.executeModeA for the clock and phase origins (the controller routes both through
-// engine.executeModeA; only the edge SOURCE differs — clock.sixteenthEdge vs phase.sixteenthEdge).
-static ClockEngine edgeClock() {
-    ClockEngine ck;
-    ck.sixteenthEdge = true;
-    return ck;
+// Phase A: populate voices[0] (V1) — the controller normally does this in
+// updatePatternInput; tests bypass the controller, so do it here.
+static void populateV0(SequencerEngine& eng, const PatternInput& in, float restProb) {
+    eng.voices[dotModular::VoiceResolver::slot(0 + 1)].restProb       = restProb;
+    eng.voices[dotModular::VoiceResolver::slot(0 + 1)].legatoProb     = 0.f;       // default (PatternInput::legato deleted)
+    eng.voices[dotModular::VoiceResolver::slot(0 + 1)].accentProb     = 0.25f;     // default (PatternInput::accentProb deleted)
+    eng.voices[dotModular::VoiceResolver::slot(0 + 1)].qmixLevel      = 0.f;       // default (PatternInput::qmixLevel deleted)
+    eng.voices[dotModular::VoiceResolver::slot(0 + 1)].variationProb  = in.variationAmount;
+}
+
+// A RateManager with the Step tier ticked — exactly what the module layer passes into
+// engine.executeModeA for the clock and phase origins (the dispatch advances the tier
+// from the sixteenth edge — clock or phase — and the engine asks the manager; S3b).
+static redDot::RateManager stepTick() {
+    redDot::RateManager rm;
+    rm.advance(redDot::Rate::Step, true);
+    return rm;
 }
 
 // ── Faithful copy of the module-layer shouldExecute gate (Monsoon.cpp ~830, POST-collapse). ──
@@ -95,8 +106,9 @@ int main() {
     TEST("Clock origin (mode 0): a 1/16 step, no rest -> gate high", {
         SequencerEngine eng; eng.numPolyVoices = 0;
         const PatternInput in = makeInput();
-        StepResult r = eng.executeModeA(edgeClock(), /*restProb=*/0.f, /*legatoProb=*/0.f,
-                                        /*noteVal=*/2.f, in);
+        populateV0(eng, in, 0.f);
+        const auto rm = stepTick();
+        StepResult r = eng.executeModeA(rm, /*noteVal=*/4.f, in);
         EXPECT(r.stepped);
         EXPECT(r.decision != D::Rest);
         EXPECT(eng.gs.gateHeld);                       // GATE_OUTPUT would emit
@@ -105,18 +117,21 @@ int main() {
     TEST("Gate origin (mode 1): a Gate-1 rise, no rest -> gate high", {
         SequencerEngine eng; eng.numPolyVoices = 0;
         const PatternInput in = makeInput();
-        StepResult r = eng.executeModeB(/*gate1Rise=*/true, /*gate1High=*/true,
-                                        /*restProb=*/0.f, /*legatoProb=*/0.f, /*noteVal=*/0.f, in);
+        populateV0(eng, in, 0.f);
+        StepResult r = eng.executeModeB(/*gate1Rise=*/true, /*gate1High=*/true, /*noteVal=*/0.f, in);
         EXPECT(r.stepped);
         EXPECT(r.decision != D::Rest);
         EXPECT(eng.gs.gateHeld);
     });
 
     TEST("Phase origin (mode 2): a 1/16 phase step, no rest -> gate high", {
-        // Phase routes through engine.executeModeA with a phase-derived edge view (sixteenthEdge=true).
+        // Phase routes through engine.executeModeA with the Step tier ticked (the
+        // dispatch fed it from the phase sixteenth edge).
         SequencerEngine eng; eng.numPolyVoices = 0;
         const PatternInput in = makeInput();
-        StepResult r = eng.executeModeA(edgeClock(), 0.f, 0.f, 2.f, in);
+        populateV0(eng, in, 0.f);
+        const auto rm = stepTick();
+        StepResult r = eng.executeModeA(rm, 4.f, in);
         EXPECT(r.stepped);
         EXPECT(r.decision != D::Rest);
         EXPECT(eng.gs.gateHeld);
@@ -133,7 +148,9 @@ int main() {
     TEST("Clock origin: rest step -> gate low", {
         SequencerEngine eng; eng.numPolyVoices = 0;
         const PatternInput in = makeInput();
-        StepResult r = eng.executeModeA(edgeClock(), /*restProb=*/0.5f, 0.f, 2.f, in);
+        populateV0(eng, in, 0.5f);
+        const auto rm = stepTick();
+        StepResult r = eng.executeModeA(rm, 4.f, in);
         EXPECT(r.decision == D::Rest);
         EXPECT(!eng.gs.gateHeld);
     });
@@ -141,7 +158,8 @@ int main() {
     TEST("Gate origin: rest step -> gate low", {
         SequencerEngine eng; eng.numPolyVoices = 0;
         const PatternInput in = makeInput();
-        StepResult r = eng.executeModeB(true, true, /*restProb=*/0.5f, 0.f, 0.f, in);
+        populateV0(eng, in, 0.5f);
+        StepResult r = eng.executeModeB(true, true, 0.f, in);
         EXPECT(r.decision == D::Rest);
         EXPECT(!eng.gs.gateHeld);
     });
@@ -149,7 +167,9 @@ int main() {
     TEST("Phase origin: rest step -> gate low", {
         SequencerEngine eng; eng.numPolyVoices = 0;
         const PatternInput in = makeInput();
-        StepResult r = eng.executeModeA(edgeClock(), /*restProb=*/0.5f, 0.f, 2.f, in);
+        populateV0(eng, in, 0.5f);
+        const auto rm = stepTick();
+        StepResult r = eng.executeModeA(rm, 4.f, in);
         EXPECT(r.decision == D::Rest);
         EXPECT(!eng.gs.gateHeld);
     });

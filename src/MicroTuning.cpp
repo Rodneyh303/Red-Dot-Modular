@@ -5,10 +5,11 @@
 #include <cstdio>
 #include "MicroTuning.hpp"
 #include "Monsoon.hpp"
+#include "dsp/VoiceResolver.hpp"   // CC_PROMPT_STRONG_TYPES: VoiceSlot minting (slot)
 #include "MonsoonInterchangeExpander.hpp"   // 3C-ii: read paired Interchange CV into weight[]
 #include "MonsoonShophouseMicro.hpp"        // Shophouse Micro (Model Q): scene-front FOLD into weight/cents
-#include "ui/IntertropicalPairing.hpp"      // redDot::assignPairIdT / findPairHubEitherSide (templates)
-#include "ui/VisualExpanderHelpers.hpp"   // redDot::findMonsoonEitherSide
+#include "ui/IntertropicalPairing.hpp"      // redDot::assignPairIdT / findPairHubEitherSide (templates — service-internal, epoch-guarded use below)
+#include "ui/ModuleLookup.hpp"   // THE module-lookup authority: lookupMonsoon — memoized, event-driven (CC_PROMPT_MODULE_LOOKUP_AUTHORITY_START)
 #include "ui/SvgPanelKit.hpp"
 #include "ui/ConnectMark.hpp"
 #include "ui/WrappingMenuLabel.hpp"    // redDot::makeWrappingMenuLabel — bounds long .scl descriptions
@@ -28,9 +29,12 @@ void MicroTuningModule::process(const ProcessArgs&) {
 
     // Pairing HUB: self-assign a rack-wide pairId ONCE (one-shot, like Intertropical/CA — never in a
     // locked context; process() is safe). Interchanges bind to this by pairId.
-    if (!pairChecked) { pairChecked = true; if (pairId <= 0) pairId = redDot::assignPairIdT<MicroTuningModule>(this); }
+    if (!pairChecked) { pairChecked = true; if (pairId <= 0) pairId = redDot::assignPairIdT<MicroTuningModule>(this); }   // LOOKUP-AUTHORITY (one-shot identity settle — runs once per lifetime behind pairChecked; not a hot-path walk)
 
-    Monsoon* mon = redDot::findMonsoonEitherSide(this);
+    // LOOKUP AUTHORITY: the host resolves through the memoized redDot::lookupMonsoon — event-driven
+    // (onExpanderChange bumps the topology epoch), ONE walk per topology generation; a static rack
+    // walks zero times.
+    Monsoon* mon = redDot::lookupMonsoon(this);
     if (!mon) return;                          // standalone: publish nothing (ConnectMark greys)
     if (!mon->claimAsTuningSource(this)) return;   // not the claimant: don't write (loser greys)
 
@@ -85,7 +89,7 @@ void MicroTuningModule::process(const ProcessArgs&) {
     }
     // CONSERVATION toggle lives on the bound Shophouse Micro and governs the whole rig's mask, whether
     // that mask came from an ACTIVE FRONT or the Colonnades' OWN enable band — NOT only when a front is
-    // active (matches original Shophouse: the toggle governs the effective scale, always). `scene` is the
+    // active (matches original Shophouse: the toggle governs the effective scale, always). scene is the
     // bound module (may have no active front); enforce() reads its switch. When NO Shophouse Micro is
     // bound there is no conservation control → the Colonnades mask stays hard (byte-identical).
     const bool sceneBound   = (scene != nullptr);
@@ -93,10 +97,12 @@ void MicroTuningModule::process(const ProcessArgs&) {
     // 3C-ii: fold in CV from any Interchange(s) bound to THIS Micro (single-writer: we own weight[], so
     // we add the mod into our published copy — the stored fader params are untouched). An Interchange's
     // 12 SEMI_CV × attenuverter drive its targetHalf's 12 degrees; multiple on the same half SUM then
-    // clamp. DISCOVERY is control-rate (rack-wide getModuleIds() every sample is the CA CPU pitfall):
-    // rebuild the bound-Interchange cache on a divider, read live CV every sample from the cache.
-    if (ixScanDiv_.getDivision() == 0) ixScanDiv_.setDivision(64);
-    if (ixScanDiv_.process()) {
+    // clamp. DISCOVERY is EVENT-DRIVEN (onExpanderChange bumps the topology epoch — a static rack
+    // scans zero times; was the /64 ixScanDiv_ poll — CC_PROMPT_MODULE_LOOKUP_AUTHORITY_START):
+    // rebuild the bound-Interchange cache on the epoch guard, read live CV every sample from the cache.
+    // (Edge, documented: re-targeting an Interchange's followTarget on a fully static rack refreshes
+    // this mirror on the next epoch bump; the Interchange's own binding is instant via the memo key.)
+    if (redDot::lookupEpochStale(ixScanEpoch_)) {
         boundInterchanges_.clear();
         boundShophouseMicro_ = nullptr;      // also (re)discover the bound Shophouse Micro scene source
         if (APP && APP->engine) {
@@ -104,15 +110,15 @@ void MicroTuningModule::process(const ProcessArgs&) {
                 rack::Module* m = APP->engine->getModule(id);
                 if (auto* ix = dynamic_cast<MonsoonInterchangeExpander*>(m)) {
                     const bool bound = (ix->followTarget > 0) ? (ix->followTarget == pairId)
-                                     : (redDot::findPairHubEitherSide<MicroTuningModule>(ix) == this);
+                                     : (redDot::findPairHubEitherSide<MicroTuningModule>(ix) == this);   // LOOKUP-AUTHORITY (epoch-guarded resolve — runs only when the topology epoch moved)
                     // §16 item 1 (target selector): only take Interchanges that actually TARGET the Micro.
-                    // `bound` is the microBound predicate from this Interchange's view; drivesMicro()
+                    // bound is the microBound predicate from this Interchange's view; drivesMicro()
                     // resolves AUTO (Micro when bound) and the explicit Monsoon-only/Micro-only modes.
                     // A Monsoon-only Interchange is skipped here so it no longer drives the weight faders.
                     if (bound && ix->drivesMicro(bound)) boundInterchanges_.push_back(ix);
                 } else if (auto* sm = dynamic_cast<MonsoonShophouseMicro*>(m)) {
                     // First Shophouse Micro whose nearest host is OUR Monsoon (adjacency binding).
-                    if (!boundShophouseMicro_ && redDot::findMonsoonEitherSide(sm) == mon)
+                    if (!boundShophouseMicro_ && redDot::findMonsoonEitherSide(sm) == mon)   // LOOKUP-AUTHORITY (epoch-guarded resolve — runs only when the topology epoch moved)
                         boundShophouseMicro_ = sm;
                 }
             }
@@ -182,7 +188,8 @@ void MicroTuningModule::process(const ProcessArgs&) {
     for (int i = 0; i < n; ++i) {
         float b = (i < tt.N) ? mon->engine.gs.semiLedBrightness(i) : 0.f;   // greyed (>= tuning size): no flash
         for (int v = 0; v < mon->engine.numPolyVoices && i < tt.N; ++v)
-            b = std::max(b, mon->engine.voices[v].gs.semiLedBrightness(i));
+            // v = the voiceSlot being read (preserved; includes the dormant V1 slot at 0)
+            b = std::max(b, mon->engine.voices[dotModular::VoiceResolver::slot(v + 1)].gs.semiLedBrightness(i));
         lights[weightLed(i) + 0].setBrightness(0.f);   // green sub unused (match Monsoon)
         lights[weightLed(i) + 1].setBrightness(b);     // red sub = play flash
     }
@@ -264,7 +271,7 @@ struct MicroLabels : Widget {
         auto f = loadFont();
         if (!f) return;
         NVGcontext* vg = args.vg;
-        const bool light = [&]{ Monsoon* m = module ? redDot::findMonsoonEitherSide(module) : nullptr;
+        const bool light = [&]{ Monsoon* m = module ? redDot::lookupMonsoon(module) : nullptr;
                                 return m && m->lightTheme; }();
         const NVGcolor ink = light ? nvgRGB(0x1a,0x1a,0x1a) : nvgRGB(0xf0,0xf0,0xf0);
         const NVGcolor sub = light ? nvgRGB(0x5a,0x64,0x70) : nvgRGB(0x8a,0x94,0xa0);
@@ -313,7 +320,7 @@ struct MicroCentsDisplay : Widget {
         // Contiguous grid cells (stroked rectangles). Colonnades: two rows, lower offset 50% in X (the
         // odd faders are half a pitch off the even → the shared horizontal divider steps). Duo: one row.
         // ROUND 10: only draw cells for LIVE degrees (i < tuning size). Greyed degrees (beyond N) have no
-        // cents cell. `liveCount` = the tuning size (falls back to n when standalone).
+        // cents cell. liveCount = the tuning size (falls back to n when standalone).
         const int liveCount = module ? module->liveN() : n;
         nvgStrokeColor(vg, nvgRGBA(0x8a, 0x94, 0xa0, 0x55));
         nvgStrokeWidth(vg, 0.8f);
@@ -553,7 +560,7 @@ void MicroTuningWidget::build() {
         connectMark = redDot::makeConnectMark(module, centerOf(s), mm2px(8.f));
         rack::Module* self = module;
         connectMark->connected = [self]() {
-            Monsoon* m = self ? redDot::findMonsoonEitherSide(self) : nullptr;
+            Monsoon* m = self ? redDot::lookupMonsoon(self) : nullptr;
             return m && m->getTuningSourceExpander() == self;
         };
         addChild(connectMark);
@@ -737,7 +744,7 @@ void MicroTuningWidget::step() {
     ModuleWidget::step();
     kitStep();
     if (!module) return;
-    Monsoon* m = redDot::findMonsoonEitherSide(module);
+    Monsoon* m = redDot::lookupMonsoon(module);
     int wantLight = (m && m->lightTheme) ? 1 : 0;
     if (wantLight != lastThemeLight) {
         lastThemeLight = wantLight;

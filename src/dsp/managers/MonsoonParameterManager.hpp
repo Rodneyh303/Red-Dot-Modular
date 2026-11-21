@@ -1,4 +1,5 @@
 #pragma once
+#include "../NoteValues.hpp"   // NUM_NOTE_VALUES (getNoteValueNorm's range — DOTTED BUILD)
 
 #include <cmath>
 #include "rack.hpp"
@@ -30,11 +31,25 @@ public:
     
     // ──── Core Parameter Getters ────────────────────────────────────────────
     
-    /// Note length grid value with CV2 offset applied
+    /// Note length grid value with CV2 offset applied — the ENGINE index (the table's
+    /// strict-duration order); the ONE translation from the param's DIAL SLOT.
     float getNoteValue() const;
+    /// The raw dial slot (0..NUM-1, CV applied) — the param's own domain: the knob's
+    /// detents, the arc labels, and the mod-arc norm all live in slot space.
+    float getNoteValueDial() const;
     
     /// Variation probability (0–1) with CV2 offset
     float getVariation() const;
+    /// knob + CV2 + Junction, NO clamp — the bipolar step-advance source
+    /// (CC_PROMPT_STEP_ADVANCE_CONSUMPTION Stage 2): the negative half is real
+    /// (CV2's normalized range is bipolar), the ADVANCE consumer clamps it [-1,+1].
+    float getVariationUnclamped() const;
+    /// GATE MODE ONLY (CC_PROMPT_STEP_ADVANCE_FREEZE_AND_BIPOLAR, the BIPOLAR SCOPE):
+    /// the mode-conditional reinterpretation — the KNOB remaps to (2*knob - 1) so it
+    /// ALONE reaches negative ("positive step forward, negative step back"), CV2 +
+    /// Junction added on top; the gate-mode write clamps [-1,+1]. Clock/phase keep
+    /// the UNIPOLAR note-length reads (getVariation / variationAmount) — untouched.
+    float getVariationGateUnclamped() const;
     
     /// Legato probability (0–1) with CV2 offset
     float getLegato() const;
@@ -51,12 +66,14 @@ public:
     float getQmixLevel() const;
 
     /// Big-5 effective values NORMALISED to 0..1 (for modulation visualisation).
-    /// These reuse the effective-value getters above; NOTE_VALUE is divided by 8
-    /// so all five share a 0..1 range the widgets can compare to knob position.
-    // Normalize over the param's ACTUAL range 0..7 (NUM_NOTE_VALUES-1 = 8 values,
-    // indices 0..7) so this matches paramQuantities->getScaledValue() (the mod-arc's
-    // setNorm). Dividing by 8 desynced set vs mod and left a permanent arc.
-    float getNoteValueNorm() const { return getNoteValue() / 7.f; }
+    /// These reuse the effective-value getters above; NOTE_VALUE is divided by the
+    /// dial's span so all five share a 0..1 range the widgets can compare to knob
+    /// position.
+    // Normalize over the param's ACTUAL range 0..NUM_NOTE_VALUES-1 (DOTTED BUILD:
+    // 12 values, indices 0..11 — was 8) so this matches paramQuantities->
+    // getScaledValue() (the mod-arc's setNorm). A hardcoded divisor desynced set
+    // vs mod and left a permanent arc.
+    float getNoteValueNorm() const { return getNoteValueDial() / (float)(NUM_NOTE_VALUES - 1); }
     float getVariationNorm() const { return getVariation(); }
     float getLegatoNorm()    const { return getLegato(); }
     float getRestNorm()      const { return getRest(); }

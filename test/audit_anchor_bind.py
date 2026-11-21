@@ -61,6 +61,8 @@ MODULES = {
             "input_cv_": 28,          # 7 poly lanes × 4 (LEN/OFF/ROT/SPR) — VAR/LEG migrated
             "param_atten_": 28,
             "param_spr_": 7,          # 7 poly spread bases (editor-lane indexed; VAR/LEG added)
+            "param_wlevel_": 7,       # CC_PROMPT_04 STEP 1: warp depth knobs (every lane incl booleans)
+            "param_warpedit_": 7,     # CC_PROMPT_04 STEP 2: curve-editor trigger buttons ("CRV" column)
             # input_varlegcv_ / param_varlegatten_ RETIRED: VAR/LEG now use input_cv_/param_atten_
             # (sands consolidation Step 3) — the separate varleg CV/atten path is gone.
             "param_owner_": 7,        # 7 poly (incl QMIX/VAR/LEG)
@@ -68,6 +70,15 @@ MODULES = {
             "input_dir_mod_": 7,
             "input_deleg_mod_": 7,
             "output_prob_": 7,        # 7 poly prob outs (incl QMIX/VAR/LEG)
+            # (B) VOICE-LOR PARITY: the voice-row control line at RANGE_ROW_Y — 3 L/O/R
+            # CV jacks + 3 per-voice attens + the SRC owner cell + the DIR cell + the
+            # row's dir/deleg gate-mods. NO spread/wlevel/CRV (the directive's cut).
+            "input_vlor_cv_": 3,
+            "param_vlor_atten_": 3,
+            "param_vlor_dir": 1,
+            "param_vlor_owner": 1,
+            "input_vlor_dir_mod": 1,
+            "input_vlor_deleg_mod": 1,
         },
     },
     "sands_macro": {
@@ -77,16 +88,26 @@ MODULES = {
         # SANDS CONSOLIDATION Step 3: 7 poly lanes (was 5). Send knobs moved from below-editor
         # groups to a 6-column × 7-row RHS grid; label_mixin_ group-header anchors removed
         # (rows are now implicit — each == an editor lane; draw() labels column headers only).
+        # THE SEND STRIP MOVED OFF (CC_PROMPT_SANDS_DISTRIBUTION_EXPANDER_SPEC §"MACRO
+        # PER-VOICE SENDS → their own subpanel"): the param_send_*/param_taplor_*/
+        # param_tapspr_* anchors + their StoreKnob binds live on the SandsMacroSendSubpanel
+        # (the "sands_macro_send" entry below); the panel is cut back to 258mm.
         "counts": {
             "input_cv_": 28,          # 7 poly lanes × 4 (LEN/OFF/ROT/SPR)
             "param_atten_": 28,
             "param_spr_": 7,          # 7 poly spread bases
+            "param_wlevel_": 7,       # CC_PROMPT_04 STEP 1: warp depth knobs (Macro's delegated default)
+            "param_warpedit_": 7,     # CC_PROMPT_04 STEP 2: curve-editor trigger buttons ("CRV" column)
             "output_prob_": 7,
-            "param_send_": 28,        # 7 lanes × 4 mix-in items
-            "param_taplor_": 7,
-            "param_tapspr_": 7,
             "param_dir_": 7,
             "input_dir_mod_": 7,
+            # (B) VOICE-LOR PARITY: the GLOBAL voice range's control line at RANGE_ROW_Y —
+            # 3 MONO L/O/R CV jacks + 3 global attens + the DIR cell + the row's direction
+            # gate-mod. NO owner/deleg (the Macro tier IS the global) and NO spread/warp.
+            "input_vlor_cv_": 3,
+            "param_vlor_atten_": 3,
+            "param_vlor_dir": 1,
+            "input_vlor_dir_mod": 1,
         },
     },
     "keppel": {
@@ -95,6 +116,12 @@ MODULES = {
         # Tier 2 (two-layer X/Y/Z + within-legato gate). All anchors are explicit (no prefix
         # families), so no `counts` — the 1:1 anchor↔bind check alone covers the 12 inputs + monitor
         # + param + midi_display + light + 3 label anchors.
+    },
+    "woodlands": {
+        "widget": ["src/Woodlands.cpp"],
+        "panel": "res/panels/Woodlands_panel_dark.svg",
+        # Mirror of Keppel (MPE in → poly CV). All anchors explicit (no prefix families): 7 output
+        # jacks + param_bendrange + midi_display + light_active + wordmark + 2 label anchors.
     },
     "causeway": {
         "widget": ["src/MonsoonCausewayPolyExpander.cpp"],
@@ -106,6 +133,135 @@ MODULES = {
             "param_restatt_": 17,   # 0..15 + global
             "param_accatt_":  17,
             "param_qmixatt_": 17,
+        },
+    },
+    "cantonment": {
+        # Cantonment step 4 (CC_PROMPT_CANTONMENT_BUILD_PLAN.md): the module opts in —
+        # "anchor/bind audit (new panel)" is the step-4 gate. The widget lives in the header
+        # (MonsoonCantonment.cpp is the 4-line createModel instantiation, the CA layout).
+        # 28 anchors = 8 verb rows x (trig jack + fire button + pending lamp) — rotate/reflect/
+        # invert/collapse/collapseall/DECLUTTER/expand/random (the 2026-10-27 RANDOM row;
+        # DECLUTTER pulled forward the same day — the reduction gesture, Rodney: "it would be
+        # better to pull declutter forward since now it can only be applied to random") — PLUS
+        # the TRUE-REV row (same three families; NOT a verb: it arms the true-reverse queue, the
+        # global-reverse consumer) and the RANDOM row's back jack (input_back_random, the CA
+        # scatter-back shape). All bound by name in the ctor loop + the explicit binds.
+        "widget": ["src/MonsoonCantonment.hpp"],
+        "panel": "res/panels/Cantonment_panel_dark.svg",
+        "counts": {
+            "input_trig_": 9,       # 8 verb trig jacks + the TRUE-REV trigger
+            "param_btn_": 9,        # 8 fire buttons + the TRUE-REV arm button
+            "light_pending_": 9,    # 8 pending lamps + the TRUE-REV queue lamp
+            "input_back_": 1,       # the RANDOM row's back-draw jack (the CA scback shape)
+        },
+    },
+    "sands_distribution": {
+        # SandsDistributionExpander (CC_PROMPT_SANDS_DISTRIBUTION_EXPANDER_SPEC.md):
+        # the module opts into the audit. 91 anchors = 7 lanes x (6 distribution
+        # knobs p1/p2/tilt/level/mass/warp + 6 mod jacks — the spec's "each with
+        # its own MOD JACK") + 7 lane-focus buttons + the connect mark.
+        "widget": ["src/SandsDistributionExpander.cpp"],
+        "panel": "res/panels/SandsDistribution_dark.svg",
+        "counts": {
+            "param_dexp_": 56,      # 7 lanes x 8 distribution knobs (store-backed; the gap pair appended, PHASE_DISTRIBUTION_SPEC)
+            "input_dexpmod_": 56,   # 7 lanes x 8 mod jacks (the dynamic-MO surface; ids 0..41 frozen, gap jacks 42..55 appended)
+            "param_dfocus_": 7,     # the lane-focus buttons (which lane the editor shows)
+            "light_connect": 1,
+        },
+    },
+    "phase_distortion": {
+        # PhaseDistortion (PHASE_DISTRIBUTION_SPEC §13 — the STANDALONE module-only
+        # comparison build, B, alongside the expander model A). 88 anchors = 8
+        # channels x (8 distribution knobs p1/p2/tilt/level/mass/warp/gaploc/gapsize
+        # — the expander's param axis verbatim, store-backed) + 8 phase-in jacks +
+        # 8 phase-out jacks (the channel IS the jack) + 8 channel-focus buttons.
+        "widget": ["src/PhaseDistortion.cpp"],
+        "panel": "res/panels/PhaseDistortion_dark.svg",
+        "counts": {
+            "param_pd_": 64,        # 8 channels x 8 distribution knobs (store-backed)
+            "input_pdin_": 8,       # 8 phase inputs (the channel IS the jack)
+            "output_pdout_": 8,     # 8 phase outputs (Monsoons patch from here)
+            "param_pdfocus_": 8,    # the channel-focus buttons (which set the plot shows)
+        },
+    },
+    "sands_phase_dist": {
+        # SandsPhaseDistSubpanel (CC_PROMPT_PHASE_DISTORTION_PANEL.md TASK 1 — the
+        # §14 store's authoring panel). 80 anchors = 8 set rows x (8 distribution
+        # knobs — the expander's param axis verbatim, store-backed) + 8 row-focus
+        # buttons + the connect mark. No MOD jacks: no phase-set parameter is
+        # modulated in the landed engine (flagged in the commit).
+        "widget": ["src/SandsPhaseDistSubpanel.cpp"],
+        "panel": "res/panels/SandsPhaseDist_dark.svg",
+        "counts": {
+            "param_pds_": 64,       # 8 sets x 8 distribution knobs (store-backed)
+            "param_pdsfocus_": 8,   # the row-focus buttons (which set the plot shows)
+            "light_pd_connect": 1,
+        },
+    },
+    "sands_macro_send": {
+        # SandsMacroSendSubpanel (the spec's §"MACRO PER-VOICE SENDS → their own
+        # subpanel" — the module opts in). 85 anchors = 7 lanes x (4 mix-in send
+        # knobs + 2 PRE/POST tap trimpots + 6 distribution-param send amounts)
+        # + the connect mark. All store-backed (the de-param law — no Rack params).
+        "widget": ["src/SandsMacroSendSubpanel.cpp"],
+        "panel": "res/panels/SandsMacroSend_dark.svg",
+        "counts": {
+            "param_msend_": 28,     # 7 lanes x 4 mix-in items (editor.macroSend)
+            "param_mtap_": 14,      # 7 lanes x 2 tap kinds (editor.macroTap)
+            "param_mdist_": 56,     # 7 lanes x 8 distribution params (editor.warp.distSend; the gap pair appended)
+            "light_connect": 1,
+        },
+    },
+    "straits_base": {
+        # StraitsBase (CC_PROMPT_SUBGATE_MERGE_ONTO_STRAITS_BASE): the ONE base
+        # surface — frame + IO + voice count + the subgate GLOBAL grid (the
+        # separate StraitsSubgateBase module is retired; its 16HP panel artwork
+        # merged into this one). 24 anchors = the voice-count knob + 2 levels x
+        # 4 decisions x (global knob + mod jack — the Causeway law, born
+        # together) + 5 poly-cable outputs + the quantiser CV in + the connect
+        # mark. All bound by name.
+        "widget": ["src/StraitsBase.cpp"],
+        "panel": "res/panels/StraitsBase_panel_dark.svg",
+        "counts": {
+            "param_voicecount": 1,
+            "param_sbg_": 8,        # 2 levels x 4 decisions (global thresholds)
+            "mod_sbg_": 8,          # one mod jack per knob
+            "output_": 5,           # the poly-cable outs
+            "input_quantcv": 1,
+            "light_connect": 1,
+        },
+    },
+    "straits_subgate_panel": {
+        # StraitsSubgatePanel (CC_PROMPT_FIX_SUBGATE_PANELS, Rodney DECIDED option
+        # (a)): the per-voice tier opts in — ONE 6/6/4 165-wide panel per (level x
+        # decision), 8 modules sharing ONE widget cpp + the tint-neutral anchor set.
+        # 17 anchors = 16 per-voice knobs (param_sgv_0..15, col-major v0=mono) + the
+        # connect mark. NO mod jack (CC_PROMPT_SUBGATE_MERGE_ONTO_STRAITS_BASE
+        # WRONG 2: per-panel modulation removed — modulation is Causeway; the
+        # panels are artwork-identical to the lane subpanels except tint). All
+        # eight SVGs carry the IDENTICAL components layer (same generator call,
+        # tint-only difference), so auditing the ratchet_rest SVG guards the
+        # family's anchor/bind contract; the other seven differ only in tint
+        # colours (no geometry, no anchors).
+        "widget": ["src/StraitsSubgatePanel.cpp"],
+        "panel": "res/panels/StraitsSubgatePanel_ratchet_rest_dark.svg",
+        "counts": {
+            "param_sgv_": 16,       # 16 voices x ONE decision (the lane bank)
+            "light_connect": 1,
+        },
+    },
+    "straits_qmix_oct_panel": {
+        # StraitsQmixOctPanel (QMIX_OCTAVE Stage 3, CC_PROMPT_QMIX_OCTAVE): the
+        # qmix-octave per-voice panel — the subgate build reused (ONE panel; the
+        # qmix violet family hue, no lightness stepping; the SAME tint-neutral
+        # param_sgv_ anchor family, one binding idiom). 17 anchors = 16 per-voice
+        # knobs (param_sgv_0..15, col-major v0=mono) + the connect mark. NO mod
+        # jack (modulation is Causeway — the subgate panels' law carried over).
+        "widget": ["src/StraitsQmixOctPanel.cpp"],
+        "panel": "res/panels/StraitsQmixOctPanel_dark.svg",
+        "counts": {
+            "param_sgv_": 16,       # 16 voices x ONE threshold (the octave axis)
+            "light_connect": 1,
         },
     },
     # NOTE: intertropical is bind-by-name (param_%d / output_%d via rack::string::f, light_connect via
@@ -151,10 +307,11 @@ def read_anchors(svg_path):
 #   bindParam/Input/Output/Light/LightParam/Widget/Child/StoreKnob → 1st str = name
 #   bindParams/Inputs/Outputs/Lights/ParamsN/InputsN/OutputsN      → 1st str = prefix
 # bindStoreKnob's 1st arg is `this`, its FIRST STRING arg is the shape name — the
-# "first string token" rule handles that uniformly.
+# "first string token" rule handles that uniformly. bindStoreThemedKnob (the
+# dark/light artwork pair variant) follows the same shape.
 # Capture the bind METHOD NAME so we can tell single-name binders from prefix ones.
 _BIND_SITE_RE = re.compile(
-    r'\b(bind(?:Param|Input|Output|Light|LightParam|Widget|Child|StoreKnob'
+    r'\b(bind(?:Param|Input|Output|Light|LightParam|Widget|Child|StoreKnob|StoreThemedKnob'
     r'|Params|Inputs|Outputs|Lights|ParamsN|InputsN|OutputsN))\s*'
     # Template args, allowing ONE level of nesting (e.g. bindLight<SmallLight<GreenLight>>).
     # The old <[^>]*> stopped at the first '>' and silently missed nested-template binds, so a

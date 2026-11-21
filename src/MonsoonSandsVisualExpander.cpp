@@ -10,14 +10,14 @@
 //  WHY THIS STUB STILL EXISTS
 //  -------------------------
 //  The module is still *detected* by topology / expander-manager code:
-//    • MonsoonExpanderManager  — `curr->model == modelMonsoonSandsVisualExpander`
+//    • MonsoonExpanderManager  — curr->model == modelMonsoonSandsVisualExpander
 //      populates cachedSandsVisualExpander.
-//    • MonsoonDiscovery         — `m == modelMonsoonSandsVisualExpander`.
+//    • MonsoonDiscovery         — m == modelMonsoonSandsVisualExpander.
 //    • MonsoonSandsManager / StraitsEast / StraitsSandsMacroVisual — read
 //      cachedSandsVisualExpander and the SandsMonoVisualIds namespace.
 //  Per the consolidation plan those checks are left in place as inert no-ops:
 //  modelMonsoonSandsVisualExpander is nullptr (never matched), so
-//  cachedSandsVisualExpander is never populated and every `!= nullptr` guard
+//  cachedSandsVisualExpander is never populated and every != nullptr guard
 //  short-circuits. No dependency breaks.
 //
 //  The header MonsoonSandsVisualExpander.hpp stays in src/ because it owns the

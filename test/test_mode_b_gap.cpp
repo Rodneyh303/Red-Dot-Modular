@@ -30,6 +30,7 @@
 #include <string>
 
 #include "engines/SequencerEngine.hpp"
+#include "VoiceResolver.hpp"   // CC_PROMPT_STRONG_TYPES: VoiceSlot minting
 
 #define SUITE(n) std::cout << "\n\033[1;34m[" << (n) << "]\033[0m\n"
 #define TEST(desc, ...) do { try { __VA_ARGS__; \
@@ -55,8 +56,13 @@ static PatternInput makeInput() {
 
 // Drive one Gate 1 RISE through the real engine. gate1High=true models the gate high at the edge.
 static StepResult rise(SequencerEngine& eng, float restProb, float legatoProb, float noteVal) {
-    const PatternInput in = makeInput();
-    return eng.executeModeB(/*gate1Rise=*/true, /*gate1High=*/true, restProb, legatoProb, noteVal, in);
+    PatternInput in = makeInput();
+    eng.voices[dotModular::VoiceResolver::slot(0 + 1)].restProb      = restProb;
+    eng.voices[dotModular::VoiceResolver::slot(0 + 1)].legatoProb    = legatoProb;
+    eng.voices[dotModular::VoiceResolver::slot(0 + 1)].accentProb    = 0.25f;     // default (PatternInput::accentProb deleted)
+    eng.voices[dotModular::VoiceResolver::slot(0 + 1)].qmixLevel     = 0.f;       // default (PatternInput::qmixLevel deleted)
+    eng.voices[dotModular::VoiceResolver::slot(0 + 1)].variationProb = in.variationAmount;
+    return eng.executeModeB(/*gate1Rise=*/true, /*gate1High=*/true, noteVal, in);
 }
 
 // Model the module-layer IMPL 2b bridge state during a gap, per tieAcrossRests.
@@ -82,16 +88,16 @@ int main() {
     SUITE("overlap ties (both modes)");
     TEST("tieAcrossRests=OFF (sample-accurate): overlap -> Tie/Legato", {
         SequencerEngine eng; eng.numPolyVoices = 0; eng.tieAcrossRests = false;
-        rise(eng, 0.f, 1.0f, 4.f);               // A commits slurForward
+        rise(eng, 0.f, 1.0f, 7.f);               // A commits slurForward
         overlap(eng);
-        StepResult b = rise(eng, 0.f, 0.5f, 4.f);
+        StepResult b = rise(eng, 0.f, 0.5f, 7.f);
         EXPECT(b.decision == D::Tie || b.decision == D::Legato);
     });
     TEST("tieAcrossRests=ON (bridge): overlap -> Tie/Legato", {
         SequencerEngine eng; eng.numPolyVoices = 0; eng.tieAcrossRests = true;
-        rise(eng, 0.f, 1.0f, 4.f);
+        rise(eng, 0.f, 1.0f, 7.f);
         overlap(eng);
-        StepResult b = rise(eng, 0.f, 0.5f, 4.f);
+        StepResult b = rise(eng, 0.f, 0.5f, 7.f);
         EXPECT(b.decision == D::Tie || b.decision == D::Legato);
     });
 
@@ -99,16 +105,16 @@ int main() {
     SUITE("<=1-sample gap ties (both modes)");
     TEST("tieAcrossRests=OFF: <=1-sample gap -> Tie/Legato", {
         SequencerEngine eng; eng.numPolyVoices = 0; eng.tieAcrossRests = false;
-        rise(eng, 0.f, 1.0f, 4.f);
+        rise(eng, 0.f, 1.0f, 7.f);
         gap(eng, /*oneSampleGap=*/true);          // 1-sample hold keeps gateHeld true
-        StepResult b = rise(eng, 0.f, 0.5f, 4.f);
+        StepResult b = rise(eng, 0.f, 0.5f, 7.f);
         EXPECT(b.decision == D::Tie || b.decision == D::Legato);
     });
     TEST("tieAcrossRests=ON: <=1-sample gap -> Tie/Legato", {
         SequencerEngine eng; eng.numPolyVoices = 0; eng.tieAcrossRests = true;
-        rise(eng, 0.f, 1.0f, 4.f);
+        rise(eng, 0.f, 1.0f, 7.f);
         gap(eng, /*oneSampleGap=*/true);
-        StepResult b = rise(eng, 0.f, 0.5f, 4.f);
+        StepResult b = rise(eng, 0.f, 0.5f, 7.f);
         EXPECT(b.decision == D::Tie || b.decision == D::Legato);
     });
 
@@ -116,9 +122,9 @@ int main() {
     SUITE("long gap: fresh when OFF, tie when ON");
     TEST("tieAcrossRests=OFF: long gap -> NewNote (sample-accurate; no tie across a gap)", {
         SequencerEngine eng; eng.numPolyVoices = 0; eng.tieAcrossRests = false;
-        rise(eng, 0.f, 1.0f, 4.f);               // A commits slurForward
+        rise(eng, 0.f, 1.0f, 7.f);               // A commits slurForward
         gap(eng, /*oneSampleGap=*/false);         // >=2-sample gap drops the gate
-        StepResult b = rise(eng, 0.f, 0.5f, 4.f);
+        StepResult b = rise(eng, 0.f, 0.5f, 7.f);
         EXPECT(b.decision == D::NewNote);         // wasHeld false -> fresh
     });
     TEST("tieAcrossRests=ON: long gap + non-rest arrival -> Tie (bridge; predecessor committed)", {
@@ -126,9 +132,9 @@ int main() {
         // legato roll governs tying OUT only. NO self-bound / no timer: a committed slur ties into
         // the next gate regardless of gap length; the only brake is a rest (next test).
         SequencerEngine eng; eng.numPolyVoices = 0; eng.tieAcrossRests = true;
-        rise(eng, 0.f, 1.0f, 4.f);               // A commits slurForward
+        rise(eng, 0.f, 1.0f, 7.f);               // A commits slurForward
         gap(eng, /*oneSampleGap=*/false);         // bridge keeps gateHeld = slurForward (true)
-        StepResult b = rise(eng, 0.f, 0.5f, 4.f); // non-rest arrival (restProb=0)
+        StepResult b = rise(eng, 0.f, 0.5f, 7.f); // non-rest arrival (restProb=0)
         EXPECT(b.decision == D::Tie || b.decision == D::Legato);  // tied IN from the predecessor
     });
 
@@ -136,16 +142,16 @@ int main() {
     SUITE("long gap + rested arrival ends the chain (both modes)");
     TEST("tieAcrossRests=OFF: long gap + rested arrival -> Rest (chain ends)", {
         SequencerEngine eng; eng.numPolyVoices = 0; eng.tieAcrossRests = false;
-        rise(eng, 0.f, 1.0f, 4.f);
+        rise(eng, 0.f, 1.0f, 7.f);
         gap(eng, /*oneSampleGap=*/false);
-        StepResult b = rise(eng, /*restProb=*/1.0f, 0.5f, 4.f);  // force a generated rest
+        StepResult b = rise(eng, /*restProb=*/1.0f, 0.5f, 7.f);  // force a generated rest
         EXPECT(b.decision == D::Rest);
     });
     TEST("tieAcrossRests=ON: long gap + rested arrival -> Rest (chain ends; rest is the only brake)", {
         SequencerEngine eng; eng.numPolyVoices = 0; eng.tieAcrossRests = true;
-        rise(eng, 0.f, 1.0f, 4.f);
+        rise(eng, 0.f, 1.0f, 7.f);
         gap(eng, /*oneSampleGap=*/false);         // bridge up, but...
-        StepResult b = rise(eng, /*restProb=*/1.0f, 0.5f, 4.f);  // ...the arriving note rests -> chain ends
+        StepResult b = rise(eng, /*restProb=*/1.0f, 0.5f, 7.f);  // ...the arriving note rests -> chain ends
         EXPECT(b.decision == D::Rest);
     });
 
@@ -153,21 +159,21 @@ int main() {
     SUITE("ON: arriving note redraws tying OUT (not IN)");
     TEST("ON: tied-in note that does NOT commit -> chain ends WITH this gate (it still tied in)", {
         SequencerEngine eng; eng.numPolyVoices = 0; eng.tieAcrossRests = true;
-        rise(eng, 0.f, 1.0f, 4.f);               // A commits
+        rise(eng, 0.f, 1.0f, 7.f);               // A commits
         gap(eng, false);
-        StepResult b = rise(eng, 0.f, /*legato=*/0.0f, 4.f);  // B ties IN (prevSlur), redraws OUT: legato=0 -> no commit
+        StepResult b = rise(eng, 0.f, /*legato=*/0.0f, 7.f);  // B ties IN (prevSlur), redraws OUT: legato=0 -> no commit
         EXPECT(b.decision == D::Tie || b.decision == D::Legato);   // tied in
         gap(eng, false);
-        StepResult c = rise(eng, 0.f, 0.5f, 4.f);              // B did not commit -> C fresh
+        StepResult c = rise(eng, 0.f, 0.5f, 7.f);              // B did not commit -> C fresh
         EXPECT(c.decision == D::NewNote);
     });
     TEST("ON: tied-in note that DOES commit -> chain continues (C ties in to B)", {
         SequencerEngine eng; eng.numPolyVoices = 0; eng.tieAcrossRests = true;
-        rise(eng, 0.f, 1.0f, 4.f);               // A commits
+        rise(eng, 0.f, 1.0f, 7.f);               // A commits
         gap(eng, false);
-        rise(eng, 0.f, /*legato=*/1.0f, 4.f);    // B ties IN (prevSlur) and commits OUT (legato=1.0)
+        rise(eng, 0.f, /*legato=*/1.0f, 7.f);    // B ties IN (prevSlur) and commits OUT (legato=1.0)
         gap(eng, false);
-        StepResult c = rise(eng, 0.f, 0.5f, 4.f);              // B committed -> C ties in
+        StepResult c = rise(eng, 0.f, 0.5f, 7.f);              // B committed -> C ties in
         EXPECT(c.decision == D::Tie || c.decision == D::Legato);
     });
 
@@ -180,9 +186,9 @@ int main() {
         SequencerEngine eng; eng.numPolyVoices = 0;
         eng.generatedRestBeatsLegato = false;    // slur wins over a generated rest
         eng.tieAcrossRests          = false;     // (arbitrary; no gap here)
-        rise(eng, 0.f, 1.0f, 4.f);               // A commits slurForward
+        rise(eng, 0.f, 1.0f, 7.f);               // A commits slurForward
         overlap(eng);                            // overlap -> wasHeld true
-        StepResult b = rise(eng, /*restProb=*/1.0f, 0.5f, 4.f);  // generated rest, but slur suppresses it
+        StepResult b = rise(eng, /*restProb=*/1.0f, 0.5f, 7.f);  // generated rest, but slur suppresses it
         EXPECT(b.decision == D::Legato || b.decision == D::Tie); // slur wins, not Rest
     });
     TEST("tieAcrossRests governs the GAP only (generated-rest toggle leaves it alone)", {
@@ -193,57 +199,120 @@ int main() {
             SequencerEngine eng; eng.numPolyVoices = 0;
             eng.generatedRestBeatsLegato = true;  // default — would break a generated rest, but there is none
             eng.tieAcrossRests          = gapMode;
-            rise(eng, 0.f, 1.0f, 4.f);
+            rise(eng, 0.f, 1.0f, 7.f);
             gap(eng, /*oneSampleGap=*/false);     // long gap
-            StepResult b = rise(eng, 0.f, 0.5f, 4.f);  // non-rest arrival
+            StepResult b = rise(eng, 0.f, 0.5f, 7.f);  // non-rest arrival
             if (gapMode) EXPECT(b.decision == D::Tie || b.decision == D::Legato);  // ON -> tie
             else         EXPECT(b.decision == D::NewNote);                        // OFF -> fresh
         }
     });
 
-    // ── advanceOnTieIntoRest checkpoint (§345) ─────────────────────────────────────────────
-    // On a fall with a pending slur, advance one step into the incoming-rest and re-draw legato
-    // there. The slur SURVIVES iff the legato draw at that step passes; else the chain ENDS. The
-    // next rise then plays that step WITHOUT a second advance (pendingCheckpointArrival).
+    // ── advanceOnTieIntoRest checkpoint (§345) — PROBABILISTIC (option 2,
+    // CC_PROMPT_TIE_INTO_REST_PROBABILISTIC_ADVANCE) ───────────────────────────
+    // On a fall with a pending slur, the fall-advance is decided by the SAME
+    // mechanism as the rise step-advance: the INCOMING-REST step's r_vary vs the
+    // resolved bipolar Variation — {BACKWARD, HOLD, FORWARD}. The flag is the
+    // ENABLE (OFF = the module layer never calls here). When advanced, the slur
+    // SURVIVES iff the legato draw at the landed step passes; else the chain ENDS.
+    // The next rise then plays that step WITHOUT a second advance
+    // (pendingCheckpointArrival, direction-agnostic). HOLD sets NO arrival.
     SUITE("advanceOnTieIntoRest checkpoint");
-    TEST("checkpoint with legato=1.0 -> slur survives the rest (slurForward stays true)", {
+    TEST("IDENTITY: at Variation=1 the fall always forward-advances; legato=1.0 -> slur survives", {
+        // The option-2 golden pin (the decideStepAdvance_ p=1 discipline): p=1
+        // crosses every r_vary -> FORWARD always -> byte-identical to the old
+        // deterministic always-advance.
         SequencerEngine eng; eng.numPolyVoices = 0;
         eng.tieAcrossRests = true; eng.advanceOnTieIntoRest = true;
-        rise(eng, 0.f, 1.0f, 4.f);               // A commits slurForward (legato=1.0)
+        rise(eng, 0.f, 1.0f, 7.f);               // A commits slurForward (legato=1.0)
         EXPECT(eng.gs.slurForward == true);
-        eng.legatoCheckpointOnFall(/*legatoProb=*/1.0f);   // the fall checkpoint
+        eng.voices[dotModular::VoiceResolver::slot(0 + 1)].variationProb = 1.0f;   // p=1: always advance
+        eng.legatoCheckpointOnFall();   // the fall checkpoint (voices[0].legatoProb=1.0 from the rise)
         EXPECT(eng.gs.slurForward == true);      // survived (legato=1.0 forces it)
-        EXPECT(eng.pendingCheckpointArrival == true);
+        EXPECT(eng.pendingCheckpointArrivalV_[0] == true);
         // The next rise plays the already-stepped-to step (no 2nd advance) and ties in.
-        StepResult b = rise(eng, 0.f, 0.5f, 4.f);
-        EXPECT(eng.pendingCheckpointArrival == false);      // consumed
+        StepResult b = rise(eng, 0.f, 0.5f, 7.f);
+        EXPECT(eng.pendingCheckpointArrivalV_[0] == false);      // consumed
         EXPECT(b.decision == D::Tie || b.decision == D::Legato);
     });
-    TEST("checkpoint with legato=0.0 -> slur ENDS at the rest (slurForward cleared)", {
+    TEST("IDENTITY: at Variation=1 with legato=0.0 -> slur ENDS at the rest (slurForward cleared)", {
         SequencerEngine eng; eng.numPolyVoices = 0;
         eng.tieAcrossRests = true; eng.advanceOnTieIntoRest = true;
-        rise(eng, 0.f, 1.0f, 4.f);               // A commits slurForward
+        rise(eng, 0.f, 1.0f, 7.f);               // A commits slurForward
         EXPECT(eng.gs.slurForward == true);
-        eng.legatoCheckpointOnFall(/*legatoProb=*/0.0f);   // the fall checkpoint; legato=0 -> never survives
+        eng.voices[dotModular::VoiceResolver::slot(0 + 1)].legatoProb = 0.0f;    // simulate legato=0 at the checkpoint step
+        eng.voices[dotModular::VoiceResolver::slot(0 + 1)].variationProb = 1.0f; // p=1: always advance
+        eng.legatoCheckpointOnFall();   // the fall checkpoint; legato=0 -> never survives
         EXPECT(eng.gs.slurForward == false);     // chain ENDED at the rest checkpoint
-        EXPECT(eng.pendingCheckpointArrival == true);
+        EXPECT(eng.pendingCheckpointArrivalV_[0] == true);
         // The next rise plays the already-stepped-to step; no pending slur -> fresh NewNote.
-        StepResult b = rise(eng, 0.f, 0.5f, 4.f);
-        EXPECT(eng.pendingCheckpointArrival == false);
+        StepResult b = rise(eng, 0.f, 0.5f, 7.f);
+        EXPECT(eng.pendingCheckpointArrivalV_[0] == false);
         EXPECT(b.decision == D::NewNote);
     });
-    TEST("checkpoint advances the playhead exactly ONE step (no double-advance on the rise)", {
+    TEST("IDENTITY: at Variation=1 the checkpoint advances the playhead exactly ONE step (no double-advance)", {
         // After the checkpoint advance, the rise must NOT advance again: the step played at the rise
         // is the one the fall advanced to. Compare stepIndex: checkpoint advances to K; rise plays K.
         SequencerEngine eng; eng.numPolyVoices = 0;
         eng.tieAcrossRests = true; eng.advanceOnTieIntoRest = true;
-        rise(eng, 0.f, 1.0f, 4.f);               // plays step 0 (A); stepIndex now 0
-        int beforeFall = eng.stepIndex;
-        eng.legatoCheckpointOnFall(1.0f);        // fall advances one step -> stepIndex 1
-        EXPECT(eng.stepIndex == (beforeFall + 1));
-        int afterCheckpoint = eng.stepIndex;
-        rise(eng, 0.f, 0.5f, 4.f);               // rise: pendingCheckpointArrival -> NO advance
-        EXPECT(eng.stepIndex == afterCheckpoint); // same step (no double-advance)
+        rise(eng, 0.f, 1.0f, 7.f);               // plays step 0 (A); stepIndex now 0
+        eng.voices[dotModular::VoiceResolver::slot(0 + 1)].variationProb = 1.0f;  // p=1: always advance
+        int beforeFall = eng.playedColumn();
+        eng.legatoCheckpointOnFall();        // fall advances one step -> stepIndex 1 (voices[0].legatoProb=1.0 from rise)
+        EXPECT(eng.playedColumn() == (beforeFall + 1));
+        int afterCheckpoint = eng.playedColumn();
+        rise(eng, 0.f, 0.5f, 7.f);               // rise: pendingCheckpointArrival -> NO advance
+        EXPECT(eng.playedColumn() == afterCheckpoint); // same step (no double-advance)
+    });
+    TEST("HOLD: at Variation=0 the fall NEVER advances — the rest passive, the chain carries, NO arrival", {
+        SequencerEngine eng; eng.numPolyVoices = 0;
+        eng.tieAcrossRests = true; eng.advanceOnTieIntoRest = true;
+        rise(eng, 0.f, 1.0f, 7.f);               // A commits slurForward
+        eng.voices[dotModular::VoiceResolver::slot(0 + 1)].variationProb = 0.0f;  // p=0: always HOLD
+        int before = eng.playedColumn();
+        eng.legatoCheckpointOnFall();
+        EXPECT(eng.playedColumn() == before);                 // nothing moved
+        EXPECT(eng.pendingCheckpointArrivalV_[0] == false);   // no advance -> no arrival
+        EXPECT(eng.gs.slurForward == true);              // the chain carried (the passive rest)
+        // The next rise decides its OWN advance normally (no arrival to consume).
+        rise(eng, 0.f, 0.5f, 7.f);
+        EXPECT(eng.pendingCheckpointArrivalV_[0] == false);
+    });
+    TEST("BACKWARD: at Variation=-1 the fall walks the playhead back exactly one (wrap 0 -> 31 — the ring; was 15 at the 16 bound)", {
+        SequencerEngine eng; eng.numPolyVoices = 0;
+        eng.tieAcrossRests = true; eng.advanceOnTieIntoRest = true;
+        rise(eng, 0.f, 1.0f, 7.f);               // A commits slurForward; stepIndex 0
+        eng.voices[dotModular::VoiceResolver::slot(0 + 1)].variationProb = -1.0f; // p=-1: always BACKWARD
+        int before = eng.playedColumn();
+        eng.legatoCheckpointOnFall();
+        // STEPS_32 Stage 2b: the wrap rides the RING (kMaskRing, cap-derived — was a
+        // literal & 0xF; the flip moved the ring 16 -> 32 so the backward wrap from
+        // cell 0 lands on 31, exactly advancePlayhead's reverse traversal).
+        EXPECT(eng.playedColumn() == ((before - 1 + dotModular::kMaskRing) & (dotModular::kMaskRing - 1)));   // exactly -1 (the ring wrap)
+        EXPECT(eng.pendingCheckpointArrivalV_[0] == true);          // direction-agnostic arrival
+    });
+    TEST("MID-RANGE: the fall decides by the INCOMING step's r_vary (seeded 0.3)", {
+        // The whole variation ring seeded to 0.3 (identity warp): u_t = 0.3 at the
+        // incoming-rest step regardless of addressing — deterministic mid-range.
+        // (STEPS_32 2b: the loop rides the RING so "whole ring" stays true at 32.)
+        SequencerEngine eng; eng.numPolyVoices = 0;
+        eng.tieAcrossRests = true; eng.advanceOnTieIntoRest = true;
+        rise(eng, 0.f, 1.0f, 7.f);               // A commits slurForward
+        for (int i = 0; i < dotModular::kMaskRing; ++i) eng.pe.variationRandom[i] = 0.3f;
+        int before = eng.playedColumn();
+        // p=0.5 > 0.3 -> FORWARD: the fall advances into the rest.
+        eng.voices[dotModular::VoiceResolver::slot(0 + 1)].variationProb = 0.5f;
+        eng.legatoCheckpointOnFall();
+        EXPECT(eng.playedColumn() == before + 1);
+        // p=0.2 <= 0.3 -> HOLD: a fresh engine, nothing moves.
+        SequencerEngine eng2; eng2.numPolyVoices = 0;
+        eng2.tieAcrossRests = true; eng2.advanceOnTieIntoRest = true;
+        rise(eng2, 0.f, 1.0f, 7.f);
+        for (int i = 0; i < 16; ++i) eng2.pe.variationRandom[i] = 0.3f;
+        eng2.voices[dotModular::VoiceResolver::slot(0 + 1)].variationProb = 0.2f;
+        int before2 = eng2.playedColumn();
+        eng2.legatoCheckpointOnFall();
+        EXPECT(eng2.playedColumn() == before2);               // HOLD (0.3 >= 0.2)
+        EXPECT(eng2.pendingCheckpointArrivalV_[0] == false);  // passive
     });
 
     // ── Reverse-safety: the gap decision is a pure function of the gate state (no direction) ─
@@ -252,10 +321,10 @@ int main() {
         for (bool gapMode : { true, false }) {
             SequencerEngine f, r; f.numPolyVoices = 0; r.numPolyVoices = 0;
             f.tieAcrossRests = gapMode; r.tieAcrossRests = gapMode;
-            rise(f, 0.f, 1.0f, 4.f);  rise(r, 0.f, 1.0f, 4.f);           // A
+            rise(f, 0.f, 1.0f, 7.f);  rise(r, 0.f, 1.0f, 7.f);           // A
             gap(f, false); gap(r, false);                                 // same long gap
-            StepResult fb = rise(f, 0.f, 0.5f, 4.f);
-            StepResult rb = rise(r, 0.f, 0.5f, 4.f);
+            StepResult fb = rise(f, 0.f, 0.5f, 7.f);
+            StepResult rb = rise(r, 0.f, 0.5f, 7.f);
             EXPECT(fb.decision == rb.decision);                          // identical -> direction-agnostic
         }
     });

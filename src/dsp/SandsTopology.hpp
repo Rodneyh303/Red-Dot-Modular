@@ -55,9 +55,46 @@ struct SandsTopology {
 
         // Ownership params. EDITOR-lane indexed, 7 lanes (MEL/OCT/QMIX/REST/ACC/VAR/LEG).
         //   eastV1Owner[l]      : East's   ownerDispId(l)  > 0.5  (true = East local-owns)
-        //   eastPolyOwner[v][l] : East's   ownerId(v,l)    > 0.5  (true = East local-owns; v = poly index 0..14)
+        //   eastPolyOwner[v][l] : East's   ownerId(v,l)    > 0.5  (true = East local-owns; v = voiceSlot, [0]=V1 unused)
         bool eastV1Owner[7]      = { true, true, true, true, true, true, true };
-        bool eastPolyOwner[15][7] = {};   // default false → Macro-owned until set; caller fills when East present
+        bool eastPolyOwner[16][7] = {};   // default false → Macro-owned until set; caller fills when East present
+
+        // ── fillOwners — THE one store→Inputs ownership fill (CC_PROMPT_07) ─────────
+        // Root cause it kills: MonsoonSandsManager::processDNA built its topology from
+        // fillPresence ONLY (presence flags), so owner() answered these rows at their
+        // STRUCT DEFAULTS — eastV1Owner all-true (V1 never delegated) and eastPolyOwner
+        // all-false (EVERY poly (voice,lane) Macro-owned). warpDelegated_ followed, and
+        // Macro's global curve reached every V2+ cell regardless of the OwnerCells while
+        // East's own-slot warp was bypassed (the Macro→East leak + V1-vs-V2+ asymmetry).
+        // This is the ONE implementation both managers call; the STEP 5b hand-roll in
+        // MonsoonExpanderManager migrated onto it so the two topologies can never drift.
+        //   ownerIsEast(voiceSlot, editorLane) — the store read (Monsoon::ownerIsEast(v,l),
+        //   the boolean eastOwns store — no threshold since the boolean-model migration),
+        //   voiceSlot convention (VoiceResolver): 0 = V1, 1..15 = V2..V16.
+        //   eastPresent=false ⇒ rows stay defaulted (V1 local / poly Macro-when-Macro-
+        //   present — the MACRO_SOLE semantics; nothing to fill from).
+        template <typename Pred>
+        void fillOwners(bool eastPresent, Pred&& ownerIsEast) {
+            if (!eastPresent) return;
+            for (int l = 0; l < 7; ++l) {
+                eastV1Owner[l] = ownerIsEast(0, l);
+                for (int v = 1; v < 16; ++v)
+                    eastPolyOwner[v][l] = ownerIsEast(v, l);
+            }
+        }
+
+        // Layer-2 home of the store→topo fill (ZAI_PROMPT_delegation_decision.md): the ONE
+        // derivation every consumer uses. Plain-data in — the 112-bool eastOwns store, no
+        // Monsoon — so the rig can pin the whole owner-flip matrix (test_ownership_flip).
+        // BOOLEAN MODEL (Rodney, 2026-10-22): the store IS the boolean. The old
+        // `> 0.5f` threshold existed only because the store was float — it is GONE; this
+        // is now pure boolean algebra. !macroPresent keeps the no-Macro short-circuit
+        // (rule case 1: nothing to delegate to ⇒ East owns every cell, store unread).
+        void fillOwnersFromStore(const bool* eastOwns112, bool eastPresent, bool macroPresent) {
+            fillOwners(eastPresent, [eastOwns112, macroPresent](int v, int l) {
+                return !macroPresent || eastOwns112[v * 7 + l];
+            });
+        }
     };
 
     Config config = Config::EMPTY;
@@ -98,11 +135,11 @@ struct SandsTopology {
             return Role::NONE;
         }
 
-        // Poly voices (voice >= 1). (VAR/LEG are poly now; the old `>= kPolyLanes → NONE` is dead.)
+        // Poly voices (voice >= 1, voiceSlot). eastPolyOwner is voiceSlot-indexed
+        // ([0]=V1 unused, [1]=V2, ..., [15]=V16) — matches the writer.
         if (in.eastPresent) {
-            const int pv = voice - 1;   // poly index 0..14
-            if (pv < 0 || pv >= 15) return Role::NONE;
-            if (in.macroPresent && !in.eastPolyOwner[pv][editorLane]) return Role::MACRO;
+            if (voice < 1 || voice >= 16) return Role::NONE;
+            if (in.macroPresent && !in.eastPolyOwner[voice][editorLane]) return Role::MACRO;
             return Role::EAST;
         }
         if (in.macroPresent) return Role::MACRO;   // Macro drives all poly voices when sole poly editor

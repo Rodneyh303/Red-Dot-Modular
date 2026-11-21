@@ -4,6 +4,7 @@
 #include "ui/RedScrew.hpp"
 #include "ui/ConnectMark.hpp"
 #include "ui/VisualExpanderHelpers.hpp"
+#include "ui/ModuleLookup.hpp"   // THE lookup authority: lookupMonsoon (CC_PROMPT_MODULE_LOOKUP_AUTHORITY_START)
 #include "gen/RafflesLayout.gen.hpp"
 #include "ui/SvgPanelKit.hpp"
 
@@ -68,7 +69,7 @@ struct MonsoonRafflesExpanderWidget : ModuleWidget,
         ModuleWidget::step();
         kitStep();
         if (!module) return;
-        Monsoon* m = redDot::findMonsoonEitherSide(module);
+        Monsoon* m = redDot::lookupMonsoon(module);
         int wantLight = (m && m->lightTheme) ? 1 : 0;
         if (wantLight != lastThemeLight) {
             lastThemeLight = wantLight;
