@@ -109,6 +109,13 @@ struct LanternRecordCore {
     };
     std::array<std::array<std::array<Cell, BAR_STEPS>, N_VOICES>, N_BARS> cells;
 
+    // POST-MASK view (default): a step the OUTPUT MASK mutes (the painted overlay / absolute-1 sound region —
+    // outputMaskPasses, applied in MonsoonOutputGenerator) records as Inactive, so Lantern agrees with the scope.
+    // false = the PRE-mask (composing) view: what the voices generate before the output gate. The mask is an
+    // output-stage mute only — generation and the gate state machines run untouched — so the pre view is the
+    // engine's own gate state, exactly the old behaviour.
+    bool postMask = true;
+
     // Bookkeeping. lastObservedStep / lastWriteStepObs are ABSOLUTE pattern steps
     // (0..kMaskRing-1) — the lap is the PHRASE (the ring), not the bar: the bar
     // boundary 15→16 is mid-lap travel (a bar crossing, the view follows the
@@ -206,9 +213,14 @@ struct LanternRecordCore {
     // source modes; only the row<->voice pairing differs. Writes cells[e.writeBar][row][e.writeCol].
     void recordGlobalVoice(const SequencerEngine& eng, const StepEdge& e, int row, int g) {
         if (row < 0 || row >= N_VOICES) return;
+        // The mask step is the GLOBAL playhead step (the same index MonsoonOutputGenerator feeds outputMaskPasses);
+        // the edge's write slot IS that absolute step.
+        const int maskStep = e.writeBar * BAR_STEPS + e.writeCol;
         if (g == 0) {
             recordCell(row, e, eng.gs, e.dec, e.accentedMono, e.lenSteps, e.monoSlur, e.monoSlur,
                        eng.lastPlayDir, e.lapArrival);
+            if (postMask && !eng.outputMaskPasses(dotModular::VoiceResolver::mono(), maskStep))
+                cells[e.writeBar][row][e.writeCol].type = lantern::NoteType::Inactive;
         } else {
             const int pv_i = g - 1;
             if (pv_i < 0 || pv_i >= eng.numPolyVoices || pv_i >= 15) {
@@ -224,6 +236,8 @@ struct LanternRecordCore {
             const bool voiceSlur = pv.gs.slurForward;   // SANDS CONSOLIDATION Step 5: per-voice slur (flag removed)
             recordCell(row, e, pv.gs, e.dec, pv.accented, e.lenSteps, voiceSlur, e.monoSlur,
                        eng.lastPlayDir, e.lapArrival);
+            if (postMask && !eng.outputMaskPasses(dotModular::VoiceResolver::slot(pv_i + 2), maskStep))
+                cells[e.writeBar][row][e.writeCol].type = lantern::NoteType::Inactive;
         }
     }
 
