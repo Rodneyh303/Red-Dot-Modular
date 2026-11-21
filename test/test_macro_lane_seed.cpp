@@ -74,7 +74,7 @@ int main() {
             eng.advancePlayhead(1, nullptr);
             const int T = t + 1;
             int vt, vs; eng.macroLaneDisplay(MEL, vt, vs);
-            ok = ok && vt == (((T - 1) % 10) + 2) % 7;
+            ok = ok && vt == (T - 1) % 7;   // RULED 2026-11-21: short lane free-runs inside a mapped global
         }
         check(ok, "1b: mapped global 10@2 + identity row — the IDENTITY arm seeds the bounded "
                   "GLOBAL walk, folded by the lane's own length (((T-1)%10 + 2) mod 7 — the "

@@ -11,11 +11,13 @@
 //   (5) REVERSE retraces the same joint states exactly (the polymeter is reversible).
 // Several (La, Lb) pairs are swept so the claim is the general law, not one example.
 //
-// OBSERVATION (2026-11-21, measured, NOT asserted — needs Rodney's call): at G = 16 and G = 32 the lanes
-// FREE-RUN across the global boundary (tick = t mod L, realign at lcm). At other G (8, 10, 12, 15, 24 probed)
-// the lane ticks RESTART at 0 at every global boundary, so the lanes realign at the global loop edge instead.
-// Both are coherent polymeter, but "free-run" vs "restart at the global edge" depending on G is worth
-// confirming as intended before the claim is worded as 'drifting and realigning over the global loop'.
+// RULED 2026-11-21 (Rodney): lanes FREE-RUN against the global at EVERY global length/offset (the polymeter
+// law of CC_PROMPT_16_TRIAGE bucket 1 / CC_PROMPT_MACRO_RESOLVER_AND_IDENTITY (ii): "a len-7 lane reads (t-1)%7,
+// NOT ((t-1)%G)%7 — the G-walk fold realigns every G and DESTROYS the polymeter"). The old pass-through arm was
+// scoped to the default window (16/0, 32/0) only to keep the default goldens, so at G = 8, 10, 12, 15, 24 or any
+// offset the lanes restarted at every global edge — an unexamined carve-out, now removed for LANE ticks (the
+// voice-row read and the playhead still follow the global window). The sweep below covers non-default G and
+// non-zero offsets; before the fix every one of those cases FAILED (reproduce-first).
 #include <cstdio>
 #include <set>
 #include <utility>
@@ -29,13 +31,13 @@ static int g_fail = 0, g_cases = 0;
 
 static int gcd(int a, int b) { return b ? gcd(b, a % b) : a; }
 
-static void run(int G, int La, int Lb) {
+static void run(int G, int La, int Lb, int offG = 0) {
     SequencerEngine e; e.reset(); e.numPolyVoices = 2;
     const auto v = VoiceResolver::slot(2);
     const int A = SequencerEngine::PL_MELODY, B = SequencerEngine::PL_REST;
     e.polyLenERef(v, LaneId{A}) = La;
     e.polyLenERef(v, LaneId{B}) = Lb;
-    e.updateWindow((float)G, 0.f, false, 0.f, 0.f, false);
+    e.updateWindow((float)G, 0.f, false, (float)offG, 0.f, false);
     const int lcm = La / gcd(La, Lb) * Lb;
     const int N = 3 * lcm;
     std::vector<std::pair<int,int>> joint;
@@ -50,8 +52,8 @@ static void run(int G, int La, int Lb) {
         CHECK(ta == t % La, msg);
         std::snprintf(msg, sizeof msg, "G=%d La=%d Lb=%d t=%d: lane B tick %d != t mod Lb %d", G, La, Lb, t, tb, t % Lb);
         CHECK(tb == t % Lb, msg);
-        std::snprintf(msg, sizeof msg, "G=%d La=%d Lb=%d t=%d: global column %d != t mod G %d", G, La, Lb, t, e.pos_.playedColumn(), t % G);
-        CHECK(e.pos_.playedColumn() == t % G, msg);
+        std::snprintf(msg, sizeof msg, "G=%d@%d La=%d Lb=%d t=%d: global column %d != off + t mod G %d", G, offG, La, Lb, t, e.pos_.playedColumn(), (offG + t % G) % 32);
+        CHECK(e.pos_.playedColumn() == (offG + t % G) % 32, msg);
         if (t < lcm) {
             std::snprintf(msg, sizeof msg, "G=%d La=%d Lb=%d t=%d: joint state repeated before the lcm", G, La, Lb, t);
             CHECK(seen.insert({ta, tb}).second, msg);
@@ -76,6 +78,9 @@ int main() {
     run(16, 7, 5);                         // the literal claim example
     run(16, 3, 4); run(16, 6, 9); run(16, 5, 8); run(16, 7, 7); run(16, 16, 15);
     run(32, 7, 5); run(32, 9, 6);          // the 32-step ring behaves the same
+    // RULED: free-run at EVERY global length and offset
+    run(8, 7, 5); run(10, 7, 5); run(12, 5, 7); run(15, 4, 6); run(24, 7, 5);
+    run(10, 7, 5, 2); run(8, 3, 5, 4); run(12, 5, 7, 5); run(16, 7, 5, 3);
     if (g_fail) { std::printf("test_polymeter_realignment: %d FAILED\n", g_fail); return 1; }
     std::printf("test_polymeter_realignment: all %d (La,Lb) cases passed — lanes tick t mod L, realign at lcm, reverse retraces\n", g_cases);
     return 0;

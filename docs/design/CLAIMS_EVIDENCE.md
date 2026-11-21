@@ -94,9 +94,17 @@ already has.
    (`test_reverse_rotation_anchor` gate 3 and `test_unified_addressing` STAGE2), re-aimed to retrace.
    **Needs a Rack feel-test**: forward, flip to reverse mid-phrase with a rotated/windowed voice — the content should
    replay backwards rather than re-landing on R at the right edge.
-2. **Polymeter at the global edge.** At global length 16 and 32 the lanes free-run across the global boundary
-   (realign at lcm). At G = 8, 10, 12, 15, 24 they restart at 0 at every global boundary. Both are coherent, but
-   the wording "drifting and realigning over the global loop" should match the intended behaviour at every G.
+2. **Polymeter at the global edge — RESOLVED 2026-11-21 (Rodney: free-run everywhere).** Lanes used to restart at 0
+   at every global boundary for G other than 16/32 (G = 8, 10, 12, 15, 24, or any offset): an unexamined carve-out
+   (the docs' own free-run law, CC_PROMPT_16_TRIAGE bucket 1 / STEPS_32_PLAN D7, was scoped to the default length only
+   to keep the default goldens). **UAS rule:** a lane's DEFAULT is the global length with rotation 0, so an untouched
+   lane (length >= G) walks exactly the G-cell window; a lane SHORTER than G is a polymeter and free-runs `t mod L`
+   against the global at every G and offset, realigning at the lcm. The voice-row read and the playhead still follow
+   the global window. `test_polymeter_realignment` now sweeps G = 8/10/12/15/24 and offsets (it failed 1398 checks
+   before the fix). Re-aimed pins: `test_16_triage` GATE 6, `test_macro_lane_seed` 1b, `test_position_holders`
+   WARM-PHASE, `test_unified_addressing` len-6 RULE; goldens re-recorded for the three non-default-window marches
+   (E1_A_painted_window, E3_BS_subgates, W1_A_wrapping_window). Open UAS question: a lane LONGER than G currently
+   walks the window (it cannot out-run it).
 
 ## G. Suggested order of work
 

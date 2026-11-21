@@ -1198,8 +1198,12 @@ SequencerEngine::LaneSeed SequencerEngine::laneSeed(LaneWin win, int l, int v, b
     // non-pass arm was the raw global walk (wG+offG) with no branch at all — the
     // located bug (the lane folding over the global pattern); it now takes the same
     // branch East's lanes always had (the macro frame value, advOff ≡ 0).
+    // RULED 2026-11-21 (Rodney): a lane at its DEFAULT (length >= the global length, rotation 0) IS the
+    // global window — it walks the bounded global walk (so an untouched lane plays exactly the G cells).
+    // A lane SHORTER than the global window is a polymeter and FREE-RUNS (t mod L): folding it by the
+    // bounded walk restarted it at every global edge. Under passG (16/0, 32/0) both arms coincide.
     s.t0 = identity
-        ? (passG ? phase : (int64_t)(wrapMod((int64_t)wG + advOff, lenG) + offG))
+        ? ((passG || s.len < lenG) ? phase : (int64_t)(wrapMod((int64_t)wG + advOff, lenG) + offG))
         : frameValue;
     return s;
 }
@@ -1547,9 +1551,13 @@ void SequencerEngine::macroLaneDisplay(int lane, int& tick, int& sign) const {
     // The seed, derived on demand (the holder arrays were ≡ these values): the raw
     // transport congruence under the walk's period; the identity row passes through
     // (the pass-through global law), the mapped row hangs off the frame authority.
-    const int64_t phase = wrapMod(effTick1based - 1, walkPeriod(dv, len));
+    // The raw congruence is the MAINTAINED lane phase (G-independent). effTick1based is the
+    // global-WRAPPED clock, so deriving the phase from it restarted the lane at every global edge.
+    const int64_t phase = (passG || len >= lenG)
+        ? wrapMod(effTick1based - 1, walkPeriod(dv, len))
+        : (int64_t)lanePhaseV_[rep][lane];
     const int64_t t0 = macroRowIdentity()
-        ? (passG ? phase : (int64_t)(wrapMod((int64_t)wG, lenG) + offG))
+        ? ((passG || len < lenG) ? phase : (int64_t)(wrapMod((int64_t)wG, lenG) + offG))   // RULED 2026-11-21: short lane free-runs
         : macroFrameT0_;
     // The walk law, inlined (laneRecomp is deriveHolders-local; the same expressions):
     // the position = the walk formula at the driver's t0 representative, wrapped by

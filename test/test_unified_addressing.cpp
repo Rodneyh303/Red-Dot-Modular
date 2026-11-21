@@ -501,7 +501,7 @@ int main() {
         for (size_t k = 0; k < reads.size(); ++k) {
             const long T = (long)k + 1;
             const int  walk = (int)(((T - 1) % 10 + 10) % 10);
-            const int  expect = ((walk + 2) % 6 + 3) & 0x0F;
+            (void)walk; const int  expect = (int)((((T - 1) + 2) % 6) + 3) & 0x0F;   // RULED 2026-11-21: a lane shorter than G free-runs (t mod L), no restart at the global edge
             isComposed = isComposed && reads[k] == expect;
         }
         check(isComposed,

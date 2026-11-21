@@ -170,8 +170,8 @@ int main() {
     e.setWindow(10, 4);                            // → mapped
     for (int64_t i = 13; i <= 30; ++i) {
         e.advancePlayhead();
-        const int walk = (int)(((i - 1) % 10 + 10) % 10) + 4;   // the mapped read law
-        exact = exact && (e.laneTick_[dm::STRAND_RHYTHM] == (walk % 7 + 7) % 7);
+        // RULED 2026-11-21: a len-7 lane inside a G=10 window free-runs (no restart at the global edge)
+        exact = exact && (e.laneTick_[dm::STRAND_RHYTHM] == fOf(e, dm::STRAND_RHYTHM, i));
     }
     e.setWindow(16, 0);                            // → back to pass-through
     for (int64_t i = 31; i <= 60; ++i) {
