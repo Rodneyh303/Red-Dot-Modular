@@ -34,6 +34,7 @@
 #include "../VoiceLaneTypes.hpp"   // VoiceSlot/LaneId — strong per-voice/lane indices (typed overloads below)
 #include "../MovingAverageCopula.hpp"   // Phase 1: slew as normal-space moving-average copula (replaces L1 linear-uniform window)
 #include "../../tuning/TuningTable.hpp"   // dotModular::TuningTable — shared per-degree tuning (Sikit)
+#include "RingView.hpp"   // CA5 lane addressing: the wrapping-window storage read (the ring-mask row reads' ONE law)
 
 // CC_PROMPT_03 (warp mirror): the per-voice warp bank. Full definition lives in
 // ../WarpF.hpp — included by PatternEngine.cpp (and tests) only, keeping this header
@@ -634,7 +635,12 @@ struct PatternEngine {
         // pin remap lives upstream in slewed; out-of-range falls back to rhythm (legacy).
         // STRONG types: the mono row, TYPED — kMonoVoiceSlot (VoiceResolver::mono()'s
         // value; the header cannot include VoiceResolver — engine include cycle).
-        return warpRow(dotModular::kMonoVoiceSlot, LaneId{s})[step & (kPatternLengthCap - 1)];   // the frame ring (Stage 2a: cap-derived; 0x0F at the 16 bound)
+        // (CA5 lane addressing) the ring read through the ONE view law — RingView's
+        // mask IS the storage ring (kStepStorage == kPatternLengthCap since Stage 2b;
+        // the static_assert + test_ring_view's routing pin hold the equality), so
+        // this is the same arithmetic incl. negative steps, named. The frame ring
+        // (Stage 2a: cap-derived; 0x0F at the 16 bound).
+        return redDot::RingView<const float>(warpRow(dotModular::kMonoVoiceSlot, LaneId{s}), 0, kStepStorage)[(size_t)step];
     }
 
     // Poly strands: 15 voices, each with Rhythm, Melody, and Octave draws
