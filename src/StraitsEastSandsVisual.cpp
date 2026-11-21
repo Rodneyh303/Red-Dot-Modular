@@ -1731,7 +1731,12 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         //    are never filled with spread-applied probabilities → spread knob
         //    has no visible effect on the mono tab.
         else {
-            saveSlot(currentSlot());
+            // (V1-OVERWRITE FIX, 2026-11-21, from Rodney's [LOR-DIAG] log) NO saveSlot here. This
+            // else is the mono tab's bar fill and ran EVERY frame including the frame of a poly→V1
+            // tab change, BEFORE the v1Editable() branch below has loaded slot 0 into the editor —
+            // so it wrote the last-viewed poly voice's LOR into V1's slot (viewing alone overwrote
+            // V1). V1's editor→store mirror is the v1Editable() branch's, which loads first
+            // (v1Loaded_) and only then saves.
             // CC_PROMPT_UI_TO_RESOLVER_SPEC step 2: the V1 bars read the ONE accessor
             // (Owner lens, explicit voiceSlot 0) — the manager's resolver-resolved V1
             // spread (engine.spread[0][lane], published by sprForLane) + the ONE warp
