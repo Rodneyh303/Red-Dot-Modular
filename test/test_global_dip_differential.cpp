@@ -21,11 +21,8 @@
 // phrase entry); 2b runs the worked example's rig (Local-East mapped L=8
 // frames — the rotation anchor's own law, exercised through the dip).
 //
-// LEG 3 (the abs1 A-table): the ring = the CURRENT GLOBAL PHRASE (the doc's abs1
-// rulings) — the sounding set is a pure function of (step mod G, O, L), rotation
-// moves content and not sound, a declared L >= G sounds the whole phrase with L
-// staying as authored (no cached min), and a global change is immediate
-// (drift-free by construction).
+// (LEG 3, the 2026-11-18 abs1 A-table, is PARKED in test/parked_abs1_content_law.cpp: its content law was
+// superseded by the 2026-11-21 cycle-consistent abs1 ruling.)
 #include <cstdio>
 #include <cstdint>
 #include <cmath>
@@ -204,81 +201,6 @@ static int marchDifferential(bool liveMod, bool mappedRows, int STEPS, int DIP_O
     return firstOffsetDiverge;
 }
 
-// ── LEG 3: the abs1 A-table (the ring = the current global phrase) ────────────
-static void leg3_abs1_table() {
-    std::printf("LEG3: the abs1 A-table (the ring = the current global phrase)\n");
-    char msg[240];
-    const auto v2s = VoiceResolver::slot(2);
-    struct Cfg { int G, O, L, R; bool abs1; const char* tag; };
-    const Cfg cfgs[] = {
-        {8, 2, 4, 0, true,  "A1"},
-        {8, 2, 4, 2, true,  "A2"},
-        {4, 0, 8, 0, true,  "A4"},
-        {8, 0, 4, 0, true,  "A6-abs1"},
-        {8, 0, 4, 0, false, "A6-cycle"},
-    };
-    for (const Cfg& c : cfgs) {
-        SequencerEngine eng; eng.reset();
-        eng.updateWindow((float)c.G, 0.f, false, 0.f, 0.f, false);
-        eng.numPolyVoices = 2;
-        eng.setVoiceLorLocalEast(v2s, true);
-        eng.voiceLorRef(v2s, SequencerEngine::LOR_LEN) = c.L;
-        eng.voiceLorRef(v2s, SequencerEngine::LOR_OFF) = c.O;
-        eng.voiceLorRef(v2s, SequencerEngine::LOR_ROT) = c.R;
-        eng.maskMacroKind_ = c.abs1 ? SequencerEngine::MASK_DYNAMIC : SequencerEngine::MASK_CYCLE;
-        // The declared L stays as authored — no cached min (A4's second point).
-        int dL, dO, dR; SequencerEngine::LaneDir dd;
-        eng.effectiveVoiceLor(v2s.v, dL, dO, dR, dd);
-        std::snprintf(msg, sizeof msg, "%s: the declared L was clamped (%d, want %d) — the extent is a consequence, never a stored min", c.tag, dL, c.L);
-        CHECK(dL == c.L, msg);
-        // One full phrase: the sounding set + the content law, hand-computed.
-        for (int n = 1; n <= c.G; ++n) {
-            eng.advancePlayhead(1, nullptr);
-            const int s = eng.pos_.phrasePos();
-            const bool sound = eng.outputMaskPasses(v2s, s);
-            const bool wantSound = !c.abs1 || (c.L >= c.G) || (((s - c.O) % c.G + c.G) % c.G < c.L);
-            std::snprintf(msg, sizeof msg, "%s: phrase step %d sounds=%d, want %d (G=%d O=%d L=%d)", c.tag, s, (int)sound, (int)wantSound, c.G, c.O, c.L);
-            CHECK(sound == wantSound, msg);
-            // The content (the ABS1 law — the cycle row LOOPS its window instead,
-            // the doc's A6 pair): the frame value at a phrase step s is
-            // (s + R - O) mod G — rotation moves CONTENT, never the sounding set.
-            if (c.abs1) {
-                const int wantContent = (((s + c.R - c.O) % c.G) + c.G) % c.G;
-                const int content = (int)(eng.voiceDriver_[v2s.v] - 1);
-                std::snprintf(msg, sizeof msg, "%s: phrase step %d content %d, want %d (the rho=(R-O) anchor: content at s=O is exactly R)", c.tag, s, content, wantContent);
-                CHECK(content == wantContent, msg);
-            } else {
-                const int wantLoop = (((s + c.R) % c.L) + c.L) % c.L;
-                const int content = (int)(eng.voiceDriver_[v2s.v] - 1);
-                std::snprintf(msg, sizeof msg, "%s: phrase step %d content %d, want %d (the cycle row LOOPS its window: 0,1,2,3,0,1,2,3)", c.tag, s, content, wantLoop);
-                CHECK(content == wantLoop, msg);
-            }
-        }
-    }
-    {   // A7: abs1 O0 L4, G 8->4 — before {0..3} sound / {4..7} silent; after ALL 4, immediately.
-        SequencerEngine eng; eng.reset();
-        eng.updateWindow(8.f, 0.f, false, 0.f, 0.f, false);
-        eng.numPolyVoices = 2;
-        eng.setVoiceLorLocalEast(v2s, true);
-        eng.voiceLorRef(v2s, SequencerEngine::LOR_LEN) = 4;
-        eng.maskMacroKind_ = SequencerEngine::MASK_DYNAMIC;
-        for (int n = 1; n <= 8; ++n) {
-            eng.advancePlayhead(1, nullptr);
-            const int s = eng.pos_.phrasePos();
-            const bool want = s < 4;
-            std::snprintf(msg, sizeof msg, "A7-before: phrase step %d sounds=%d, want %d (G8 O0 L4: 0-3 sound, 4-7 silent)", s, (int)eng.outputMaskPasses(v2s, s), (int)want);
-            CHECK(eng.outputMaskPasses(v2s, s) == want, msg);
-        }
-        eng.updateWindow(4.f, 0.f, false, 0.f, 0.f, false);
-        for (int n = 1; n <= 4; ++n) {
-            eng.advancePlayhead(1, nullptr);
-            const int s = eng.pos_.phrasePos();
-            std::snprintf(msg, sizeof msg, "A7-after: phrase step %d silent after G 8->4 (L=4 >= G=4 — the whole phrase sounds, immediately)", s);
-            CHECK(eng.outputMaskPasses(v2s, s), msg);
-        }
-    }
-}
-
 int main() {
     std::printf("test_global_dip_differential — CC_FIX_GLOBAL_BELOW_VOICE_PHASE_DESYNC (the residue-free guard)\n");
     {   // LEG 1: static — the dip perturbs nothing (the WANDER stays A==B).
@@ -294,7 +216,6 @@ int main() {
         const int d = marchDifferential(/*liveMod=*/true, /*mappedRows=*/true, 52, 16, 26);
         std::printf("LEG2b (live, mapped L=8 rows): the wander first diverged at step %d (legitimate); every commit on the live anchor\n", d);
     }
-    leg3_abs1_table();
     if (g_fail == 0) std::printf("all green\n");
     else std::printf("%d FAILED\n", g_fail);
     return g_fail ? 1 : 0;
