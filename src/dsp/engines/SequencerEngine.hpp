@@ -927,7 +927,19 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
     // step. CYCLE (and the painted overlay, which composes on either base) keeps
     // the confined window walk. Read-side only: the gate, the strip's window and
     // the chevron still read effectiveVoiceLor unchanged.
+    // (RETIRED 2026-11-21 — "[RESOLVED] CYCLE-CONSISTENT ABSOLUTE MODE", UAS doc) the range
+    // base (MASK_DYNAMIC) no longer reads the full phrase: content is ALWAYS the cycle read
+    // (the voice's own L, R window-relative) and the base only MUTES outside [O,O+L) at the
+    // output gate. The switch is kept (false) so the retired full-phrase branches stay
+    // reviewable and revertible until the Rack feel-test passes; a follow-up deletes them.
+    static constexpr bool kRangeBaseReadsFullPhrase = false;
     bool voiceFrameReadsFullPhrase(int v) const {
+        if (!kRangeBaseReadsFullPhrase) return false;
+        if (v < 0 || v >= kVoiceSlots) return false;
+        return (maskLocalEast_[v] ? maskKind_[v] : maskMacroKind_) == MASK_DYNAMIC;
+    }
+    // The range BASE is active for this voice (the output gate mutes outside [O,O+L)).
+    bool voiceBaseIsRange(int v) const {
         if (v < 0 || v >= kVoiceSlots) return false;
         return (maskLocalEast_[v] ? maskKind_[v] : maskMacroKind_) == MASK_DYNAMIC;
     }

@@ -833,6 +833,19 @@ int main() {
         for (int v = 0; v < 15; ++v) { w32.voice[v].steps = &w32.voiceSteps[v]; w16.voice[v].steps = &w16.voiceSteps[v]; }
         MarchCtx c1; buildCombined(c1, 0x5A6E50003ULL, 32, 0);   // the BS seed — the richest executor
         MarchCtx c2; buildCombined(c2, 0x5A6E50003ULL, 16, 0);
+        // (CYCLE-CONSISTENT ABS1, 2026-11-21) V5's claim is the default lanes' cap-arm
+        // pass-through (window-length independent). The MASK_DYNAMIC voice is a deliberately
+        // MAPPED window (22..31) whose read is the cycle read over the global phrase
+        // coordinate — it legitimately depends on the global length, as any mapped cycle
+        // window does (it used to read the full phrase, which hid that). Neutralize that one
+        // voice in BOTH twins so the pass-through claim stays about what it is about.
+        for (MarchCtx* cc : { &c1, &c2 }) {
+            const auto vd = dm::VoiceResolver::slot(kDynVoice);
+            cc->eng.maskKind_[vd.v] = SequencerEngine::MASK_CYCLE;
+            cc->eng.voiceLorRef(vd, SequencerEngine::LOR_LEN) = dm::kPatternLengthCap;
+            cc->eng.voiceLorRef(vd, SequencerEngine::LOR_OFF) = 0;
+            cc->eng.refreshVoiceLorLatches();
+        }
         // THE WALKING LOADOUT: the varied mono variationProb draw (~0.3..0.75) mostly
         // REPEATS — in 96 frames the BS walk never leaves bar 1 and the pair would be
         // trivially identical. The extension claim needs a walk that CROSSES the bar

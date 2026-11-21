@@ -1196,15 +1196,17 @@ int main() {
             bool fullOK = true;
             for (int k = 0; k < dotModular::kMaskRing; ++k) {
                 r.advancePlayhead(+1);
-                // (ABS1 WINDOW EXTENT — Rodney's ruling A, 2026-11-21) abs1 = cycle with the cycling
-                // off: it SOUNDS once as the global step passes [O,O+L) and rotation wraps INSIDE the
-                // window (the region's first step plays cell O+R%L — the anchor law is unchanged).
-                // Outside the window the output gate silences, so the read there is not pinned.
-                // WAS: the read ran the full phrase (k+R) mod RING, past the window on sounding steps.
+                // (CYCLE-CONSISTENT ABS1, Rodney 2026-11-21 — UAS RESOLVED block) abs1 = cycle with the
+                // cycling off: content is the CYCLE read (own L, R window-relative: cell O + (k+R)%L at
+                // global step k) and the range base only MUTES. At every SOUNDING step the read is
+                // cycle's; outside the window the voice is silent and the playhead follows the global
+                // step. WAS: the full-phrase read (k+R) mod RING, then the enter-at-R-at-window-start read.
                 if (r.outputMaskPasses(M, k))
-                    fullOK = fullOK && r.voiceReadPosition(M) == 5 + (((k - 5) + 7) % 8);
+                    fullOK = fullOK && r.voiceReadPosition(M) == 5 + ((k + 7) % 8);
+                else
+                    fullOK = fullOK && r.voiceReadPosition(M) == k;   // silent: the playhead follows the global step
             }
-            check(fullOK, "STAGE4: abs1's SOUNDING read wraps rotation INSIDE the window [O,O+L) — the region's first step plays cell O+R%L (ruling A); the output gates the rest");
+            check(fullOK, "STAGE4: abs1's read is the CYCLE read at sounding steps (cell O+(k+R)%L) and follows the global step when silent — the range base only mutes");
             rk = 0.f;   // cycle: the SAME row confines the read
             r.pushMaskEditor(rb, rk, rf, reb, rek, ref, rle);
             // rho=R re-pin (the CC fix): the confined walk starts at WINDOW-STEP 7 = phrase 12.
@@ -1235,13 +1237,16 @@ int main() {
                     // (CC_PROMPT_REVERSE_ANCHOR_OFFBYONE) the reverse anchors AT R at
                     // the first step: read = (R − t + 1) mod the ring — was (R − t),
                     // which sat one cell left of rotation.
-                    // (ABS1 WINDOW EXTENT, ruling A) a Reverse voice enters its window AT R and counts
-                    // DOWN, wrapping inside [O,O+L) (cycle's reverse law) on the SOUNDING steps. WAS the
-                    // full-ring (R − t + 1) mod 32 walk, which left the window.
+                    // (CYCLE-CONSISTENT ABS1) a Reverse voice reads the CYCLE reverse law — enters at R at
+                    // global step 1 and counts down inside [O,O+L): cell O + (R − k) mod L — on the
+                    // SOUNDING steps; silent steps follow the global step. WAS the full-ring (R − t + 1)
+                    // mod 32 walk, then enter-at-R-at-window-start.
                     if (q.outputMaskPasses(M, k))
-                        revOK = revOK && q.voiceReadPosition(M) == 5 + ((((7 - (k - 5)) % 8) + 8) % 8);
+                        revOK = revOK && q.voiceReadPosition(M) == 5 + ((((7 - k) % 8) + 8) % 8);
+                    else
+                        revOK = revOK && q.voiceReadPosition(M) == k;
                 }
-                check(revOK, "STAGE4: abs1 + voice Reverse — the SOUNDING read enters the window AT R and counts down inside [O,O+L) (ruling A; direction composes in BOTH base modes)");
+                check(revOK, "STAGE4: abs1 + voice Reverse — the read is the CYCLE reverse read at sounding steps (cell O+(R-k)%L) and follows the global step when silent (direction composes in BOTH base modes)");
             }
         }
         // THE OVERLAY COMPOSES: abs1 + a painted pattern = the AND (in-window AND bit).

@@ -87,15 +87,12 @@ static void a_series() {
             const bool wantSound = !c.abs1 || (c.L >= c.G) || ((((s - c.O) % c.G) + c.G) % c.G < c.L);
             std::snprintf(msg, sizeof msg, "%s: phrase step %d sounds=%d, want %d (G=%d O=%d L=%d)", c.tag, s, (int)obs[s].sounding, (int)wantSound, c.G, c.O, c.L);
             CHECK(obs[s].sounding == wantSound, msg);
-            if (c.abs1) {
-                const int wantContent = ((((s + c.R - c.O) % c.G) + c.G) % c.G);
-                std::snprintf(msg, sizeof msg, "%s: phrase step %d content %d, want %d (the rho=(R-O) anchor: content at s=O is exactly R)", c.tag, s, obs[s].content, wantContent);
-                CHECK(obs[s].content == wantContent, msg);
-            } else {
-                const int wantLoop = ((((s + c.R) % c.L) + c.L) % c.L);
-                std::snprintf(msg, sizeof msg, "%s: phrase step %d content %d, want %d (the cycle row LOOPS its window)", c.tag, s, obs[s].content, wantLoop);
-                CHECK(obs[s].content == wantLoop, msg);
-            }
+            // (CYCLE-CONSISTENT ABS1, Rodney 2026-11-21 — UAS RESOLVED block) content is the CYCLE read in
+            // BOTH bases: window-relative cell (s + R) mod L at global step s (R marks the voice's cell at global
+            // step 1). The range base only MUTES. WAS (abs1): (s + R - O) mod G, the full-phrase read.
+            const int wantLoop = ((((s + c.R) % c.L) + c.L) % c.L);
+            std::snprintf(msg, sizeof msg, "%s: phrase step %d content %d, want %d (the cycle read — abs1 is cycle plus a mute)", c.tag, s, obs[s].content, wantLoop);
+            CHECK(obs[s].content == wantLoop, msg);
         }
     }
     {   // A7: abs1 O0 L4, G 8->4 — the sounding set is a pure function of the

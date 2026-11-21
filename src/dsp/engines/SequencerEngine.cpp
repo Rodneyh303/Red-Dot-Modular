@@ -967,7 +967,7 @@ void SequencerEngine::anchorTransport(int64_t tick1based) {
         effectiveMacroRowLor(ML, MO, MR, md);
         int mL = ML;
         if (mL < 1) mL = 1;
-        if (maskMacroKind_ == MASK_DYNAMIC) mL = kMaskRing;   // the macro row's abs1: the full phrase
+        if (kRangeBaseReadsFullPhrase && maskMacroKind_ == MASK_DYNAMIC) mL = kMaskRing;   // the macro row's abs1: the full phrase
         macroFramePhase_ = wrapMod(t0, walkPeriod(md, mL));
         macroFrameKey_   = walkKeyOf(md, mL);
     }
@@ -1057,7 +1057,7 @@ void SequencerEngine::tickHolders(int transportMotion, int signMotion, const int
         if (ML != kPatternLengthCap || MO != 0 || MR != 0 || md != LaneDir::Forward) {
             int mL = ML;
             if (mL < 1) mL = 1;
-            if (maskMacroKind_ == MASK_DYNAMIC) mL = kMaskRing;   // the macro row's abs1: the full phrase
+            if (kRangeBaseReadsFullPhrase && maskMacroKind_ == MASK_DYNAMIC) mL = kMaskRing;   // the macro row's abs1: the full phrase
             const int key = walkKeyOf(md, mL);
             macroFramePhase_ = (macroFrameKey_ != key)
                 ? wrapMod(t0Now, walkPeriod(md, mL))
@@ -1285,7 +1285,7 @@ void SequencerEngine::deriveHolders(int signMotion, const int8_t* voiceMotion) {
         // PHRASE (the ring) with rho = (R−O) over the globally-wrapped driver; CYCLE
         // walks the row's OWN L over the raw congruence (macroFramePhase_) with
         // rho = R (window-relative; clamped 0..L−1 at the authoring paths).
-        const bool abs1Read = (maskMacroKind_ == MASK_DYNAMIC);
+        const bool abs1Read = kRangeBaseReadsFullPhrase && (maskMacroKind_ == MASK_DYNAMIC);
         int64_t rho, ft0, frameBack;
         if (abs1Read) {
             L = kMaskRing;   // the FULL PHRASE = the ring
@@ -1321,6 +1321,8 @@ void SequencerEngine::deriveHolders(int signMotion, const int8_t* voiceMotion) {
         macroFrameT0    = macroLaneAnchor;   // every Macro lane's mapped seed (the laneSeed twin)
         macroFrameT0_   = macroLaneAnchor;   // (CC_PROMPT_RETIRE_MACRO_LANE_HOLDER) the display view's authority (macroLaneDisplay re-derives off this)
         macroFrameRead_ = frameReadCell(wnow, O, kMaskRing);   // ONE law: the frame value folded into the window (no offG — see frameReadCell)
+        if (maskMacroKind_ == MASK_DYNAMIC && !maskWindowContains(MO, std::max(1, ML), pos_.playedColumn(), std::max(1, cachedLength)))
+            macroFrameRead_ = frameReadCell(pos_.playedColumn(), 0, kMaskRing);   // range base: the global strip's playhead follows the global step outside the window (the voice rows' twin)
         // The mapped frame's sign: the walk's musical step, the wrap-is-a-beat law (the
         // voice rows' twin — the raw motion only when the walk jumped).
         const int64_t wprev  = ((((walkFold(md, wrapMod(ft0 - frameBack, walkPeriod(md, L)) + 1, L) + rho) % L) + L) % L);
@@ -1429,39 +1431,19 @@ void SequencerEngine::deriveHolders(int signMotion, const int8_t* voiceMotion) {
         const int64_t wnow = ((((walkFold(vd, ft0 + 1, L) + rho) % L) + L) % L);
         voiceDriver_[v] = wnow + 1;
         voiceRead_[v]   = frameReadCell(wnow, O, kMaskRing);   // ONE law: the frame value folded into the window (no offG — see frameReadCell)
-        if (abs1Read) {
-            // (ABS1 WINDOW EXTENT — Rodney's ruling A) abs1 = cycle with the cycling off:
-            // the voice sounds once as the global playhead passes the window [O, O+Lw),
-            // and ROTATION wraps INSIDE the window like cycle's does. wnow = (sFold+R-O)
-            // mod G, so the window-relative position of the global step is pos = wnow-R
-            // (mod G). In-window (pos < Lw) the cell is O + (pos+R) mod Lw — identical to
-            // the old read at R==0 (and whenever pos+R < Lw), never past O+Lw-1. Outside
-            // the window the output gate (outputMaskPasses) already silences, so the
-            // read there is left as it was. CYCLE never enters this branch.
+        if (voiceBaseIsRange(v)) {
+            // (CYCLE-CONSISTENT ABS1, Rodney 2026-11-21) the content above IS the cycle read.
+            // The range base only MUTES (outputMaskPasses). OUTSIDE the window the voice is
+            // silent and its playhead — the strip reads voiceReadPosition — follows the GLOBAL
+            // step, so the lane sweeps 1..G under the global's and holds data only under its
+            // own range. The membership test is the output gate's own (maskWindowContains on
+            // the played column), so the read and the gate cannot disagree.
             int Lw, Ow, Rw; LaneDir dw;
             effectiveVoiceLor(v, Lw, Ow, Rw, dw);
             if (Lw < 1) Lw = 1;
-            if (vd == LaneDir::Reverse) {
-                // A REVERSE voice plays its window backwards: it enters at R and counts down,
-                // wrapping inside [O, O+Lw) — cycle's reverse law. The window position is the
-                // GLOBAL played column (the very step the output gate tests), so the read and
-                // the gate cannot disagree.
-                const int64_t posR = wrapMod((int64_t)pos_.playedColumn() - (int64_t)Ow, (int64_t)L);
-                if (posR < Lw)
-                    voiceRead_[v] = frameReadCell(Ow + wrapMod((int64_t)Rw - posR, (int64_t)Lw), 0, kMaskRing);
-                else
-                    voiceRead_[v] = frameReadCell(pos_.playedColumn(), 0, kMaskRing);
-            } else {
-                const int64_t pos = wrapMod(wnow - (int64_t)Rw, (int64_t)L);   // L == lenG here
-                if (pos < Lw)
-                    voiceRead_[v] = frameReadCell(Ow + ((pos + Rw) % Lw), 0, kMaskRing);
-                else
-                    voiceRead_[v] = frameReadCell(pos_.playedColumn(), 0, kMaskRing);
-            }
-            // OUTSIDE the window the voice is silent (the output gate), and its playhead — the
-            // strip reads voiceReadPosition — simply follows the GLOBAL step (the absolute
-            // position), so the lane sweeps 1..8 under the global's 1..8 and only has data under
-            // its own range. WAS: the old full-ring read (e.g. 16..23), drawn past the global range.
+            const int col = pos_.playedColumn();
+            if (!maskWindowContains(Ow, Lw, col, std::max(1, cachedLength)))
+                voiceRead_[v] = frameReadCell(col, 0, kMaskRing);
         }
         const int64_t wprev = ((((walkFold(vd, wrapMod(ft0 - frameBack, walkPeriod(vd, L)) + 1, L) + rho) % L) + L) % L);
         const int64_t dd    = voiceDriver_[v] - (wprev + 1);
