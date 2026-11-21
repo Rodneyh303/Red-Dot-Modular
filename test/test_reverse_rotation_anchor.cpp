@@ -57,10 +57,11 @@ static void driveMacro(const Cfg& c, int dir, const char* tag) {
     }
 }
 
-// After running FORWARD for a while and THEN reversing, the rotation must still land
-// at the first-played reverse step — detected directly by stepIndex == endStep (the
-// window's upper bound), not by step count. This guards against the from-reset
-// anchor being a transient.
+// After running FORWARD for a while and THEN reversing, the voice must RETRACE: the reverse march replays the
+// forward reads exactly (TRUE-RETRACE, Rodney 2026-11-21 — supersedes the earlier gate 3, which pinned "the
+// rotation re-lands at endStep after a direction change"). The read coordinate is anchored to the traversal's
+// ENTRY direction (PositionResolver::readCoord), so a mid-phrase flip walks the SAME coordinate backwards.
+// A reverse that starts FRESH (gate 2) still enters at R on the upper-bound step.
 static void driveFwdThenRev(const Cfg& c) {
     SequencerEngine eng; eng.reset();
     eng.updateWindow((float)c.lenG, 0.f, false, (float)c.offG, 0.f, false);
@@ -69,22 +70,23 @@ static void driveFwdThenRev(const Cfg& c) {
     eng.macroVoiceLor_[SequencerEngine::LOR_LEN] = c.L;
     eng.macroVoiceLor_[SequencerEngine::LOR_OFF] = c.O;
     eng.macroVoiceLor_[SequencerEngine::LOR_ROT] = c.R;
-    const int rot     = SandsRangeGestureCore::wrapMod(c.O + (c.R % c.L), RING);
-    const int endStep = (c.offG + c.lenG - 1) & (RING - 1);   // the window's upper bound
     char msg[180];
-    for (int t = 0; t < c.lenG + 3; ++t) eng.advancePlayhead(+1, nullptr);   // forward first
-    int seen = 0;
-    for (int t = 0; t < 3 * c.lenG; ++t) {
+    const int N = c.lenG + 3;
+    int fwdRead[64], fwdCol[64];
+    for (int t = 0; t < N; ++t) { eng.advancePlayhead(+1, nullptr); fwdRead[t] = eng.macroFrameRead(); fwdCol[t] = eng.playedColumn(); }
+    int checked = 0;
+    for (int t = N - 1; t >= 1; --t) {              // the reverse step from forward step t lands on step t-1
         eng.advancePlayhead(-1, nullptr);
-        if (eng.playedColumn() == endStep) {   // a reverse phrase entry
-            ++seen;
-            std::snprintf(msg, sizeof(msg), "FWD->REV lenG=%d offG=%d L=%d O=%d R=%d: rotation not at endStep=%d (got %d want %d)",
-                          c.lenG, c.offG, c.L, c.O, c.R, endStep, eng.macroFrameRead(), rot);
-            CHECK(eng.macroFrameRead() == rot, msg);
-        }
+        std::snprintf(msg, sizeof(msg), "FWD->REV lenG=%d offG=%d L=%d O=%d R=%d: column %d != forward %d at step %d",
+                      c.lenG, c.offG, c.L, c.O, c.R, eng.playedColumn(), fwdCol[t-1], t - 1);
+        CHECK(eng.playedColumn() == fwdCol[t-1], msg);
+        std::snprintf(msg, sizeof(msg), "FWD->REV lenG=%d offG=%d L=%d O=%d R=%d: reverse read %d did not retrace forward read %d at step %d",
+                      c.lenG, c.offG, c.L, c.O, c.R, eng.macroFrameRead(), fwdRead[t-1], t - 1);
+        CHECK(eng.macroFrameRead() == fwdRead[t-1], msg);
+        ++checked;
     }
-    std::snprintf(msg, sizeof(msg), "FWD->REV lenG=%d: never hit endStep", c.lenG);
-    CHECK(seen >= 1, msg);
+    std::snprintf(msg, sizeof(msg), "FWD->REV lenG=%d: nothing checked", c.lenG);
+    CHECK(checked >= 1, msg);
 }
 
 int main() {
@@ -93,7 +95,7 @@ int main() {
     for (const Cfg& c : kCfgs) driveMacro(c, +1, "FWD");
     std::printf("gate 2: REVERSE — rotation at the first-played (upper-bound) step\n");
     for (const Cfg& c : kCfgs) driveMacro(c, -1, "REV");
-    std::printf("gate 3: FORWARD then REVERSE — rotation at endStep after a direction change\n");
+    std::printf("gate 3: FORWARD then REVERSE — a mid-phrase reversal RETRACES the forward reads (true retrace)\n");
     for (const Cfg& c : kCfgs) driveFwdThenRev(c);
     if (g_fail) { std::printf("FAILED: %d check(s)\n", g_fail); return 1; }
     std::printf("OK\n");

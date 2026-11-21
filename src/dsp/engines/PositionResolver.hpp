@@ -58,6 +58,12 @@ struct PositionResolver {
     int endStep_   = kPatternLengthCap - 1;   // the transport default = the full ring (the 16-triage option-C ruling)
     int len_       = kPatternLengthCap;
     int dir_       = +1;                      // the last motion's sign (the traversal + phrasePos direction)
+    // (TRUE-RETRACE, Rodney 2026-11-21) the direction of the FIRST motion since reset / a window change: the
+    // READ coordinate (readCoord) stays anchored to THIS entry, so reversing the transport mid-phrase walks BACK
+    // along the same coordinate (an exact retrace) instead of re-anchoring to the new direction's entry (which
+    // returned the voice read one step ahead and by a wrap-dependent offset). 0 = no motion yet. phrasePos()
+    // (the phrase EDGE predicate) is deliberately UNCHANGED — it keeps meaning "the current-direction entry".
+    int entryDir_  = 0;
 
     // ── THE ONE STATE: the played column (today's stepIndex; -1 = the pre-start park) ──
     int col_ = -1;
@@ -91,9 +97,11 @@ struct PositionResolver {
         len_ = kPatternLengthCap;
         dir_ = +1;
         col_ = -1;   // the pre-start park (mirrors stepIndex)
+        entryDir_ = 0;
         phraseOverridden_ = false;   // the traversal owns the phrase from here
     }
     void setWindow(int length, int offset) {
+        if (offset != startStep_ || ((length < 1) ? 1 : length) != len_) entryDir_ = 0;   // a REAL window change re-anchors the read coordinate
         startStep_ = offset;
         endStep_ = (offset + length - 1) & (kMaskRing - 1);
         len_ = (length < 1) ? 1 : length;
@@ -110,6 +118,7 @@ struct PositionResolver {
     // out-of-window landing back to the traversal's entry bound.
     void advance(int motion) {
         if (motion != 0) phraseOverridden_ = false;   // the traversal re-derives the phrase (a held event keeps it)
+        if (motion != 0 && entryDir_ == 0) entryDir_ = (motion < 0) ? -1 : +1;
         if (motion < 0) {
             dir_ = -1;
             if (col_ == -1) col_ = (endStep_ + 1) & (kMaskRing - 1);
@@ -147,6 +156,18 @@ struct PositionResolver {
         if (phraseOverridden_) return phraseOverride_;   // the phase snap's raw phrase
         if (col_ < 0) return 0;   // the pre-start park: no phrase yet
         return (dir_ > 0) ? wrapRing(col_ - startStep_) : wrapRing(endStep_ - col_);
+    }
+    // (TRUE-RETRACE) THE SIGNED READ COORDINATE the voice/macro reads fold: the transport-signed steps since the
+    // ENTRY-direction phrase entry — +(col-start) when the traversal was entered forward, -(end-col) when entered
+    // in reverse — NOT re-anchored by a later mid-phrase reversal. Equals the old (dir>0 ? phrasePos : -phrasePos)
+    // whenever the current direction IS the entry direction (every forward-only and every fresh-reverse run —
+    // byte-identical there); after a flip it keeps walking the SAME coordinate backwards (exact retrace).
+    // The phase-snap override keeps its own raw phrase (unchanged).
+    int64_t readCoord() const {
+        if (phraseOverridden_) return (dir_ > 0) ? (int64_t)phraseOverride_ : -(int64_t)phraseOverride_;
+        if (col_ < 0) return 0;
+        const int e = (entryDir_ != 0) ? entryDir_ : dir_;
+        return (e > 0) ? (int64_t)wrapRing(col_ - startStep_) : -(int64_t)wrapRing(endStep_ - col_);
     }
     // (SLICE 5 — CC_PROMPT_POSITION_RESOLVER_SLICE5_PHASECLOCK, option (a)) The abs-mode
     // read coordinate: the transport's absolute phase in the window, ≡ the retired

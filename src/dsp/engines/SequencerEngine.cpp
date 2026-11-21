@@ -858,7 +858,7 @@ bool SequencerEngine::voiceFrameEdgeLive_(int v) const {
     // wrapMod((dir>0 ? phrasePos : -phrasePos) + advanceOffset, lenG)); the fold =
     // walkFold (the WalkResolver<Policy> skeleton — the ONE laneTickFor+anchorBias
     // fold); the edge = walkEdge (the policy-declared direction-entry box-offset).
-    const int64_t vCoord = PositionResolver::signedPhraseCoord(pos_.phrasePos(), pos_.direction(), advanceOffset_[v], lenG);
+    const int64_t vCoord = wrapMod(pos_.readCoord() + advanceOffset_[v], lenG);   // (TRUE-RETRACE) the same entry-anchored coordinate the read folds
     const int64_t wnow  = wrapMod(walkFold(d, vCoord + 1, L) + (int64_t)R, L);
     const int64_t wEdge = walkEdge(d, L);
     return wnow == wEdge;
@@ -1308,8 +1308,7 @@ void SequencerEngine::deriveHolders(int signMotion, const int8_t* voiceMotion) {
             // startStep / reverse endStep), counting in the travel direction.
             // Forward it equals wG BIT-IDENTICALLY; reverse it replaces the drifting
             // wG with the traversal-tied coordinate — the reverse-rotation fix.
-            const int64_t sPos = (pos_.direction() > 0)
-                ? (int64_t)pos_.phrasePos() : -(int64_t)pos_.phrasePos();
+            const int64_t sPos = pos_.readCoord();   // (TRUE-RETRACE) entry-anchored
             rho       = (int64_t)R;                    // window-relative; clamped 0..L-1 at the authoring paths
             ft0       = sPos;                           // the transport-signed phrase coordinate (the resolver's)
             frameBack = sPos - (int64_t)wrapMod(sPos - signMotion, lenG);
@@ -1427,8 +1426,7 @@ void SequencerEngine::deriveHolders(int signMotion, const int8_t* voiceMotion) {
             // stepIndex == endStep) instead of the drifting wGv — the reverse-rotation
             // fix (test_reverse_rotation_anchor). frameBack stays the true gap in the
             // phrase coordinate (the wrap jumps lenG — a BEAT).
-            const int64_t sPosV = (pos_.direction() > 0)
-                ? (int64_t)pos_.phrasePos() : -(int64_t)pos_.phrasePos();
+            const int64_t sPosV = pos_.readCoord();   // (TRUE-RETRACE) entry-anchored; == the old dir-signed phrasePos unless the transport flipped mid-phrase
             const int64_t vCoord = wrapMod(sPosV + advanceOffset_[v], lenG);
             rho       = (int64_t)R;              // window-relative; clamped 0..L-1 at the authoring paths
             ft0       = vCoord;                  // the transport-signed phrase coordinate (the resolver's, + the voice's offset)

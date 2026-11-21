@@ -4,14 +4,12 @@
 // matching forward step (the step BEFORE it) — playhead column, the voice READ, and EVERY lane's tick of
 // the voice — for each voice-lane direction (Forward/Reverse/Pendulum/PingPong), with polymetric lane
 // lengths, offsets and rotations, in CYCLE and ABSOLUTE (abs1) modes.
-// FINDING (2026-11-21, measured): with NO voice window the column, every lane tick and the read retrace
-// EXACTLY under reverse transport (asserted below, all four lane directions' baseline = the lanes' own
-// polymeter). With a VOICE WINDOW (voice LOR local-east, cycle and abs1) the playhead COLUMN still retraces
-// exactly (asserted), but the voice READ and the per-lane ticks come back ONE step ahead of the forward
-// values at the replayed column — the rotation-anchored reverse convention (wnow = walkFold(vd, ft0+1, L)+R,
-// test_reverse_anchor_ring). Whether "reverse transport replays the voice-window read bit-exactly" is
-// intended is Rodney's call; until decided it is REPORTED (KNOWN GAP line), not asserted — the suite neither
-// hides it nor pins a possible bug as expected behaviour. Re-pin as an assertion once decided.
+// HISTORY (2026-11-21): this test first MEASURED a gap — with a voice window the voice READ and per-lane ticks
+// came back one step ahead (8960 slips over the sweep) because the read coordinate re-anchored to the NEW
+// direction's phrase entry on a mid-phrase reversal. Rodney ruled TRUE RETRACE: PositionResolver::readCoord is
+// anchored to the traversal's ENTRY direction, so reversing mid-phrase walks the SAME coordinate backwards.
+// A reverse that starts FRESH at the phrase entry still enters at R (readCoord == the old signed phrasePos).
+// Everything below is now ASSERTED (column, every lane tick, and the voice read), voice window or not.
 // This pins the POSITION spine of reversibility; the draw values themselves are counter-addressed
 // (test_PhiloxRng, test_ca_true_reverse).
 #include <cstdio>
@@ -22,7 +20,7 @@
 using dotModular::VoiceResolver; using LaneId = dotModular::LaneId;
 using LD = SequencerEngine::LaneDir;
 
-static int g_fail = 0, g_cases = 0, g_readSlip = 0;
+static int g_fail = 0, g_cases = 0;
 #define CHECK(c, m) do { if (!(c)) { if (g_fail < 40) std::printf("  FAIL: %s\n", (m)); ++g_fail; } } while (0)
 
 struct State { int col, read; std::array<int, dotModular::NUM_STRANDS> lane; };
@@ -62,9 +60,9 @@ static void run(int G, int O, int L, int R, LD dir, bool abs1, int lenMel, int l
         std::snprintf(msg, sizeof msg, "%s: COLUMN did not retrace (G=%d O=%d L=%d R=%d %s lens=%d/%d) fwd step %d: %d vs %d",
                       name, G, O, L, R, abs1 ? "abs1" : "cycle", lenMel, lenRest, t - 1, r.col, f.col);
         CHECK(r.col == f.col, msg);
-        std::snprintf(msg, sizeof msg, "%s: baseline (no voice window) READ did not retrace, fwd step %d", name, t - 1);
-        if (!voiceWindow) { CHECK(r.lane == f.lane, "baseline LANE ticks did not retrace"); CHECK(r.read == f.read, msg); }
-        else if (r.read != f.read || r.lane != f.lane) ++g_readSlip;   // KNOWN GAP — reported, not failed
+        std::snprintf(msg, sizeof msg, "%s: %s READ/LANES did not retrace (G=%d O=%d L=%d R=%d %s) fwd step %d: read %d vs %d",
+                      name, voiceWindow ? "voice-window" : "baseline", G, O, L, R, abs1 ? "abs1" : "cycle", t - 1, r.read, f.read);
+        CHECK(r.read == f.read && r.lane == f.lane, msg);
     }
 }
 
@@ -84,8 +82,7 @@ int main() {
                         for (int R : {0, 2})
                             run(G, O, L, R, d.d, abs1 != 0, 7, 5, d.n, /*voiceWindow=*/true);
     if (g_fail) { std::printf("test_engine_reverse_roundtrip: %d FAILED (%d cases)\n", g_fail, g_cases); return 1; }
-    std::printf("test_engine_reverse_roundtrip: all %d cases passed (column retraces in every config; lane ticks + read retrace in the no-voice-window baseline)\n", g_cases);
-    if (g_readSlip) std::printf("  KNOWN GAP (not failed): under REVERSE TRANSPORT the voice READ at a replayed column differs from the "
-        "forward read at that column in %d steps — see the header note / CLAIMS_EVIDENCE A1.\n", g_readSlip);
+    std::printf("test_engine_reverse_roundtrip: all %d cases passed (column, every lane tick and the voice read retrace)\n", g_cases);
+
     return 0;
 }

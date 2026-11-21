@@ -661,23 +661,19 @@ int main() {
         eng.lorRef(dotModular::STRAND_RHYTHM, SequencerEngine::LOR_ROT) = 2;
         std::vector<int> fwd;
         for (int k = 0; k < 24; ++k) { eng.advancePlayhead(+1); fwd.push_back(eng.getRhythmStep()); }
-        // (SLICE 2 re-aim — CC_PROMPT_POSITION_RESOLVER_SLICE2_DERIVE) The reverse law
-        // replaces the RETRACE model: the voice map anchors at the phrase ENTRY in the
-        // travel direction (forward enters at R and counts up; REVERSE ENTERS AT R AND
-        // COUNTS DOWN — the oracle's rule), so the backward march no longer replays the
-        // forward reads (the old pure-function-of-the-column fold the wG law produced).
-        // Pinned instead, on the composed chain (the mapped voice x the authored lane):
-        // the 24-step backward march REACHES the reverse entry (stepIndex == endStep —
-        // the direction-stable truth), and the read there equals the FORWARD entry's
-        // read (fwd[0]) — the composed rotation is direction-agnostic at the anchor.
-        bool sawEntry = false, anchorOK = false;
-        for (int k = 0; k < 24; ++k) {
+        // (TRUE-RETRACE, Rodney 2026-11-21 — supersedes the SLICE 2 re-aim, which had replaced the retrace
+        // model with "reverse re-enters at R"). A mid-phrase reversal now walks the SAME read coordinate
+        // backwards (PositionResolver::readCoord is anchored to the traversal's ENTRY direction), so the backward
+        // march REPLAYS the forward reads bit-exactly on the composed chain (mapped voice x authored lane): the
+        // j-th backward step lands on forward step 22-j. A reverse that starts FRESH at the phrase entry still
+        // enters at R (test_reverse_rotation_anchor gate 2).
+        bool retraces = true;
+        for (int k = 0; k < 23; ++k) {
             eng.advancePlayhead(-1);
-            if (eng.playedColumn() == eng.endStep) { sawEntry = true; anchorOK = (eng.getRhythmStep() == fwd[0]); }
+            retraces = retraces && (eng.getRhythmStep() == fwd[22 - k]);
         }
-        check(sawEntry, "STAGE2: the 24-step backward march reaches the reverse entry (endStep)");
-        check(anchorOK, "STAGE2: REVERSIBILITY (re-aimed, slice 2) — the reverse ENTRY reads the same composed "
-                        "rotation as the forward entry (the direction-agnostic anchor; the retrace model is superseded)");
+        check(retraces, "STAGE2: REVERSIBILITY (true retrace, 2026-11-21) — a mid-phrase reversal replays the forward "
+                        "reads of the composed chain (mapped voice x authored lane) bit-exactly");
     }
     {
         // DELEGATION: the Macro row is the default for every voice; a local-East claim

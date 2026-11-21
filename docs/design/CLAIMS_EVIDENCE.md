@@ -18,7 +18,7 @@ Legend: ✅ pinned by a test · 🟡 partly pinned · ❌ no automated evidence 
 
 | # | Claim | Backed by | Status | Gap → proposed new unit test | Rack demo |
 |---|-------|-----------|--------|------------------------------|-----------|
-| A1 | **Time-reversible**: scrub/reverse is bit-exact (Philox counter-addressed) | `test_PhiloxRng` (counter addressing, std anchor vectors), `test_ca_true_reverse` (replays recorded states in reverse, through a lossy collapse) | 🟡 → ✅ position / ⚠ voice-window read | **Added `test_engine_reverse_roundtrip`** (200 cases): playhead column retraces exactly in every config; lanes + read retrace exactly with no voice window. **FINDING:** with a voice window the read/lane ticks return one step ahead under reverse transport — see §H. Draw *values* remain pinned by the Philox/CA tests, not here. | Record 8 bars, flip reverse, show the same notes come back backwards; scrub and return to the same state. |
+| A1 | **Time-reversible**: scrub/reverse is bit-exact (Philox counter-addressed) | `test_PhiloxRng` (counter addressing, std anchor vectors), `test_ca_true_reverse` (replays recorded states in reverse, through a lossy collapse) | ✅ position | **Added `test_engine_reverse_roundtrip`** (200 cases): column, every lane tick and the voice read retrace exactly, with or without a voice window (fixed 2026-11-21 — §H.1). Draw *values* remain pinned by the Philox/CA tests, not here. | Record 8 bars, flip reverse, show the same notes come back backwards; scrub and return to the same state. |
 | A2 | **7 lanes × 16 channels of moving-average Gaussian copulas** | `test_GaussianCopula` (also covers MovingAverageCopula), `test_slew_copula`, `test_lane_types`, `test_poly_voices` | ✅ storage / 🟡 streams | **Added `test_lane_voice_matrix_shape`**: 16 slots × 7 lanes — 1792 probability cells and 336 LOR values are each independent (mutation-checked: aliasing VAR onto REST fails it). That the 112 *Philox streams* are distinct is still unpinned (verify `test_lane_voice_uniformity`). | Lantern: show 16 voices × 7 lanes populated and independent. |
 | A3 | **Uniform marginals** — correlation changes relationships, never each voice's distribution | `test_distribution`, `test_slew_copula` (stated invariant), `test_kumaraswamy_reparam` (verify) | ✅ copula level | **Already pinned:** `test_GaussianCopula` property 3 — the output marginal stays exactly uniform for every r — and property 4 (empirical lag correlation = analytic weights). Remaining: the same invariant at the *cross-voice / spread* layer (needs the SpreadInterp API; not added yet). | Scope two voices at spread 0 and 1: same histogram, different joint behaviour. |
 | A4 | **Slew + mix controls** | `test_slew_copula`, `test_slew_latch_regression`, `test_SpreadInterp` | ✅ (verify mix) | Confirm `mix` (interpolation) is pinned, not just slew. | Turn slew: lanes glide; turn mix: blend. |
@@ -84,13 +84,16 @@ already has.
 
 ## H. Findings from writing the tests (2026-11-21) — need Rodney's decision before the claims are worded
 
-1. **Reverse transport and the voice-window read.** With a voice window (cycle and abs1, all four directions) the
-   playhead *column* retraces exactly, but the voice READ and per-lane ticks come back **one step ahead** of the
-   forward values at the replayed column. Without a voice window everything retraces exactly. This is the
-   rotation-anchored reverse convention (`walkFold(vd, ft0+1, L) + R`, `test_reverse_anchor_ring`). If "reverse
-   replays the same music backwards" is to be claimed for voices with a window, either this is a bug to fix or
-   the claim must say "the same *positions*". `test_engine_reverse_roundtrip` reports it as `KNOWN GAP` (not a
-   failure) until decided; flip it to an assertion once settled.
+1. **Reverse transport and the voice-window read — RESOLVED 2026-11-21 (TRUE RETRACE, Rodney).** The read
+   coordinate re-anchored to the new direction's phrase entry on a mid-phrase reversal, so the voice read and lane
+   ticks came back one step ahead. `PositionResolver::readCoord()` is now anchored to the traversal's ENTRY
+   direction: a mid-phrase reversal walks the same coordinate backwards (exact retrace — `test_engine_reverse_roundtrip`
+   now ASSERTS column, every lane tick and the read, 200 cases). A reverse that starts FRESH at the phrase entry still
+   enters at R (`test_reverse_rotation_anchor` gate 2, unchanged). Forward and fresh-reverse are byte-identical
+   (goldens unchanged). **Supersedes** the SLICE-2 "reverse re-enters at R after a direction change" pins
+   (`test_reverse_rotation_anchor` gate 3 and `test_unified_addressing` STAGE2), re-aimed to retrace.
+   **Needs a Rack feel-test**: forward, flip to reverse mid-phrase with a rotated/windowed voice — the content should
+   replay backwards rather than re-landing on R at the right edge.
 2. **Polymeter at the global edge.** At global length 16 and 32 the lanes free-run across the global boundary
    (realign at lcm). At G = 8, 10, 12, 15, 24 they restart at 0 at every global boundary. Both are coherent, but
    the wording "drifting and realigning over the global loop" should match the intended behaviour at every G.
