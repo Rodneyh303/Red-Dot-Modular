@@ -1,8 +1,18 @@
-# CC PROMPT — seamless fold, step 1: the runtime-resize spike (Sends band)
+# CC PROMPT — seamless fold, step 1: the runtime-resize spike (Sends band) — WIDGET HALF
 
 Read first: `CLAUDE.md`, `docs/design/CHAT_HANDOFF.md`, `docs/design/SEAMLESS_FOLD_PLAN.md`
 (this prompt is its build step 1), `docs/design/SEAMLESS_SUBPANEL_IDEA.md`,
 `docs/design/MODULE_DISCOVERY_AND_VARIABLE_WIDTH.md`.
+
+## ALREADY DONE (do not redo) — the Rack-free half, commit `9f68aa2c`
+
+- `src/ui/FoldPanelWidthCore.hpp`: `clampHp`, `isAllowedHp`, `hpToPx`, `pxToHp`, `decodeSavedHp` (never crashes: missing /
+  NaN / inf / huge -> an allowed width), `rightAnchoredX`, `neighbourShiftPx`; constants `kMinHp=12`, `kMaxHp=120`,
+  `kStepHp=2`, `kGridPx=15`.
+- `test/test_fold_panel_width.cpp` (registered, green, mutation-checked with an INDEPENDENT oracle; the first draft's
+  "allowed" check was circular, so do not reuse `isAllowedHp` as an oracle in new tests).
+- YOUR job is the WIDGET HALF below: everything that needs the Rack SDK. Use the core for every number; add no sizing
+  arithmetic to the widget. If the core needs a new helper, add it to the core WITH a test first.
 
 ## Goal
 
@@ -26,7 +36,7 @@ store-backed knobs, `SandsMacroSendSubpanel`), so nothing else can go wrong.
 so neighbours move out of the way, and the width change is on the undo stack. Write our
 own, using our conventions.
 
-## Do
+## Do (the widget half; items 2 and 3 below are already done in the core)
 
 1. **New model**, working name `SandsFold` (Rodney will rename; Singapore-geography naming
    is brand identity, so keep the name in ONE constant). Register in `plugin.json` and
@@ -44,12 +54,23 @@ own, using our conventions.
 6. **Panel background that scales.** Either a procedurally drawn dark panel at any width,
    or SVG tiles. Prefer procedural: no new asset per width. Match the Sends panel look
    (`SandsMacroSendSubpanel.cpp` draws the title and footer itself).
-7. **Host the Sends band.** Reuse the existing Sends knobs/widgets as a band in the new
+7. **Host the Sends band.** Model the knob placement and binding on `src/SandsMacroSendSubpanel.cpp`:
+   `redDot::lookupMonsoon(module)` for the host and `redDot::bindStoreKnob<Monsoon, ...>` for the store-backed knobs
+   (the de-param law: the module has NO Rack params). Reuse the existing Sends knobs/widgets as a band in the new
    module. Read how `SandsMacroSendSubpanel` finds Monsoon and its editor store (the
    topology-epoch lookup in `ui/ModuleLookup*`) and use the SAME mechanism; do not invent
    a new one. The knobs must read and write the same store the old Sends subpanel does.
 8. **Collision rule.** If the old Sends subpanel and the new fold are both docked to the
    same Monsoon, they edit the same store. That is fine for the spike; just note it.
+
+## Rack notes (verify against the SDK headers; do not trust this list blindly)
+
+- `config(0, 0, 0, 0)`: a module with no params/ports; every control is a `StoreKnob`.
+- Neighbour push: the rack's `setModulePosForce` on the module widget; the shift for modules to the RIGHT is
+  `neighbourShiftPx(oldHp, newHp)`.
+- Undo: a custom `history::Action` (undo/redo restore width and position); push it via `APP->history->push`.
+- Do NOT call `setPanel` per width. Draw the background procedurally in `draw()`/`drawLayer()` at the current `box.size.x`.
+- Right-anchored children (screws, edge decor) reposition via `rightAnchoredX` on every width change.
 
 ## Tests (rack-free, `test/run_all.sh`, add to `TESTS[]`)
 
