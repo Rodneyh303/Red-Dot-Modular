@@ -3,6 +3,40 @@
 Do these in order. Each part is its own commit, each gated on the full suite
 green AND the STEPS_32 goldens byte-identical. Stop and report if a golden moves.
 
+## STATUS 2026-11-21 (read this first — what changed since this prompt was written)
+
+**Start at PART 2 (CA5).** Part 1 is closed:
+- **1a (abs1 commit edge) — DONE, skip.** `kRangeBaseReadsFullPhrase` is `false`, so the abs1 arm of
+  `voiceFrameEdgeLive_` is dead and absolute mode takes the cycle path (8051a7f8, "range base only mutes").
+  `test_abs_cycle_consistent` asserts the commit edge equals cycle's at every step across its R/O/L/G sweep.
+- **1b (per-lane playhead rows) — owned by `CC_PROMPT_REVERSE_PROBLANE_ROTATION_EDGE.md`.** The engine side landed
+  (d2dc35eb, the lane phase-coupling anchor). The per-lane DRAW is still a Rack feel-test for Rodney (a Forward
+  lane under a Reverse voice). Do not touch the voice-range strip draw.
+
+**Three behaviour changes landed since the baseline — Part 2 must carry them over UNCHANGED (extraction is
+byte-identical against the CURRENT code, not the code this prompt describes):**
+1. `PositionResolver::readCoord()` (cdea9968) — a mid-phrase reversal RETRACES: the read coordinate is anchored to
+   the traversal's ENTRY direction (`entryDir_`), no longer re-anchored by `phrasePos()`. `phrasePos()==0` stays
+   the phrase-edge predicate. Read sites: `sPosV`, `sPos`, `voiceFrameEdgeLive_`'s `vCoord`.
+2. Lane free-run (6827b17e) — `laneSeed` and `macroLaneDisplay` seed an identity-row lane from its OWN raw phase
+   when the lane is shorter than the global length (`passG || len < lenG`); a lane at/above G still walks the
+   bounded global window. `macroLaneDisplay` reads the maintained `lanePhaseV_` (not the global-wrapped clock).
+3. Quantiser fixes (4cbb2fb1, 4f546ce0, 73538b04) — unrelated to the holders; do not revert them.
+
+**Golden baseline moved.** "STEPS_32 goldens byte-identical" now means against `test/goldens/steps32_gate1_cap16_ref.txt`
+AS COMMITTED (re-recorded 2026-11-21 for three non-default-window marches: E1_A_painted_window, E3_BS_subgates,
+W1_A_wrapping_window). Run `bash test/run_all.sh` (needs `CPLUS_INCLUDE_PATH=/home/claude/simde` or your SIMDe path);
+the full suite is ~3.5 min and was green at 6827b17e / 0fe495a3.
+
+**Also fold into CA5 (Rodney, 2026-11-21 — logged, not yet traced):** voice modulation (the lane-LOR commit /
+frame re-anchor) still fires on "notional" edge steps outside the voice's range, where no note sounds. It should make
+no audible difference, but there is no reason to run it there: gate it at the commit edge when you migrate it.
+Reproduce-first as always (and sweep R).
+
+**Where the CA5 audit lives:** `docs/design/CONCEPT_ODR_AUDIT.md` §CA5 (the hand-rolled skeleton ×4, the incomplete
+`walkKeyOf` key); the global<voice desync background is `CC_FIX_GLOBAL_BELOW_VOICE_PHASE_DESYNC.md`; the claims/test
+inventory is `docs/design/CLAIMS_EVIDENCE.md`.
+
 ## BASE
 Rebase/branch on `position-resolver-consolidation` (merged into
 `fix/bug6-stable-edge`). It must carry `walkFold` / `signedPhraseCoord` /
