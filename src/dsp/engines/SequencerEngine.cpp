@@ -3150,6 +3150,10 @@ float SequencerEngine::quantize(float vIn) {
         float radius = w * (1.f / 12.f);
         for (int o = octave - 1; o <= octave + 1; ++o) {
             float cand = o + degV(s);
+            // The output is clamped to [0,5] V below, so a candidate OUTSIDE that range is unreachable: if it won
+            // (e.g. B of octave -1 for a 0 V input) the clamp turned it into 0 V = degree C even with C muted —
+            // a muted C lit green for every voice on an unpatched (0 V) poly channel.
+            if (cand < 0.f || cand > 5.f) continue;
             float dist = std::fabs(vIn - cand);
             if (dist <= radius + 1e-4f) {
                 float score = w / (dist + 1e-4f);
@@ -3163,6 +3167,7 @@ float SequencerEngine::quantize(float vIn) {
             int s = activeSemiList[ai];
             for (int o = octave - 1; o <= octave + 1; ++o) {
                 float cand = o + degV(s);
+                if (cand < 0.f || cand > 5.f) continue;   // see above: only reachable (clamp-range) candidates
                 float dist = std::fabs(vIn - cand);
                 if (dist < minDist) { minDist = dist; bestV = cand; }
             }

@@ -23,6 +23,17 @@ int main() {
     w[7] = 1.f;                                   // and back
     eng.rebuildScaleCache(w, 12);
     CHECK(degOf(eng.quantize(2.5f)) == 7, "restoring fader 7 restores the snap with the CV still held");
+    // RANGE EDGE (Rodney, Rack): 6 poly channels in, voices 7..16 read 0 V; with C muted they still flashed C green.
+    // The candidate B of octave -1 (-1/12 V) won, then the [0,5] V clamp turned it into 0 V = degree C.
+    {
+        float m[12]; for (int i = 0; i < 12; ++i) m[i] = 1.f;
+        m[0] = 0.f;                                   // C muted
+        eng.rebuildScaleCache(m, 12);
+        CHECK(degOf(eng.quantize(0.f)) != 0, "0 V with C muted must NOT quantise to C");
+        CHECK(degOf(eng.quantize(5.0f)) != 0 || eng.quantize(5.0f) < 5.f, "5 V with C muted must NOT quantise to C");
+        for (float cv = 0.f; cv <= 5.f; cv += 0.013f)
+            CHECK(degOf(eng.quantize(cv)) != 0, "no CV in [0,5] V may quantise to a muted C");
+    }
     if (g_fail) { std::printf("test_quantize_cache_invalidate: %d FAILED\n", g_fail); return 1; }
     std::printf("test_quantize_cache_invalidate: OK\n");
     return 0;
