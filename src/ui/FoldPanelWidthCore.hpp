@@ -41,6 +41,18 @@ inline int decodeSavedHp(bool present, double value, int defaultHp, int minConte
     return clampHp((int)std::lround(value), minContentHp);
 }
 
+// Rack's mm→px factor (96 dpi) — kept literal like kGridPx so the header stays Rack-free.
+constexpr float kMmPx = 96.f / 25.4f;
+inline float mmToPx(float mm) { return mm * kMmPx; }
+
+// The min-content rule (the widget-half spike): the smallest ALLOWED width whose
+// px still fit the content's right edge in mm. Rounds UP (ceil) then clamps/snaps
+// up — the content can never be squeezed; two HP less never fits.
+inline int contentMinHp(float contentRightMm) {
+    int hp = (int)std::ceil(mmToPx(contentRightMm) / kGridPx);
+    return clampHp(hp, kMinHp);
+}
+
 // x for a child that must keep a fixed inset from the RIGHT edge (screws, edge decor) after a width change.
 inline float rightAnchoredX(float widthPx, float insetPx) { return widthPx - insetPx; }
 
