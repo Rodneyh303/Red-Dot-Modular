@@ -52,6 +52,8 @@ static int bleedCount(bool abs1, int O, int L, int R, SequencerEngine::LaneDir d
         // ABS1 sounds only where the output gate passes (the global step is in the window);
         // silent steps may read anywhere. CYCLE has no base gate: every step sounds.
         const bool sounds = abs1 ? eng.outputMaskPasses(v, eng.pos_.playedColumn()) : true;
+        // ABS1 outside the window: silent, and the playhead (the strip's read) FOLLOWS THE GLOBAL STEP.
+        if (abs1 && !sounds && rd != eng.pos_.playedColumn()) { ++outside; }
         if (!sounds) continue;
         ++sounding;
         if (rd < O || rd >= O+L) ++outside;
@@ -79,7 +81,7 @@ int main(){
     for (int oi=0; oi<3; ++oi) for (int ri=0; ri<3; ++ri) for (int di=0; di<2; ++di) {
         int snd = 0;
         int bleed = bleedCount(true, Os[oi], L, Rs[ri], dirs[di], &snd);
-        std::snprintf(msg, sizeof msg, "ABS1 SOUNDING read stays in window [O,O+L) (O=%d R=%d %s): %d cells outside",
+        std::snprintf(msg, sizeof msg, "ABS1 sounding read in window + silent read follows global step (O=%d R=%d %s): %d cells outside",
                       Os[oi], Rs[ri], di?"REV":"FWD", bleed);
         CHECK(bleed == 0, msg);
         std::snprintf(msg, sizeof msg, "ABS1 sounds exactly L steps once (O=%d R=%d %s): %d", Os[oi], Rs[ri], di?"REV":"FWD", snd);

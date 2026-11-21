@@ -1449,11 +1449,19 @@ void SequencerEngine::deriveHolders(int signMotion, const int8_t* voiceMotion) {
                 const int64_t posR = wrapMod((int64_t)pos_.playedColumn() - (int64_t)Ow, (int64_t)L);
                 if (posR < Lw)
                     voiceRead_[v] = frameReadCell(Ow + wrapMod((int64_t)Rw - posR, (int64_t)Lw), 0, kMaskRing);
+                else
+                    voiceRead_[v] = frameReadCell(pos_.playedColumn(), 0, kMaskRing);
             } else {
                 const int64_t pos = wrapMod(wnow - (int64_t)Rw, (int64_t)L);   // L == lenG here
                 if (pos < Lw)
                     voiceRead_[v] = frameReadCell(Ow + ((pos + Rw) % Lw), 0, kMaskRing);
+                else
+                    voiceRead_[v] = frameReadCell(pos_.playedColumn(), 0, kMaskRing);
             }
+            // OUTSIDE the window the voice is silent (the output gate), and its playhead — the
+            // strip reads voiceReadPosition — simply follows the GLOBAL step (the absolute
+            // position), so the lane sweeps 1..8 under the global's 1..8 and only has data under
+            // its own range. WAS: the old full-ring read (e.g. 16..23), drawn past the global range.
         }
         const int64_t wprev = ((((walkFold(vd, wrapMod(ft0 - frameBack, walkPeriod(vd, L)) + 1, L) + rho) % L) + L) % L);
         const int64_t dd    = voiceDriver_[v] - (wprev + 1);
