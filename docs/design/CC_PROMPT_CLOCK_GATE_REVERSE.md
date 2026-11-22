@@ -44,10 +44,17 @@ is a USER control. Options (Rodney picks):
   (b) a reverse button/param;
   (c) reuse an assignable mod (Gate3 target) — cheapest, no new port.
 Recommend (a) a reverse gate/CV, since the crab-canon use (one Monsoon forward, one reverse) wants to
-drive it from a patch. The control sets BOTH axes to match phase: `setReverseActive(rev)` AND the
-`dir` passed to the executor. (Open: should clock/gate reverse drive the draw counter too, or only the
-playhead traversal? Recommend BOTH, to match the PHASE origin and to make retrograde seamless across boundaries
-and canon-aligned. State the choice.)
+drive it from a patch.
+
+RESOLVED (Rodney 2026-11-22) — the DRAW AXIS acts EXACTLY like phase reverse: the control sets BOTH
+axes, `setReverseActive(rev)` AND the `dir` passed to the executor. Verified: `rhythmDrawDir()`/
+`melodyDrawDir()`/`qmixDrawDir()` use `reverseActive ? -1 : +1`, and `advance*Draw` steps the counter
+by it (PatternEngine.hpp ~936-951). So reverse makes the draw counter step −1 per boundary,
+REGENERATING THE PREVIOUS DRAW — "forward becomes last draw backwards next": the draw sequence is
+retraced, not just the within-draw playhead. Identical to what the phase origin already does (same
+`setReverseActive`), so clock/gate reverse is behaviourally the same as phase on the draw axis — no new
+draw logic, wire the same call. The Gaussian-copula reversibility makes the retrace exact (forward then
+an equal reverse returns to the same draw state); pin it in a test.
 
 ## Clock (Mode A) — the small half
 - Add a reverse source (per the decision) read in the controller; pass `rev ? -1 : +1` as `dir` to
@@ -71,6 +78,11 @@ Engine-level (compile against SequencerEngine/PatternEngine; the forward path is
    seed/window) read that sequence REVERSED; a full reverse lap returns the playhead to the start.
    (The engine supports dir=-1 already — this pins it as the spec and proves the clock engine half;
    the controller wiring is then the only clock gap.)
+2. DRAW RETRACE (the draw axis, phase-equal): with setReverseActive(true) the draw counter steps -1
+   per boundary — the PREVIOUS draw regenerates. Forward k boundaries then reverse k boundaries returns
+   the draw counters (rhythm/melody/qmix) AND the slewed buffers to the starting draw state, bitwise
+   (the copula reversibility). Clock and gate origins both; byte-equal to the phase origin's reverse on
+   the same seed.
 2. CLOCK reverse determinism (canon tie-in): a forward engine and a reverse engine, same seed/length,
    produce MIRRORED reads — ties to CC_PROMPT_SCRUB32_BIDIR_SLEW_PHRASE test 1 (the counter-offset mirror) and the
    crab-canon use.
