@@ -120,11 +120,12 @@ Causeway (future, Straits-like poly fold).
     already slated to "end up a bit like Straits").
   * WHAT SURVIVES OF SENDS (its 3 parts redistribute): per-voice mix-in sends → the per-voice
     global-amount attenuverter (above); distribution-param send amounts → the Distribution's own
-    per-voice depth knobs (the 56 East-Distribution depths already decided); PRE/POST taps → OPEN —
-    they encode WHERE the global injects, not HOW MUCH, so they do not become an attenuverter. Decide
-    whether per-voice modulation keeps a meaningful pre/post choice or whether pre/post was a
-    Macro-send artifact that dies with the send. That answer decides if Sends dissolves to pure
-    attenuverters (clean) or attenuverters + a surviving pre/post control.
+    per-voice depth knobs (the 56 East-Distribution depths already decided); PRE/POST taps → HOLD IF
+    USEFUL (Rodney 2026-11-22 — not a blocker): they encode WHERE the global injects, not HOW MUCH, so
+    they do not become an attenuverter, but they can be KEPT as an optional per-voice pre/post control
+    if they prove useful. The unification does not hinge on resolving them — Sends still dissolves to
+    per-voice attenuverters + Distribution depth, with the pre/post control retained only if it earns
+    its place.
   * END STATE: one Sands visual (global page + 16 voice pages), one Distribution (same page model), NO
     Macro module, NO Sends module — Sends' function redistributed to per-voice CV attenuverters +
     Distribution per-voice depth. A real module-count deletion, not a reshuffle.
