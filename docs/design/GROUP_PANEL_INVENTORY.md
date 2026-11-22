@@ -107,11 +107,16 @@ Causeway (future, Straits-like poly fold).
   * THE KNOBS do NOT collapse to one control — you still need a global default + 16 overrides + follow
     flags (that is the feature). But in a fold that is just a GLOBAL band + a PER-VOICE band over one
     store, so the module count still drops to ONE Sands host (not Macro-visual + East-visual).
-  * KILLING MACRO KILLS SENDS TOO (Rodney 2026-11-22, warming to it). The editor collapse: the
-    global/macro probability lane becomes PAGE 0 of the ONE Sands (East) visual (per-voice pages
-    1..16 follow) — same for the global/macro Distribution. No separate Macro Visual module. (Third
-    application of "mono is special" → "macro is special" → "the macro EDITOR is special": each time a
-    distinction becomes just a row/page.)
+  * KILLING MACRO KILLS SENDS TOO (Rodney 2026-11-22). The editor collapse is NOT "macro = page 0"
+    (Rodney's correction 2026-11-23: a page is ONE VOICE's view; macro is the global default UNDER all
+    16, a different KIND of thing — not a 17th voice tab). The MODEL collapses cleanly (one per-voice
+    store + global-default row + follow) and the JACKS collapse (poly convention); the EDITOR does NOT
+    collapse for free. It needs a GLOBAL-EDIT AFFORDANCE distinct from the voice pages — the least-bad
+    is an explicit "ALL / GLOBAL" tab (semantically distinct from V1..V16) whose edit target is the
+    global-default row; following voices update live, overridden voices do not. This reuses the tab
+    MECHANISM but is NEW work (the East visual has no global-edit mode today). So the editor saving is
+    "one Sands module instead of Macro-visual + East-visual, with a global-edit mode ADDED to East" —
+    real, but NOT a cheap win. Same for the global/macro Distribution (its own global-edit affordance).
   * THE CV MODEL: a MONO CV input (Rack auto-replicates it across all poly channels = the global
     signal, free) PLUS a POLY CV input (per-voice). Each voice gets TWO per-channel attenuverters: one
     for how much of the GLOBAL signal it takes, one for its own POLY signal. Effective(v) =
