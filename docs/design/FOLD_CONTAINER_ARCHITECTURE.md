@@ -96,7 +96,7 @@ resolve anchors. SandsFold already sidesteps this: it places by explicit `centre
 CONTAINER uses the mm + x-origin path; the variadic ANCHOR helpers (`bindParams`/`bindInputs`) stay
 with the STANDALONE SVG widgets. Each band must expose its mm stations as DATA (already available from
 the gen_*.py geometry), not only as SVG anchors. The per-panel extraction recipe below produces
-exactly that mm-based `placeXBand`.
+exactly that mm-based `placeXBand`. This anchor-vs-mm split is NOT permanent — see "Forward direction: C++-generated panels" below, which unifies the two paths.
 AVOID: CRTP/type-list containers (fix the band list at compile time, fight pop-in/out, instantiate
 once per slug for no runtime gain, still can't escape Rack's virtual draw/step).
 
@@ -140,6 +140,29 @@ of this (GROUP_PANEL_INVENTORY.md is the input).
 3. Freeze the union port enum (per group) → add the Distribution + Macro bands (ports: option A).
 4. `FoldViewportWidget` for the Straits group.
 5. Each further panel: the 3-function extraction + one band adapter.
+
+## Forward direction: C++-generated panels unify the placement path (Rodney 2026-11-22)
+The anchor-vs-mm split exists only because panel geometry currently lives as NAMED ANCHORS inside the
+SVG files (emitted by `gen_*.py`), so the variadic kit resolves by anchor lookup while the container
+falls back to explicit mm. Moving geometry to C++ DATA collapses the two paths into one. Target shape:
+- **Abstract the kit's placement over a GEOMETRY SOURCE.** `bindInputs<W>` / `placeStoreKnob` resolve
+  a position through a provider with two backends — SVG-anchor lookup (today) OR a C++ geometry-table
+  lookup (`geom.at(prefix+i) -> mm`). The variadic fold helpers are unchanged; they just call
+  `place(geom.at(...), widget)`. A band then places IDENTICALLY in a standalone SVG-backed widget or
+  the container's procedural background — the only difference left is the x-origin.
+- **The Band adapter's mm stations become the single source of truth.** Standalone panel, container
+  placement, AND procedural chrome all read the same C++ geometry table; the container background can
+  be DRAWN from it, so standalone and folded stay visually consistent by construction.
+- **SVG stays for ARTWORK, not layout.** "More C++-generated" means geometry/layout in C++; SVG (or
+  procedural draw) keeps logos and decorative shapes. A hybrid, not a rip-out.
+- **Migrate incrementally.** New fold bands are born C++-generated; existing panels move to the C++
+  geometry path opportunistically when touched. No big-bang refactor.
+- **Carry the safety over.** `test/audit_anchor_bind.py` pins every SVG anchor to a widget bind today;
+  the C++ path needs the analogue — a compile-time `static_assert` on counts + a C++ geometry audit —
+  so migrated panels keep the "every station is bound, counts match" guarantee. Bonus: geometry as
+  data is Rack-free testable, fitting the coverage discipline.
+This is the eventual unification; until a panel migrates, its standalone widget keeps the anchor kit
+and the container uses the mm path (both already work).
 
 ## Non-goals / cautions
 - Rack cannot nest one Module's live ModuleWidget inside another's — hence the function-extraction
