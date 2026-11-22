@@ -28,6 +28,7 @@
 // width (no seams/flicker); the knobs reading/writing the same store as the old
 // subpanel.
 #include <rack.hpp>
+#include <vector>
 #include "SandsFold.hpp"
 #include "Monsoon.hpp"
 #include "SandsMacroSendSubpanel.hpp"   // SandsMacroSendIds (counts + captions + anchors)
@@ -55,21 +56,28 @@ static inline float rowY(int l)     { return SandsFold::ROW_TOP + l    * SandsFo
 // CALL time; the store module arrives as the argument)
 static int slotLiveFrom(Monsoon* m) { return m ? m->engine.pe.sendVoice().v : 0; }
 
-// the undo action — defined BEFORE the widget (the widget news it); its applyHp
-// body is defined AFTER the widget (it dynamic_casts to it).
+// the undo action — defined BEFORE the widget (the widget news it); its bodies are
+// defined AFTER the widget (they reach through it).
 struct SandsFoldWidget;
 struct FoldWidthChangeAction : history::Action {
     int64_t moduleId = -1;
     int oldHp = 0, newHp = 0;
+    // ONE record per moved neighbour, newX READ BACK after setModulePosForce
+    // (Rack rounds/snaps; a push it refuses records newX == oldX).
+    std::vector<redDot::fold::NeighbourRecord> moves;
 
     FoldWidthChangeAction() { name = "fold width"; }
 
-    // Re-apply a width WITHOUT pushing a new history action (the body lives after
-    // SandsFoldWidget — it finds the fold's widget by module id, the rack's public
-    // getModule, and calls its applyWidth).
-    void applyHp(int hp);
-    void undo() override { applyHp(oldHp); }
-    void redo() override { applyHp(newHp); }
+    // UNDO/REDO RESTORE STATE (CC_FIX_FOLD_UNDO_EXACT) — never re-run the resize:
+    // the width and every recorded neighbour position, each neighbour gated on
+    // still-at-the-position-the-action-left-it (1 px; a user-moved module stays
+    // where the user put it, a deleted module is skipped).
+    void undo() override;
+    void redo() override;
+
+private:
+    SandsFoldWidget* foldWidget() const;
+    void restoreMoves(bool toOld);
 };
 
 // ── the widget ─────────────────────────────────────────────────────────────────
@@ -152,14 +160,34 @@ struct SandsFoldWidget : app::ModuleWidget {
         if (screwBR) screwBR->box.pos.x = x;
     }
 
-    // ── THE RESIZE (the spike's point) ──
-    // pushUndo=false for the history action's own re-apply (no nested push).
-    void applyWidth(int newHp, bool pushUndo) {
+    // our own size ONLY — the model + the box + the right-anchored children. No
+    // walk, no records: the history action's STATE restore path.
+    void setOwnWidth(int hp) {
         SandsFold* m = dynamic_cast<SandsFold*>(module);
         if (!m) return;
+        m->setPanelHp(hp);
+        box.size.x = redDot::fold::hpToPx(m->panelHp);
+        repositionRightAnchored();
+    }
+
+    // ── THE RESIZE (the spike's point) ──
+    // Returns ONE record per moved neighbour ({id, oldX, newX}, newX READ BACK
+    // after setModulePosForce) for the history action's exact-restore undo.
+    //
+    // WHAT THE WALK REALLY DOES (CC_FIX_FOLD_UNDO_EXACT corrected this comment):
+    // the RIGHTWARD push on a grow lands cleanly; a LEFTWARD target on a shrink
+    // can overlap our still-wide box (the walk runs before our own resize), and
+    // setModulePosForce's overlap resolution leaves the neighbours short of it —
+    // the SHRINK GAP, observed in Rack and ACCEPTED (Tessera does the same; no
+    // pull-back on an explicit shrink). UNDO therefore never re-runs this walk:
+    // the action restores the recorded positions exactly.
+    std::vector<redDot::fold::NeighbourRecord> applyWidth(int newHp) {
+        std::vector<redDot::fold::NeighbourRecord> moves;
+        SandsFold* m = dynamic_cast<SandsFold*>(module);
+        if (!m) return moves;
         newHp = redDot::fold::clampHp(newHp, SandsFold::minContentHp());
         const int oldHp = m->panelHp;
-        if (newHp == oldHp) return;
+        if (newHp == oldHp) return moves;
 
         // THE NEIGHBOUR PUSH: every module whose left edge sits at or beyond our
         // right edge, in our row, shifts by the width delta (setModulePosForce —
@@ -173,22 +201,13 @@ struct SandsFoldWidget : app::ModuleWidget {
             if (!nw || nw == this) continue;
             if (nw->box.pos.x < oldRight - 1.f) continue;                       // left of us — untouched
             if (std::fabs(nw->box.pos.y - box.pos.y) >= RACK_GRID_HEIGHT) continue;   // not our row
+            const float oldX = nw->box.pos.x;
             APP->scene->rack->setModulePosForce(nw, nw->box.pos + math::Vec(shift, 0.f));
+            moves.push_back({ id, oldX, nw->box.pos.x });   // newX READ BACK
         }
 
-        // our own size + the right-anchored children
-        m->setPanelHp(newHp);
-        box.size.x = redDot::fold::hpToPx(m->panelHp);
-        repositionRightAnchored();
-
-        // THE UNDO STEP (one action per width change)
-        if (pushUndo) {
-            FoldWidthChangeAction* a = new FoldWidthChangeAction;
-            a->moduleId = m->id;
-            a->oldHp = oldHp;
-            a->newHp = m->panelHp;
-            APP->history->push(a);
-        }
+        setOwnWidth(newHp);
+        return moves;
     }
 
     void appendContextMenu(ui::Menu* menu) override {
@@ -203,7 +222,17 @@ struct SandsFoldWidget : app::ModuleWidget {
             const int hp = redDot::fold::clampHp(raw, minC);
             menu->addChild(createCheckMenuItem(std::to_string(hp) + " HP", "",
                 [m, hp]() { return m->panelHp == hp; },
-                [this, hp]() { applyWidth(hp, true); }));
+                [this, m, hp]() {
+                    const int before = m->panelHp;
+                    auto moves = applyWidth(hp);
+                    if (m->panelHp == before) return;   // a no-op choice: no history entry
+                    FoldWidthChangeAction* a = new FoldWidthChangeAction;
+                    a->moduleId = m->id;
+                    a->oldHp = before;
+                    a->newHp = m->panelHp;
+                    a->moves = std::move(moves);
+                    APP->history->push(a);
+                }));
         }
     }
 
@@ -254,12 +283,43 @@ struct SandsFoldWidget : app::ModuleWidget {
     }
 };
 
-// the undo action's body (SandsFoldWidget is complete now) — the repo's
-// DiceUndoAction shape: the module ID, not a pointer.
-void FoldWidthChangeAction::applyHp(int hp) {
+// ── the undo/redo bodies (SandsFoldWidget is complete now) — STATE restore ─────
+// ORDER (the doc's rule — setModulePosForce pushes on overlap, so a wrong order
+// displaces a second time): undoing a GROW shrinks us FIRST, then restores the
+// neighbours; undoing a SHRINK moves the neighbours FIRST, then grows us. Redo
+// mirrors the interactive order (the neighbours, then our own size).
+void FoldWidthChangeAction::undo() {
+    SandsFoldWidget* fw = foldWidget();
+    if (!fw) return;
+    if (newHp > oldHp) fw->setOwnWidth(oldHp);   // undoing a grow: shrink us first
+    restoreMoves(/*toOld=*/true);
+    if (newHp <= oldHp) fw->setOwnWidth(oldHp);  // undoing a shrink: grow us last
+}
+void FoldWidthChangeAction::redo() {
+    SandsFoldWidget* fw = foldWidget();
+    if (!fw) return;
+    restoreMoves(/*toOld=*/false);
+    fw->setOwnWidth(newHp);
+}
+
+SandsFoldWidget* FoldWidthChangeAction::foldWidget() const {
     if (auto* mw = APP->scene->rack->getModule(moduleId))
-        if (auto* fw = dynamic_cast<SandsFoldWidget*>(mw))
-            fw->applyWidth(hp, false);
+        return dynamic_cast<SandsFoldWidget*>(mw);
+    return nullptr;
+}
+
+// Restore each recorded neighbour — but ONLY if it is still at the position the
+// action left it (the 1 px gate: a module the user has moved since stays where
+// the user put it); a module that no longer exists is skipped, never a crash.
+void FoldWidthChangeAction::restoreMoves(bool toOld) {
+    for (const redDot::fold::NeighbourRecord& r : moves) {
+        app::ModuleWidget* nw = APP->scene->rack->getModule(r.id);
+        if (!nw) continue;   // deleted since the action — skip
+        const float fromX = toOld ? r.newX : r.oldX;
+        const float toX   = toOld ? r.oldX : r.newX;
+        if (!redDot::fold::shouldRestoreNeighbour(nw->box.pos.x, fromX)) continue;
+        APP->scene->rack->setModulePosForce(nw, math::Vec(toX, nw->box.pos.y));
+    }
 }
 
 // ── the model (the slug in ONE constant — SandsFold.hpp's kSandsFoldSlug) ──────

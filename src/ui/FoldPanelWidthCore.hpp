@@ -9,6 +9,7 @@
 #pragma once
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 
 namespace redDot { namespace fold {
 
@@ -58,5 +59,20 @@ inline float rightAnchoredX(float widthPx, float insetPx) { return widthPx - ins
 
 // how far modules to the RIGHT of this one must move when the width changes (setModulePosForce).
 inline float neighbourShiftPx(int oldHp, int newHp) { return (float)(newHp - oldHp) * kGridPx; }
+
+// ── the exact-restore undo records (CC_FIX_FOLD_UNDO_EXACT) ─────────────────────
+// UNDO RESTORES STATE, never the operation: the action stores one record per moved
+// neighbour and restores it only if it is STILL where the action left it.
+struct NeighbourRecord {
+    int64_t id = -1;
+    float oldX = 0.f;   // the position BEFORE the push
+    float newX = 0.f;   // the position AFTER setModulePosForce — READ BACK (Rack rounds/snaps; a push it refuses records newX == oldX)
+};
+// The pure restore gate: restore only if still at the expected x (1 px tolerance).
+// A NaN / non-finite current = the module is gone (deleted since) -> skip, never a crash.
+inline bool shouldRestoreNeighbour(float currentX, float expectedX, float tolPx = 1.f) {
+    if (!std::isfinite(currentX) || !std::isfinite(expectedX)) return false;
+    return std::fabs(currentX - expectedX) <= tolPx;
+}
 
 }} // namespace redDot::fold
