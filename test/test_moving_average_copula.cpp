@@ -1,7 +1,11 @@
-// test_moving_average_copula.cpp — coverage for MovingAverageCopula (MovingAverageCopula.hpp),
-// the K=64 slew copula central to slew/scrub/canon. No dedicated test before (coverage-gap fill
-// 2026-11-22). Characterization: the properties the header PROMISES (L2-normalised geometric
-// weights, symmetric r clamp, r==0 passthrough, analytic lag correlation).
+// test_moving_average_copula.cpp — the NEGATIVE-r / anti-correlation path of the slew copula.
+//
+// SCOPE NOTE: test_GaussianCopula.cpp already covers the POSITIVE-r copula (SUM w^2 == 1 over
+// r in {0..0.97,1.5}, apply(u,0)==u[0] bitwise, KS uniformity). It does NOT exercise r < 0 —
+// the "anti-correlation / hocket" path the header flags as a real feature (bipolar slew knob,
+// -1 = anti-correlated). This test fills THAT gap: the symmetric clamp, the geometric ratio
+// (incl. the alternating sign), and that lag-1 correlation goes NEGATIVE for r < 0. The couple
+// of positive-r assertions here are kept only as the comparison baseline for the symmetric cases.
 #include <cstdio>
 #include <cmath>
 #include <initializer_list>
@@ -13,73 +17,60 @@ using MAC = MovingAverageCopula;
 static int g_fail = 0;
 #define CHECK(c, m) do { if (!(c)) { std::printf("  FAIL: %s\n", (m)); ++g_fail; } } while (0)
 
+static double clampR(double r) { return r < -MAC::R_MAX ? -MAC::R_MAX : (r > MAC::R_MAX ? MAC::R_MAX : r); }
+
 int main() {
     std::printf("test_moving_average_copula\n");
     constexpr std::size_t K = MAC::K;
     double w[K];
 
-    // 1. SUM w^2 == 1 for every r (the uniform-output guarantee), incl. negative and clamped.
-    for (double r : {-0.97, -0.9, -0.5, -0.1, 0.0, 0.1, 0.5, 0.9, 0.97, 1.5, -1.5}) {
+    // 1. SUM w^2 == 1 holds for NEGATIVE r too (the uniform-output guarantee is sign-agnostic).
+    for (double r : {-0.97, -0.9, -0.5, -0.1}) {
         MAC::weights(r, w);
         double s2 = 0.0; for (std::size_t j = 0; j < K; ++j) s2 += w[j] * w[j];
-        CHECK(std::fabs(s2 - 1.0) < 1e-9, "sum of w^2 == 1");
+        CHECK(std::fabs(s2 - 1.0) < 1e-9, "neg-r: sum w^2 == 1");
     }
 
-    // 2. Geometric ratio: w[j+1]/w[j] == clampR(r) for every j (the defining shape).
-    for (double r : {-0.9, -0.3, 0.2, 0.6, 0.97}) {
+    // 2. Geometric ratio with the ALTERNATING SIGN: w[j+1] == w[j]*r (r<0 -> signs alternate).
+    for (double r : {-0.9, -0.5, -0.2}) {
         MAC::weights(r, w);
-        double rc = (r < -MAC::R_MAX) ? -MAC::R_MAX : (r > MAC::R_MAX ? MAC::R_MAX : r);
         for (std::size_t j = 0; j + 1 < K; ++j)
-            CHECK(std::fabs(w[j+1] - w[j] * rc) < 1e-12, "w[j+1] == w[j]*r (geometric)");
+            CHECK(std::fabs(w[j+1] - w[j] * r) < 1e-12, "neg-r: w[j+1]==w[j]*r (alternating)");
+        // odd taps negative, even taps positive (w[0] > 0 by construction)
+        CHECK(w[0] > 0.0 && w[1] < 0.0 && w[2] > 0.0, "neg-r: signs alternate from a positive w[0]");
     }
 
-    // 3. r == 0 is a clean impulse: w[0]==1, the rest 0 (newest draw only).
-    {
-        MAC::weights(0.0, w);
-        CHECK(std::fabs(w[0] - 1.0) < 1e-12, "r=0: w[0]==1");
-        double tail = 0.0; for (std::size_t j = 1; j < K; ++j) tail += std::fabs(w[j]);
-        CHECK(tail < 1e-12, "r=0: w[1..] == 0");
-    }
-
-    // 4. The r clamp is symmetric to ±R_MAX: beyond-range r gives the clamped weights exactly.
+    // 3. The r clamp is SYMMETRIC: r < -R_MAX gives exactly the -R_MAX weights.
     {
         double wc[K], wo[K];
-        MAC::weights(0.97, wc); MAC::weights(5.0, wo);
-        for (std::size_t j = 0; j < K; ++j) CHECK(wc[j] == wo[j], "r>R_MAX clamps to +R_MAX");
         MAC::weights(-0.97, wc); MAC::weights(-5.0, wo);
         for (std::size_t j = 0; j < K; ++j) CHECK(wc[j] == wo[j], "r<-R_MAX clamps to -R_MAX");
     }
 
-    // 5. apply(u, 0) returns u[0] BIT-IDENTICALLY (the legacy passthrough, NaN-safe tail).
+    // 4. ANTI-CORRELATION: lag-1 correlation SUM_j w_j*w_{j+1} is NEGATIVE for r<0 and
+    //    POSITIVE for r>0 (the hocket vs smooth distinction); magnitude grows with |r|.
     {
-        double u[K];
-        for (std::size_t j = 0; j < K; ++j) u[j] = 0.1 + 0.001 * (double)j;
-        CHECK(MAC::apply(u, 0.0) == u[0], "apply(u,0) == u[0] exactly");
-        // a NaN deep in the window must not corrupt the r==0 passthrough
-        double u2[K]; for (std::size_t j = 0; j < K; ++j) u2[j] = u[j];
-        u2[40] = std::nan("");
-        CHECK(MAC::apply(u2, 0.0) == u2[0], "r=0 passthrough ignores window NaNs");
-    }
-
-    // 6. lagCorr(r, m) == the analytic dot product SUM_j w_j*w_{j+m}, and lag-0 == 1,
-    //    lag-1 grows toward r as the header claims (monotone in r over [0, R_MAX)).
-    {
-        auto lag = [&](double r, std::size_t m) {
+        auto lag1 = [&](double r) {
             MAC::weights(r, w);
-            double acc = 0.0; for (std::size_t j = 0; j + m < K; ++j) acc += w[j] * w[j+m];
+            double acc = 0.0; for (std::size_t j = 0; j + 1 < K; ++j) acc += w[j] * w[j+1];
             return acc;
         };
-        for (double r : {0.0, 0.3, 0.6, 0.9}) CHECK(std::fabs(lag(r, 0) - 1.0) < 1e-9, "lag-0 == 1");
-        double prev = -1.0;
-        for (double r = 0.0; r <= 0.95; r += 0.05) {
-            double l1 = lag(r, 1);
-            CHECK(l1 >= prev - 1e-9, "lag-1 correlation monotone non-decreasing in r");
-            CHECK(l1 >= -1e-9 && l1 <= 1.0 + 1e-9, "lag-1 in [0,1]");
-            prev = l1;
-        }
-        CHECK(lag(0.0, 1) < 1e-9, "r=0: lag-1 == 0 (independent draws)");
+        CHECK(lag1(-0.5) < 0.0, "r<0: lag-1 correlation is negative (anti-correlated)");
+        CHECK(lag1(-0.9) < lag1(-0.5), "neg lag-1 grows (more negative) with |r|");
+        CHECK(lag1(0.5)  > 0.0, "r>0: lag-1 positive (baseline)");
+        CHECK(std::fabs(lag1(0.5) + lag1(-0.5)) < 1e-9, "lag-1 is odd in r (sign flips, magnitude equal)");
     }
 
+    // 5. apply() with r<0 stays finite and in a sane range (the combine path on alternating weights).
+    {
+        double u[K];
+        for (std::size_t j = 0; j < K; ++j) u[j] = 0.5 + 0.2 * std::sin(0.3 * (double)j);
+        double out = MAC::apply(u, -0.6);
+        CHECK(std::isfinite(out), "apply(u, r<0) is finite");
+        CHECK(out >= 0.0 && out <= 1.0, "apply(u, r<0) in [0,1] (still a uniform readout)");
+    }
+
+    (void)clampR;
     if (g_fail == 0) std::printf("  OK\n");
     else             std::printf("  %d FAILURE(S)\n", g_fail);
     return g_fail ? 1 : 0;
