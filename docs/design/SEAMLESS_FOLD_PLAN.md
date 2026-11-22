@@ -15,6 +15,20 @@ MODULE_DISCOVERY_AND_VARIABLE_WIDTH.md. Rodney's rulings are marked (R).
 
 ## Later rulings (R, 2026-11-22)
 
+- (R, 2026-11-22 pm) **WIDTH IS DERIVED FROM THE POPPED-OUT BANDS, not a user-chosen size.**
+  The module width is the base panel plus the content extent of whichever bands are popped out
+  (Distribution, Sends, jack panels, ...), snapped to the HP grid. There is NO drag handle and NO
+  HP-picker menu (the resize-spike menu was a stand-in). The player grows/shrinks the module by
+  POPPING BANDS IN/OUT; the width follows.
+  - The SAVED state is the ENABLED-BAND SET, not a width number. Width is recomputed from that set on
+    load (removes the garbage-width decode case — an unknown saved band is the only load concern).
+  - Bands occupy a fixed order/side (jacks stay on the main panel always; optional bands grow left of
+    Sends / right of Distribution per the earlier ruling). Width = base + sum of enabled band extents.
+  - This SUBSUMES build-order step 5 (loadout): the loadout IS the width determinant. The width core's
+    clampHp/contentMin stays; the new law is `width(enabledSet) = snapHp(base + sum(bandExtent))`.
+  - The collapse-with-cabled-jack guard becomes CENTRAL: popping a band IN removes its jacks, so that
+    is exactly when a cable could be dropped — block/warn on pop-in of a band that has cabled ports.
+
 - (R) JACKS STAY ON THE MAIN PANEL, always visible. The optional pop-out band is the
   sizeable panel (grows left of Sands, right of Distribution) and holds ONLY the
   attenuverters / depth knobs. It holds no ports, so collapsing it can never drop a cable.
