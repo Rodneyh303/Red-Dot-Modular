@@ -46,13 +46,13 @@ is a USER control. Options (Rodney picks):
 Recommend (a) a reverse gate/CV, since the crab-canon use (one Monsoon forward, one reverse) wants to
 drive it from a patch. The control sets BOTH axes to match phase: `setReverseActive(rev)` AND the
 `dir` passed to the executor. (Open: should clock/gate reverse drive the draw counter too, or only the
-playhead traversal? Recommend BOTH, to match Mode E and to make retrograde seamless across boundaries
+playhead traversal? Recommend BOTH, to match the PHASE origin and to make retrograde seamless across boundaries
 and canon-aligned. State the choice.)
 
 ## Clock (Mode A) — the small half
 - Add a reverse source (per the decision) read in the controller; pass `rev ? -1 : +1` as `dir` to
   `engine.executeModeA(...)` in `ModeController::executeModeA()`; call `engine.pe.setReverseActive(rev)`
-  where Mode E does (so the draw axis matches). Keep forward bit-identical when rev=false.
+  where the phase path does (so the draw axis matches). Keep forward bit-identical when rev=false.
 
 ## Gate (Mode B) — the engine half
 - Thread `int dir=+1` through `executeModeB` and `executeModeBSubdivided` to `advancePlayhead(dir)`.
