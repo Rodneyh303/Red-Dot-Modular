@@ -10,6 +10,7 @@
 // widthHpForViewport; the host jacks / Causeway stay edge-pinned around it.
 #pragma once
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include "FoldPanelWidthCore.hpp"
 
@@ -17,7 +18,7 @@ namespace redDot { namespace fold {
 
 // The viewport sizes Rodney offers (how many subpanels are shown at once). The core
 // accepts ANY count; this is just the menu the widget presents.
-constexpr int kViewportChoices[4] = {1, 2, 4, 6};
+constexpr std::array<int, 4> kViewportChoices = {1, 2, 4, 6};
 
 // visible is at least 1 and never more than the panel count (showing more slots than
 // panels is just the panel count — no empty trailing slots in the width).
