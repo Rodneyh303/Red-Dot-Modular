@@ -22,10 +22,10 @@ panel). KNOBS=knob/fader only (interior band). Verify exact port counts at freez
 - Scale/tuning scene: **0/1 of {Shophouse | Shophouse Micro}** — mutually exclusive (Shophouse =
   12-TET scale-list fronts; Shophouse Micro = .dmtune fronts for the Colonnades family). Each has a
   front-select CV in + knobs. KNOBS + 1 JACK (the index CV).
-- **0/1 Direction/Reverse expander** (NEW, Rodney 2026-11-22) — a reverse BUTTON + a GATE JACK (gate
-  flips the clock/gate read direction; see CC_PROMPT_CLOCK_GATE_REVERSE.md). Joins the Monsoon group
-  like Junction/Raffles. JACKS (1 gate in) + 1 button. Singapore-geography name TBD; title-only song-nod
-  to R.E.M. "Stand" (direction theme) as flavour, not the name.
+- REVERSE: NOT an expander (Rodney 2026-11-22, superseding the earlier Direction/Reverse-expander idea).
+  Reverse direction lives on MONSOON ITSELF as a new GATE 4 input (output gates shift one column right;
+  G4 next to G3, assignable like G3, only target = reverse toggle; phrase-boundary cadence). See
+  CC_PROMPT_CLOCK_GATE_REVERSE.md. No group-panel member for it.
 - OPEN: Causeway (poly REST/ACCENT CV mod) — belongs with the POLY/Straits side, not here. Confirm.
 
 ## 2. Sands Macro group
