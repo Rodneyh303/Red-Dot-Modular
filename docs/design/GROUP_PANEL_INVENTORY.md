@@ -9,6 +9,26 @@ brackets are Rodney's design rulings; the code facts behind them are cited where
 Legend: [host]=always 1. {a|b|c}=mutually exclusive, pick 0 or 1. JACKS=brings ports (edge-pinned
 panel). KNOBS=knob/fader only (interior band). Verify exact port counts at freeze time.
 
+## The fold criterion (Rodney 2026-11-22) — association cardinality
+A module FOLDS into a host's container iff it associates with EXACTLY ONE host instance (1:1). A
+module stays a standalone ISLAND iff it serves MANY hosts (1:many) or is a free-aimed VIEW. This is
+not a preference — folding a 1:many module into one host's container would physically bind it to that
+instance and destroy the multi-host/aim capability that is its whole purpose. (An island may still
+have its OWN internal fold — e.g. Change Alley bundling its jack/attenuverter subpanel — it just does
+not fold INTO a Monsoon.)
+
+### Islands (NOT folded into a host)
+- **Change Alley** — earmarked to drive MULTIPLE Monsoons; island. (May get its own internal fold:
+  break its jacks/attenuverters to a subpanel — self-contained, one CA instance.)
+- **Cantonment** — likely same (multiple Monsoons); island.
+- **Lantern** — a VIEW aimed at different Monsoon / Intertropical; island.
+- **Keppel, Woodlands, the independent Phaser** — utilities, more independent; islands.
+- **Monsoon** — the HOST, not an expander (it anchors a fold group, it is not folded into one).
+
+### Fold groups (1:1 host association) — detailed below
+Monsoon group; Sands family (Macro/East + Distribution + Sends — see OPEN); Straits group (+ Intertropical);
+Causeway (future, Straits-like poly fold).
+
 ## 1. Monsoon group
 - Monsoon **[host]** — the main jacks (gate/CV/accent in+out, the DNA/poly chain). JACKS.
 - Tuning authority: **0/1 of {Colonnades | Colonnades Duo | Sikit}** — mutually exclusive (one
@@ -26,7 +46,7 @@ panel). KNOBS=knob/fader only (interior band). Verify exact port counts at freez
   Reverse direction lives on MONSOON ITSELF as a new GATE 4 input (output gates shift one column right;
   G4 next to G3, assignable like G3, only target = reverse toggle; phrase-boundary cadence). See
   CC_PROMPT_CLOCK_GATE_REVERSE.md. No group-panel member for it.
-- OPEN: Causeway (poly REST/ACCENT CV mod) — belongs with the POLY/Straits side, not here. Confirm.
+- Causeway: a FUTURE Straits-like poly fold of its own (Rodney 2026-11-22), not a Monsoon-group member.
 
 ## 2. Sands Macro group
 - Sands Macro (StraitsSandsMacroVisual) **[host]** — 39 in / 7 out. JACKS.
@@ -40,6 +60,8 @@ panel). KNOBS=knob/fader only (interior band). Verify exact port counts at freez
   prompt). JACKS + 56 depth knobs.
 
 ## 4. Straits group  (EXCEEDS the 120 HP cap — needs a SCROLLING knob band, see below)
+- **0/1 Intertropical** (Rodney 2026-11-22) — reads its input from Straits and associates with ONE
+  Straits instance, so it folds into THIS group (the scene sequencer / arranger; JACKS: poly outs).
 - Straits / Straits Base **[host]** — 16ch poly-cable outs, quantiser CV in, voice count. JACKS.
 - **all subpanels** (each 0/1): lane expanders {Q-MIX, REST, ACCENT, VARIATION, LEGATO}; the 8
   subgate panels {RATCHET|GHOST} x {REST|LEGATO|ACCENT|ADVANCE}; the Q-MIX/Octave panel. KNOBS.
@@ -57,7 +79,7 @@ panel). KNOBS=knob/fader only (interior band). Verify exact port counts at freez
   sizes stay well under kMaxHp however many subpanels exist. Widget half (the scroll gesture/arrows,
   drawing the window) is CC + Rodney's feel-test.
 
-## 5. Change Alley group
+## 5. Change Alley — ISLAND (NOT a Monsoon fold; see criterion). Its OWN internal fold only:
 - Change Alley V2 **[host]** — 16x16 pin matrix, rhythm/melody/q-mix source planes, per-stream
   reverse jacks + scatter trig jacks. Big.
 - BREAK OUT jacks/attenuverters to a SEPARATE subpanel (size) — an edge jack panel.
@@ -66,6 +88,10 @@ panel). KNOBS=knob/fader only (interior band). Verify exact port counts at freez
   (2? 4?), since each set multiplies the port enum and must be frozen up front.
 
 ## Open questions (resolve before the port freeze)
+- SANDS FAMILY: one fold container (Macro + East + both Distributions + Sends) or TWO (a Macro-side
+  fold and an East-side fold)? Rodney frames Sands+Distribution+Sends as one probability read/modify
+  family; the inventory currently lists Macro and East as separate hosts. The association criterion
+  doesn't settle it (both tiers live on the same Monsoon). Rodney's call.
 - Causeway's home (Monsoon group vs Straits/poly group).
 - Straits: scrolling knob band vs raising kMaxHp (the cap breach is real).
 - Change Alley: the exact 3/3/2 jack set and the max number of sets.
