@@ -79,9 +79,24 @@ Decided: a virtual `IFoldBand` + the Rack-virtual container bases, NOT an all-te
 - The band OPERATIONS are settled (place/draw/declarePorts/extent/edge) while implementations multiply
   → stable interface, varying implementation, open to new panels with zero container changes: the
   virtual-interface sweet spot. Adding a panel = a new `IFoldBand` subclass.
-TEMPLATES stay at the LEAF helpers where the concrete type IS known at the call site —
-`placeStoreKnob<Store, KnobTag>`, the knob-face tags — so each band's virtual `place()` is a thin
-override calling templated, inlined helpers. Virtual at the collection, compile-time at the knob.
+TEMPLATES stay at the LEAF helpers where the concrete type IS known at the call site. In this repo
+that leaf layer is RICH: `src/ui/SvgPanelKit.hpp` uses VARIADIC templates — fold-expression bind
+helpers (`bindInputs<W>(prefix, ids...)` → `(bindInput<W>(prefix+i++, ids), ...)`, a whole row placed
+in one compile-time-expanded call) and a variadic mixin composer (`Compose<T, Features...>` opting a
+widget into a subset of kit features). Plus `placeStoreKnob<Store, KnobTag>` and the knob-face tags.
+Each band's virtual `place()` is a thin override that CALLS these variadic helpers — so the
+fold-expansion/mixin stays inside the band impl, dispatched virtually from `std::vector<IFoldBand*>`.
+Variadic-compile-time at the knobs, virtual at the collection — the seam holds.
+
+### Placement-path note (SVG anchor vs explicit mm) — a consequence of the above
+The variadic kit places by SVG ANCHOR NAME (`prefix+"0"` resolves the anchor in that panel's SVG).
+The fold container has a PROCEDURAL background and NO per-band composite SVG, so its bands cannot
+resolve anchors. SandsFold already sidesteps this: it places by explicit `centreMm` via
+`placeStoreKnob`, not by anchor. Therefore the extracted `placeXBand(host, store, x0)` for the
+CONTAINER uses the mm + x-origin path; the variadic ANCHOR helpers (`bindParams`/`bindInputs`) stay
+with the STANDALONE SVG widgets. Each band must expose its mm stations as DATA (already available from
+the gen_*.py geometry), not only as SVG anchors. The per-panel extraction recipe below produces
+exactly that mm-based `placeXBand`.
 AVOID: CRTP/type-list containers (fix the band list at compile time, fight pop-in/out, instantiate
 once per slug for no runtime gain, still can't escape Rack's virtual draw/step).
 
