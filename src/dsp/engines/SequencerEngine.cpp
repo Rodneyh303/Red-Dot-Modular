@@ -3175,7 +3175,11 @@ float SequencerEngine::quantize(float vIn) {
     if (std::abs(vIn - lastQuantIn) < 1e-6f) return lastQuantOut;
     lastQuantIn = vIn;
 
-    if (activeSemiCount == 0) return pe_clamp(vIn, 0.f, 5.f);
+    // Cold/empty-scale path (no active degrees — a fresh or reset engine before a scale is
+    // set; effectively unreachable live, where a scale is always active). It MUST write
+    // lastQuantOut too, or the top-of-function memo (keyed on lastQuantIn, set just above)
+    // serves the stale reset value (0.0) to a repeated same input instead of the clamp.
+    if (activeSemiCount == 0) { lastQuantOut = pe_clamp(vIn, 0.f, 5.f); return lastQuantOut; }
     int octave = (int)vIn;
     float bestScore = -1.f;
     float bestV = vIn;
