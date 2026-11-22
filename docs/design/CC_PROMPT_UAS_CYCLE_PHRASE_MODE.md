@@ -17,6 +17,16 @@ Fix it with a mode, not a magic value.
 Mode is an explicit enum/flag stored per row (persisted, undoable, default Phrase). There is NO sentinel:
 do not encode "follow" as a magic L.
 
+## RATIONALE (Rodney, 2026-11-22 — record this in the code comments at the mode and in the UAS doc)
+A lane's rotation R sets where the pattern wraps when the voice is at its first step. In Cycle: Phrase the voice
+lane is therefore locked as: O = 0, L = transport length, R = transport offset. That makes the lane-level
+behaviour (the "level 2" cycle) identical to pre-UAS: before UAS every lane was always at the global offset at
+global step 0, i.e. the pattern simply started at the global offset and wrapped at the global length. Phrase mode
+reproduces that by construction, with no special-case path. Custom mode is the UAS extension (independent L/O/R,
+polymeter, longer-than-pattern draw windows) and is opt-in. Add a test whose oracle is exactly this statement:
+"voice at first step reads the cell at the global offset; wraps at the global length" (Phrase mode, offsets and
+lengths swept), and cross-check against a pre-UAS reference if the old 16-ring goldens still exist.
+
 ## Facts to verify BEFORE coding (read the code, do not trust this text)
 1. `voiceFrameReadsFullPhrase` / `kRangeBaseReadsFullPhrase=false` (SequencerEngine.hpp ~936) is the retired
    ABS1 "full phrase" read (L = cachedLength, rho = R-O). Decide reuse vs build on the CYCLE branch
