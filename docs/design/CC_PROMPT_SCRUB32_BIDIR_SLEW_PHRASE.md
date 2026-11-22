@@ -17,7 +17,15 @@ Rodney: existing patches need not load identically.
 - Slew contract (PatternEngine.hpp ~1362, MonsoonSandsManager.cpp ~1181): latched every control
   cycle, consumed ONLY at the roll/boundary, "slew must be constant across a phrase".
 
-## PART A — slew consumed at the boundary only
+## PART A — slew consumed at the DRAW boundary only
+AMENDMENT (2026-11-22): the boundary is the wrap of the EFFECTIVE DRAW WINDOW (the span of random cells one
+slewed buffer represents), NOT necessarily the pattern-length wrap. Today `result.wrapped` is
+`pos_.phrasePos()==0` at the global pattern length (SequencerEngine.cpp:506). Under a 16-step pattern over a
+32-step voice window that fires every 16 steps, i.e. half-way through the draw. With CC_PROMPT_UAS_CYCLE_PHRASE_MODE
+(Cycle: Phrase default) the draw window equals the global phrase so the existing boundary is right; in Cycle: Custom
+with L != global length, consume slew only when the effective draw window completes a lap. Add a test: 16 pattern,
+Custom L=32: slew unchanged across both 16-laps, applied once at the 32 wrap. Establish first (test, not assumption)
+whether the draw COUNTER/roll also ticks at the 16 wrap or the 32 wrap and report.
 LEAK (reproduced with a standalone probe): `refreshVisualCache`'s mix branch calls
 `recomputeEffective*ForVoice`, which reads the LIVE `*SlewLatched`; a changed r misses the z-cache
 and falls through to a FULL all-voice `recomputeEffective*`. So any MIX/scrub movement (knob, CV,
