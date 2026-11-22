@@ -107,6 +107,27 @@ Causeway (future, Straits-like poly fold).
   * THE KNOBS do NOT collapse to one control — you still need a global default + 16 overrides + follow
     flags (that is the feature). But in a fold that is just a GLOBAL band + a PER-VOICE band over one
     store, so the module count still drops to ONE Sands host (not Macro-visual + East-visual).
+  * KILLING MACRO KILLS SENDS TOO (Rodney 2026-11-22, warming to it). The editor collapse: the
+    global/macro probability lane becomes PAGE 0 of the ONE Sands (East) visual (per-voice pages
+    1..16 follow) — same for the global/macro Distribution. No separate Macro Visual module. (Third
+    application of "mono is special" → "macro is special" → "the macro EDITOR is special": each time a
+    distinction becomes just a row/page.)
+  * THE CV MODEL: a MONO CV input (Rack auto-replicates it across all poly channels = the global
+    signal, free) PLUS a POLY CV input (per-voice). Each voice gets TWO per-channel attenuverters: one
+    for how much of the GLOBAL signal it takes, one for its own POLY signal. Effective(v) =
+    global×globalAtten[v] + poly×polyAtten[v]. This is Causeway's (perVoiceAtt + globalAtt) pattern
+    generalized — candidate for a SHARED primitive across Causeway and the unified Sands (Causeway was
+    already slated to "end up a bit like Straits").
+  * WHAT SURVIVES OF SENDS (its 3 parts redistribute): per-voice mix-in sends → the per-voice
+    global-amount attenuverter (above); distribution-param send amounts → the Distribution's own
+    per-voice depth knobs (the 56 East-Distribution depths already decided); PRE/POST taps → OPEN —
+    they encode WHERE the global injects, not HOW MUCH, so they do not become an attenuverter. Decide
+    whether per-voice modulation keeps a meaningful pre/post choice or whether pre/post was a
+    Macro-send artifact that dies with the send. That answer decides if Sends dissolves to pure
+    attenuverters (clean) or attenuverters + a surviving pre/post control.
+  * END STATE: one Sands visual (global page + 16 voice pages), one Distribution (same page model), NO
+    Macro module, NO Sends module — Sends' function redistributed to per-voice CV attenuverters +
+    Distribution per-voice depth. A real module-count deletion, not a reshuffle.
   * RISK: touches the bug-prone resolve paths (16-triage, macro-lane-seed, voice-frame-read) — do it
     deliberately against the characterization tests, after the fold. The fold SETS IT UP: once Sands is
     bands over one store, collapsing the two tiers is a well-scoped refactor rather than a tangle.
