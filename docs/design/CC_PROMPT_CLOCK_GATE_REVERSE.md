@@ -36,15 +36,26 @@ executor, which is why the engine already honours `dir` — the clock origin jus
   take NO `dir` at all. Reverse needs an ENGINE signature change threading `dir` to
   `advancePlayhead`, plus the gate-specific subtleties below.
 
-## Control source — RESOLVED (Rodney 2026-11-22)
-A reverse BUTTON + a GATE JACK (a gate edge flips direction), living on a DEDICATED EXPANDER that will
-ultimately join the MONSOON GROUP alongside Junction / Raffles (Singapore-geography name TBD; see
-GROUP_PANEL_INVENTORY.md — added there as 0/1). The button toggles; the gate input flips on its edge
-(decide: edge-toggle vs level = direction, at build; level is cleaner for the canon patch — a static
-high = run reverse). The expander writes the reverse state the controller reads; until the expander
-exists, a plain param/CV on Monsoon is an acceptable interim, but the FROZEN home is the expander.
-(Flavour: a title-only song-nod to R.E.M. "Stand" fits the direction theme — the module NAME still
-follows the Singapore-geography rule; the nod is an easter-egg at most, no lyrics in the repo.)
+## Control source — RESOLVED (Rodney 2026-11-22, SUPERSEDES the earlier "dedicated expander")
+Reverse lives on MONSOON ITSELF, as a new GATE 4 INPUT. Panel change (there is room — confirmed on the
+panel): SHIFT THE OUTPUT GATES one column to the RIGHT; the slot the GATE output vacates becomes GATE 4
+(`GATE4_INPUT`), sitting next to G3. G4 is ASSIGNABLE like G3 — reuse the existing Gate3 assignable-mod
+infrastructure (the `Gate3Target` enum + `gate3Trig` Schmitt pattern, Monsoon.hpp ~698-704) — but the
+ONLY target available now is REVERSE TOGGLE (for clock and gate modes). So: a G4 rising edge toggles the
+reverse state; the assignable menu has one entry today, extensible later. No separate expander, no interim
+param — the home is G4 on Monsoon. (The earlier Direction/Reverse-expander entry in GROUP_PANEL_INVENTORY.md
+is retired.) Panel work (gate reposition + the G4 jack + the G4 assignable menu) is a Rack/feel-test item;
+the port id for GATE4_INPUT is frozen once in the enum.
+
+## Cadence — RESOLVED (Rodney 2026-11-22): PHRASE-BOUNDARY, not per-step
+The toggle changes direction at the END OF THE CURRENT PHRASE, never mid-phrase. A G4 edge sets a PENDING
+reverse flag; the actual flip (both `dir` and `setReverseActive`) commits at the next phrase boundary —
+the SAME phrase-quantised promotion the engine already uses (`laneFlipQuant == LaneFlipQuant::Phrase` at
+the wrap, SequencerEngine.cpp ~522). So mid-phrase the current direction runs to the wrap, then the new
+phrase plays reversed. Rationale: a step-cadence flip would jolt and would break the draw retrace's
+phrase alignment; a phrase-boundary flip keeps the draw axis coherent (the counter reverses cleanly at
+the boundary the draw already rolls on).
+(Flavour: a title-only song-nod to R.E.M. "Stand" fits the direction theme — no lyrics in the repo.)
 
 RESOLVED (Rodney 2026-11-22) — the DRAW AXIS acts EXACTLY like phase reverse: the control sets BOTH
 axes, `setReverseActive(rev)` AND the `dir` passed to the executor. Verified: `rhythmDrawDir()`/
