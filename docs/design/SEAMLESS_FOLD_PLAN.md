@@ -15,6 +15,18 @@ MODULE_DISCOVERY_AND_VARIABLE_WIDTH.md. Rodney's rulings are marked (R).
 
 ## Later rulings (R, 2026-11-22)
 
+- (R, 2026-11-22 pm2) **SUBPANEL ORDER + EDGE-PINNED JACK PANELS.**
+  - Some subpanels may be RE-ORDERABLE by the user. Width stays the order-independent sum; the placement
+    core gains an explicit order (the saved state becomes the ORDERED enabled set, plus edge constraints).
+  - JACK PANELS are ARRANGED AT THE EDGES (left/right extremes), never between knob bands. The placement
+    core pins jack panels to the edges and reorders only the interior (knob) bands.
+  - BLOCK OR WARN when the user tries to REMOVE (pop in) a jack panel that has a CABLED port. This is the
+    collapse guard, scoped to jack panels.
+  - OPEN / SUPERSEDES: this reads as a CHANGE from the earlier (R) "jacks stay on the main panel, always
+    visible; the pop-out bands hold no ports". Under this ruling jack panels ARE poppable, edge-pinned
+    bands that hold ports (hence the removal guard). CONFIRM with Rodney whether the edge jack panels
+    REPLACE the always-on main-panel jacks or are ADDITIONAL to them before freezing port ids.
+
 - (R, 2026-11-22 pm) **WIDTH IS DERIVED FROM THE POPPED-OUT BANDS, not a user-chosen size.**
   The module width is the base panel plus the content extent of whichever bands are popped out
   (Distribution, Sends, jack panels, ...), snapped to the HP grid. There is NO drag handle and NO
