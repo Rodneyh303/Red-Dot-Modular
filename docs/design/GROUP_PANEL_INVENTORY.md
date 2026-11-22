@@ -43,7 +43,15 @@ panel). KNOBS=knob/fader only (interior band). Verify exact port counts at freez
 - CONSEQUENCE: all subpanels at once blows past kMaxHp (120). FoldBandSetCore.bandWouldExceedCap
   would refuse the pop-out. Resolution needed: a SCROLLING knob band (fixed-width band, knobs scroll
   inside) rather than unbounded width — the knob panels are the scroll target Rodney named. Raising
-  kMaxHp is the alternative but a 200+ HP module is unwieldy. DECIDE before building the Straits group.
+  kMaxHp is the alternative but a 200+ HP module is unwieldy.
+  RESOLVED (R, 2026-11-22): a VIEWPORT. The player picks an HP that shows N subpanels (1/2/4/6) and
+  SCROLLS back and forth across the rest when there are more subpanels than fit. Rack-free core
+  FoldViewportCore.hpp (test_fold_viewport): widthHpForViewport(base, visible, panelPx, gapPx) sizes
+  the module; maxScroll/clampScroll/visibleRange/can-scroll drive the window and the arrows; a
+  visible-count change re-clamps the scroll keeping the left edge stable. The viewport is ONE interior
+  band in the FoldBandSetCore layout; the host jacks / Causeway stay edge-pinned around it. The chosen
+  sizes stay well under kMaxHp however many subpanels exist. Widget half (the scroll gesture/arrows,
+  drawing the window) is CC + Rodney's feel-test.
 
 ## 5. Change Alley group
 - Change Alley V2 **[host]** — 16x16 pin matrix, rhythm/melody/q-mix source planes, per-stream
