@@ -1,4 +1,4 @@
-# CC prompt — reverse mode for CLOCK (Mode A) and GATE (Mode B)
+# CC prompt — reverse mode for the CLOCK and GATE timing origins
 
 Branch: `fix/ca5-walkkey-gate` (prompts) → engine work on a fix branch off it. COORDINATE
 with the legato-tie work: gate reverse edits `executeModeB`/`executeModeBSubdivided`, the SAME
@@ -6,26 +6,35 @@ functions the tie work touches — land this AFTER the tie work merges, or rebas
 Rack behaviour is Rodney's feel-test; the traversal/determinism below is Rack-free testable
 (compile against the engine with `CPLUS_INCLUDE_PATH=/home/claude/simde`).
 
+## The mode model (Rodney's correction, verified MonsoonModeController.cpp ~455-470)
+There are THREE timing origins, cycled by the one MODE button (Clock-Gate-Phase):
+  - CLOCK  = modeId 0, `executeModeA` ("Mode A")
+  - GATE   = modeId 1, `executeModeB` ("Mode B")
+  - PHASE  = modeId 2, `executeModeE` ("Mode C" to the user; `executeModeE` is just the phase
+             origin's CODE PATH — a legacy name, NOT a separate user mode).
+Q-MIX (generate vs quantise) is an AXIS engaged per step (beginQuantiserSource_), NOT a mode: the old
+C/D/F "quantiser modes" are gone (MODE_COLLAPSE_6_TO_3 — "that timing origin with q-mix up"). So
+reverse has to work for exactly two origins, CLOCK and GATE; PHASE already reverses.
+
 ## The mechanism that already exists (verify by reading, do not trust this text)
-Two reverse axes, both wired TODAY for PHASE mode (Mode E) and for neither clock nor gate:
+Two reverse axes, both wired TODAY for the PHASE origin and for neither clock nor gate:
 1. WITHIN-DRAW PLAYHEAD TRAVERSAL — `executeModeA(rm, noteVal, in, int dir=+1)` passes `dir`
    to `advancePlayhead(dir)` (`dir<0` = reverse traversal within the pattern window,
    SequencerEngine.hpp:1816). The playhead walks the window backward: RETROGRADE.
 2. DRAW-COUNTER REVERSE — `PatternEngine::setReverseActive(bool)`: the signed draw index steps
    −1 per boundary (regenerating the PREVIOUS draw) instead of +1. This is the scrub/canon axis.
-Phase mode drives BOTH from `phase.reverse` (Monsoon.cpp ~1040-1053: `setPhaseReverse(eff)` +
-`engine.pe.setReverseActive(eff)`). `ModeController::executeModeE` passes `phaseReverse ? -1 : +1`
-to `executeModeA` (MonsoonModeController.cpp:330). So Mode E is the working reference — REUSE its
-plumbing; do NOT invent a second mechanism.
+The PHASE origin drives BOTH from `phase.reverse` (Monsoon.cpp ~1040-1053: `setPhaseReverse(eff)` +
+`engine.pe.setReverseActive(eff)`); its code path `executeModeE` passes `phaseReverse ? -1 : +1` to
+`executeModeA` (MonsoonModeController.cpp:330). So the phase origin is the working reference — REUSE
+its plumbing; do NOT invent a second mechanism. (Note the phase path reuses `executeModeA` as its
+executor, which is why the engine already honours `dir` — the clock origin just never passes it.)
 
 ## State today
-- CLOCK (Mode A): the ENGINE accepts `dir`, but `ModeController::executeModeA()` (line 337) calls
-  `engine.executeModeA(...)` WITHOUT a dir → always +1. No reverse source, no `setReverseActive`.
-- GATE (Mode B): `executeModeB(gate1Rise, gate1High, noteVal, in)` and
-  `executeModeBSubdivided(...)` take NO `dir` at all. Reverse needs an ENGINE signature change
-  threading `dir` to `advancePlayhead`, plus the gate-specific subtleties below.
-- Modes C/D are collapsed (controller routes C→A, D→B — MODE_COLLAPSE_6_TO_3), so covering A and B
-  covers all four.
+- CLOCK origin: the ENGINE's `executeModeA` accepts `dir`, but `ModeController::executeModeA()`
+  (line 337) calls it WITHOUT a dir → always +1. No reverse source, no `setReverseActive`.
+- GATE origin: `executeModeB(gate1Rise, gate1High, noteVal, in)` and `executeModeBSubdivided(...)`
+  take NO `dir` at all. Reverse needs an ENGINE signature change threading `dir` to
+  `advancePlayhead`, plus the gate-specific subtleties below.
 
 ## Control source — DECISION for Rodney (no clock/gate reverse input exists today)
 Phase reverse derives from the phase ramp; clock and gate have no direction of their own, so reverse
@@ -63,7 +72,7 @@ Engine-level (compile against SequencerEngine/PatternEngine; the forward path is
    (The engine supports dir=-1 already — this pins it as the spec and proves the clock engine half;
    the controller wiring is then the only clock gap.)
 2. CLOCK reverse determinism (canon tie-in): a forward engine and a reverse engine, same seed/length,
-   produce MIRRORED reads — ties to CC_PROMPT_SCRUB32 test 1 (the counter-offset mirror) and the
+   produce MIRRORED reads — ties to CC_PROMPT_SCRUB32_BIDIR_SLEW_PHRASE test 1 (the counter-offset mirror) and the
    crab-canon use.
 3. GATE retrograde: executeModeB with dir=-1, each simulated gate rise reads one step backward; the
    reverse read sequence == the forward sequence reversed; the boundary interrupt clears at the reverse
