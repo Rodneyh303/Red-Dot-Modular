@@ -92,6 +92,14 @@ Red first, then green, then the full suite. Commit PART A on its own.
   nothing unrequested, but REPORT a proposal for linking (e.g. a modifier or a master) as an open
   question for Rodney.
 
+> **STATUS (2026-11-22): the pure offset MATH is DONE — `src/dsp/ScrubOffsetCore.hpp`
+> (splitScrub FLOOR-safe, positionToParam/paramToPositionInt exact k/32, snapToIntegerPosition,
+> drawIndexHi/Lo bridge keys, scrubPositionFromMix, cacheHalfSpan), test_scrub_offset registered +
+> green, the truncation mutant fails 450 checks. The engine + widget must CALL this core, not re-derive
+> the split: wire the six scrub sites and ScrubKnobT through it. Tests 2/4/6 (negative-f split, k/32
+> exactness, snap) are covered at the pure level; the behavioural tests (1 mirror/canon, 5 cache, 7
+> held-frac uniformity) still need the real engine.**
+
 ### Widget (`src/ui/Controls.hpp`, `ScrubKnobT`)
 - `SCRUB_STEPS` -> 32 and bidirectional range (65 positions); the template must stay usable for any
   other `Scrub_Small_Cog` bound params (check all bindings: `grep Scrub_Small_Cog`).
