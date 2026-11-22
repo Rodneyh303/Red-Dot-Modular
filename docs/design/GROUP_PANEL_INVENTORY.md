@@ -140,6 +140,16 @@ Causeway (future, Straits-like poly fold).
   * END STATE: one Sands visual (global page + 16 voice pages), one Distribution (same page model), NO
     Macro module, NO Sends module — Sends' function redistributed to per-voice CV attenuverters +
     Distribution per-voice depth. A real module-count deletion, not a reshuffle.
+  * EASES A FUTURE 64-STEP MODE (Rodney 2026-11-22). The engine mask/storage layer is ALREADY 64-ready
+    — kStepStorage <= 64 ("uint64 covers the 64-step ceiling, no second widening"), kMaskLenMask has a
+    `kMaskRing >= 64 ? ~0ULL` branch; STEPS_32 (16→32) deliberately pre-sized for an eventual 64. The
+    unification + fold remove the REMAINING friction: (1) one per-voice model is a SINGLE step-dimension
+    bump to 64, not two tiers' arrays + the twin identity/seed reconciliation (the characterization
+    tests carry over); (2) one editor (Macro as a page on East) extends to 64 lanes once, not twice;
+    (3) the fold gives 16/32/64 as PANEL WIDTHS for free — width is derived from content, so a longer
+    pattern widens the lane band, and the Straits-style viewport means 64 steps can be a wider panel OR
+    a 32-wide window scrolling across 64. STILL SEPARATE: the ring-lamp display (the "twice around"
+    16-lamp packing of 32) needs a rethink for 64 — display only, orthogonal, gates nothing.
   * RISK: touches the bug-prone resolve paths (16-triage, macro-lane-seed, voice-frame-read) — do it
     deliberately against the characterization tests, after the fold. The fold SETS IT UP: once Sands is
     bands over one store, collapsing the two tiers is a well-scoped refactor rather than a tangle.
