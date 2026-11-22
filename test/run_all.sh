@@ -51,6 +51,7 @@ CE="src/dsp/engines/ClockEngine.cpp"
 # name|companion sources (empty = header-only). Keep alphabetical.
 TESTS=(
   "test_12tet_identity|$SE $GS $PE"
+  "test_quantize_cold_memo|$SE $GS $PE"   # regression: quantize() COLD path (activeSemiCount==0, empty-scale/reset state) must write lastQuantOut, else the input-keyed memo serves the stale reset 0.0 to a repeated input. Found by CC during POLY_TIE_EMERGENT; fix 2026-11-22. Fails 4 before the fix
   "test_GateState|$GS"
   "test_GaussianCopula|"
   "test_LegatoLeadTable|"
