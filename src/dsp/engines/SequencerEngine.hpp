@@ -2192,6 +2192,17 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
     //  and the quantiser is now the q-mix axis engaged per-step in the dispatch, not an engine mode.)
     float quantize(float vIn);
 
+    // (CC_PROMPT_POLY_LEGATO_QUANTISER) THE ONE POLY PITCH-DRAW LAW: the onset
+    // path AND the slide / re-articulate / mid-hold sites all draw through this,
+    // so the four cannot drift again. qmixAlways: the onset path refreshes/draws
+    // QMIX unconditionally (byte-identical to its shipped sequence); the other
+    // sites pass false — their QMIX work happens only under quantiserPitchSource,
+    // so outside quantiser modes they reduce to exactly today's genPitchLive call
+    // (no QMIX draw, no RNG/lane movement — the byte-identity guard).
+    struct PolyPitchDraw { float pitchV = 0.f; int sem = 0; bool isQuant = false; };
+    PolyPitchDraw polyPitchDraw(dotModular::VoiceSlot voiceIdx, const PatternInput& input,
+                                const PolyVoice& v, int melIdx, int octIdx, bool qmixAlways);
+
     // High-level DNA Actions
     void syncVisuals(const PatternInput& in);
 
