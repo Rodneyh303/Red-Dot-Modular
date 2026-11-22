@@ -9,9 +9,9 @@ Fix it with a mode, not a magic value.
 - **Cycle: Phrase** (NEW, the DEFAULT everywhere): the voice cycle is locked to the global phrase.
   - L is not authorable: effective L = the transport/global pattern length (`cachedLength`), live.
   - O is not authorable: locked at 0.
-  - R (rotation) follows the transport/global OFFSET. Effect: the global offset slips the pattern around
+  - R (rotation) = the transport/global OFFSET 1:1 (not user-settable; see RULINGS). Effect: the global offset slips the pattern around
     the probabilities, as in pre-UAS (the draw window stays the pattern length; the offset rotates the read).
-  - UI: L, O (and R, see Q1) shown greyed, not selectable, displaying the live effective values.
+  - UI: L, O and R shown greyed, not selectable, displaying the live effective values.
 - **Cycle: Custom**: today's cycle mode (own L, O, R authorable). The opt-in for drawing over a window
   longer or shorter than the pattern (e.g. 16 over 32), polymeter windows, etc. Existing behaviour unchanged.
 Mode is an explicit enum/flag stored per row (persisted, undoable, default Phrase). There is NO sentinel:
@@ -41,7 +41,7 @@ do not encode "follow" as a magic L.
 3. Change LEN live 16->12->32: effective L tracks it with no stale latch; no step gap/double.
 4. Global OFFSET=k in Phrase mode: the pattern is the unshifted pattern rotated by k within the phrase
    (oracle: recompute the unshifted read, rotate), same probabilities, same count of onsets. R_eff = k.
-5. Phrase mode with user R (if Q1 says additive): rotation = global offset + user R, modulo L.
+5. (void — Phrase mode has no user R; kept as a number so references stay stable.) Instead: the user cannot author L/O/R in Phrase mode (setters are no-ops or the UI never offers them) and the stored Custom values are untouched by Phrase operation.
 6. Custom mode: existing goldens bit-identical (UA_NONDIV, the Stage tests); switching Phrase->Custom keeps
    the current effective (L,O,R) as the authored values (no jump), Custom->Phrase discards them.
 7. Delegation: a voice row following Macro inherits Macro's mode; a localEast row has its own.
@@ -57,11 +57,13 @@ identity rewrite -> the pass-through goldens or test 2 fail.
 Mode selector "Cycle: Phrase / Cycle: Custom" per row; L and O greyed and read-only in Phrase and showing the
 live global values; R per Q1. Menu text must not say "cap" for the Phrase default. Needs Rack feel-test.
 
-## Open questions (report, default stated)
-Q1. In Phrase mode is R fully slaved to the global offset (greyed), or does the user's R ADD to it? Default:
-    additive (user R + global offset) — Rodney said both "can set rotation" and "rotation follows the
-    transport offset". Make it one constant/branch so it is trivial to flip; tell Rodney which you chose.
-Q2. Should the global offset in Phrase mode rotate WITHIN the phrase cells (pre-UAS) or slide over the 32
-    ring? Intent above is rotate-within; fact 2 decides what current code does.
-Q3. Where is the mode stored for the Macro row vs each voice (editor state `voiceLorMacro` / `voiceLorEast`)?
+## RULINGS (Rodney, 2026-11-22 — these replace the open questions)
+Q1. In Cycle: Phrase the user can set NONE of voice-lane L, O, R. L = transport (global) length, O = 0,
+    R = transport (global) offset, 1:1. All three greyed and display the live effective values. NOT additive
+    (the earlier "additive" default and test 5 are void: there is no user R in Phrase mode; delete test 5).
+Q2. The global offset drives R 1:1 and R is where the pattern starts: the offset rotates the pattern within
+    the phrase cells (same probabilities, shifted start). Fact 2 (what the current code reads) is still to be
+    reported; the oracle follows this ruling.
+Q3. The mode is a USER SELECTION: one on the Macro row, and per voice on East (a localEast row has its own,
+    a following row inherits Macro's). Default Cycle: Phrase everywhere. Persisted + undoable.
 Not in scope: scrub/slew (separate prompt), visual redesign of the range strips.
