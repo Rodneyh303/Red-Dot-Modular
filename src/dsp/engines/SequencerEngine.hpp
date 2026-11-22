@@ -2203,6 +2203,21 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
     PolyPitchDraw polyPitchDraw(dotModular::VoiceSlot voiceIdx, const PatternInput& input,
                                 const PolyVoice& v, int melIdx, int octIdx, bool qmixAlways);
 
+    // (CC_PROMPT_POLY_TIE_EMERGENT) TIE IS EMERGENT — the ONE rule every join
+    // derives from (mono's join, the poly S1 landing, the S2 mid-hold arm, the
+    // onset-path slide): a tie = the SAME DEGREE AND THE SAME OCTAVE. The degree
+    // term (sem == heldSem) keeps duplicate-pitch degrees (a user scale with
+    // doubled notes, a muted-degree quantize fold) SLIDES; the octave term rides
+    // the DRAWN VOLTAGE with a named epsilon, so microtonal tables and the
+    // quantiser's quantize() output compare consistently (a mid-phrase cents
+    // nudge of the same degree stays a tie; an octave move never does).
+    // kPitchEps ~ 0.12 cents sits far below the finest tuning step (a cent =
+    // 8.3e-4 V) and far above float / table-vs-computed ULP dust (~1e-7 V).
+    static constexpr float kPitchEps = 1e-4f;
+    static bool isSamePitch(float pitchV, float heldPitchV, int sem, int heldSem) {
+        return (sem == heldSem) && (std::fabs(pitchV - heldPitchV) < kPitchEps);
+    }
+
     // High-level DNA Actions
     void syncVisuals(const PatternInput& in);
 

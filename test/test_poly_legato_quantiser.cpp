@@ -167,10 +167,14 @@ static MarchOut march(uint32_t seed, bool quantiser, float cv0, float qmixLvl,
         for (int v = 2; v <= 16; ++v) {
             const auto& pv = eng.voices[VoiceResolver::slot(v)];
             const MonoDecision verdict = eng.polyVerdict_[VoiceResolver::slot(v).v];
-            if (landing && verdict == MonoDecision::Legato) { ++out.s1; ++out.events; }
+            // (tie-emergent, CC_PROMPT_POLY_TIE_EMERGENT) the s1 counter is LABEL-AGNOSTIC:
+            // the connect arm now DERIVES its label — a same-pitch draw is a Tie (the old
+            // zero-interval Legato), a different draw a Legato. This suite's constant
+            // per-voice CVs make every connect a Tie, so counting Legato only starved it.
+            if (landing && (verdict == MonoDecision::Legato || verdict == MonoDecision::Tie)) { ++out.s1; ++out.events; }
             if (landing && verdict == MonoDecision::NewNote) { ++out.s3; ++out.events; }
             // THE LAW (quantiser mode, all-quantised): every S1/S3 draw == quantize(own CV)
-            if (quantiser && (verdict == MonoDecision::Legato || verdict == MonoDecision::NewNote)
+            if (quantiser && (verdict == MonoDecision::Legato || verdict == MonoDecision::NewNote || verdict == MonoDecision::Tie)
                 && pv.gs.gateHeld) {
                 const float want = eng.quantiserCV[VoiceResolver::slot(v).v] < 0.f ? 0.f : (eng.quantiserCV[VoiceResolver::slot(v).v] > 5.f ? 5.f : eng.quantiserCV[VoiceResolver::slot(v).v]);   
                 if (std::fabs(pv.gs.currentPitchV - want) > 1e-4f && bad && bad->step < 0) {

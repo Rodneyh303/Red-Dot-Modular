@@ -215,12 +215,12 @@ struct GateStream {
 // B=0x3089df448e08e957, BS=0x7c63400e804fe03e. The ≤16-window equivalence is GATE 1's
 // oracle (260 digests, zero differences at every cap); the advance FEATURE's own law
 // is the RULE/STAGE2 sections, which predict the trajectory exactly (not digest-pinned).
-static const uint64_t ADV_IDENTITY_B  = 0xe20688a53567d177ULL;   // re-pinned (STEPS_32 2b: the factory window rides the ring)
+static const uint64_t ADV_IDENTITY_B  = 0x1d856851e6367c36ULL;   // re-pinned (STEPS_32 2b: the factory window rides the ring; then tie-emergent CC_PROMPT_POLY_TIE_EMERGENT: the mode-B trace moves — same-degree/different-octave mono joins slide to the drawn octave, poly S1 derives its own tie)
 // RE-CAPTURED for CC_PROMPT_STEP_ADVANCE_FIX_DRAW_SOURCE (the ghost-candidacy
 // deletion changes ghost outcomes at p=1; u=r_vary < 1 crosses every
 // step, so the advance itself is byte-identical) and again for STEPS_32 2b
 // (same default-window widening as B above).
-static const uint64_t ADV_IDENTITY_BS = 0xfcaca058f6d814aeULL;   // re-pinned (draw-source fix; then STEPS_32 2b)
+static const uint64_t ADV_IDENTITY_BS = 0xf3b035de13e65478ULL;   // re-pinned (draw-source fix; then STEPS_32 2b; then tie-emergent — same move as ADV_IDENTITY_B)
 
 static void marchModeB_p1(int seed, Capture& cap) {
     PhiloxRng rng; rng.seed64((uint64_t)seed * 747796405u + 2891336453u + 1u);
@@ -444,6 +444,9 @@ int main() {
               "IDENTITY: plain Mode B at p=1 is byte-identical to the pre-feature engine");
         check(bs.digest() == ADV_IDENTITY_BS,
               "IDENTITY: Mode B subdivided at p=1 is byte-identical to the pre-feature engine");
+        // the re-pin print (the differential suite's house pattern — the actual digests)
+        std::printf("  ADV_IDENTITY_B  = 0x%016llxULL\n", (unsigned long long)b.digest());
+        std::printf("  ADV_IDENTITY_BS = 0x%016llxULL\n", (unsigned long long)bs.digest());
     }
 
     // ── RULE: the trajectory IS the mirrored rule (+ double-run determinism) ────
