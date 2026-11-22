@@ -15,6 +15,17 @@ MODULE_DISCOVERY_AND_VARIABLE_WIDTH.md. Rodney's rulings are marked (R).
 
 ## Later rulings (R, 2026-11-22)
 
+- (R, 2026-11-22 pm4) **PACKED POLY ON MAIN + MONO-PER-JACK BREAKOUT ON A POP-OUT.**
+  Resolves the "pack or stay mono" open question: do BOTH, not either/or. The main module carries the
+  PACKED POLY jacks (compact, one cable per column); a pop-out panel exposes the MONO-PER-JACK breakout
+  for cabling one lane at a time. Both are always-declared ports (the declare-everything-up-front rule).
+  - COMBINE RULE = SUM. When both a packed poly CHANNEL and its mono breakout jack are patched on the same
+    lane, the engine reads channel-value + mono-jack-value. This matches the house convention: CV already
+    ADDS onto the base (macroVoiceLor_ + voiceLorCvMacro_) and Causeway sums perVoiceAtt + globalAtt — not
+    override, not normalled. An unpatched jack reads 0, so summing is a no-op when only one side is used.
+  - Supersedes the earlier plan note offering a context-menu "keep full mono layout" toggle: the mono
+    layout is now a pop-out panel, not a menu-switched alternate layout.
+
 - (R, 2026-11-22 pm2) **SUBPANEL ORDER + EDGE-PINNED JACK PANELS.**
   - Some subpanels may be RE-ORDERABLE by the user. Width stays the order-independent sum; the placement
     core gains an explicit order (the saved state becomes the ORDERED enabled set, plus edge constraints).
