@@ -36,15 +36,15 @@ executor, which is why the engine already honours `dir` — the clock origin jus
   take NO `dir` at all. Reverse needs an ENGINE signature change threading `dir` to
   `advancePlayhead`, plus the gate-specific subtleties below.
 
-## Control source — DECISION for Rodney (no clock/gate reverse input exists today)
-Phase reverse derives from the phase ramp; clock and gate have no direction of their own, so reverse
-is a USER control. Options (Rodney picks):
-  (a) a dedicated REVERSE gate/CV input (high = read backward) — consistent, patchable, the
-      canon use wants a jack;
-  (b) a reverse button/param;
-  (c) reuse an assignable mod (Gate3 target) — cheapest, no new port.
-Recommend (a) a reverse gate/CV, since the crab-canon use (one Monsoon forward, one reverse) wants to
-drive it from a patch.
+## Control source — RESOLVED (Rodney 2026-11-22)
+A reverse BUTTON + a GATE JACK (a gate edge flips direction), living on a DEDICATED EXPANDER that will
+ultimately join the MONSOON GROUP alongside Junction / Raffles (Singapore-geography name TBD; see
+GROUP_PANEL_INVENTORY.md — added there as 0/1). The button toggles; the gate input flips on its edge
+(decide: edge-toggle vs level = direction, at build; level is cleaner for the canon patch — a static
+high = run reverse). The expander writes the reverse state the controller reads; until the expander
+exists, a plain param/CV on Monsoon is an acceptable interim, but the FROZEN home is the expander.
+(Flavour: a title-only song-nod to R.E.M. "Stand" fits the direction theme — the module NAME still
+follows the Singapore-geography rule; the nod is an easter-egg at most, no lyrics in the repo.)
 
 RESOLVED (Rodney 2026-11-22) — the DRAW AXIS acts EXACTLY like phase reverse: the control sets BOTH
 axes, `setReverseActive(rev)` AND the `dir` passed to the executor. Verified: `rhythmDrawDir()`/
