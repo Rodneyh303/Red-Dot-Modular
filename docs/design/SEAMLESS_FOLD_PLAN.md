@@ -22,10 +22,16 @@ MODULE_DISCOVERY_AND_VARIABLE_WIDTH.md. Rodney's rulings are marked (R).
     core pins jack panels to the edges and reorders only the interior (knob) bands.
   - BLOCK OR WARN when the user tries to REMOVE (pop in) a jack panel that has a CABLED port. This is the
     collapse guard, scoped to jack panels.
-  - OPEN / SUPERSEDES: this reads as a CHANGE from the earlier (R) "jacks stay on the main panel, always
-    visible; the pop-out bands hold no ports". Under this ruling jack panels ARE poppable, edge-pinned
-    bands that hold ports (hence the removal guard). CONFIRM with Rodney whether the edge jack panels
-    REPLACE the always-on main-panel jacks or are ADDITIONAL to them before freezing port ids.
+  - RESOLVED (R, 2026-11-22 pm3): the edge jack panels are ADDITIONAL, not a replacement. The main panel
+    keeps its CORE jacks (all-on-main was too restrictive given the port counts); FURTHER jacks live on
+    panels that pop out to the LEFT of the main panel. So the earlier "jacks stay on the main panel" line
+    is relaxed to "CORE jacks on main; additional jacks on left edge pop-out panels", NOT "no ports on
+    pop-outs".
+  - PORT-ID CONSEQUENCE: still ONE growing module, so config() declares EVERY port of EVERY band up front
+    (visible or not) — popping a jack panel out does NOT mint ids, it reveals widgets for ports that always
+    existed. A port with no widget cannot be cabled -> that is exactly why the pop-IN guard exists. Freeze
+    the full port enum once, across all bands, before shipping ids. Which jacks are "core" (stay on main)
+    vs "additional" (left pop-out panels) is a panel-layout decision, NOT a port-id decision.
 
 - (R, 2026-11-22 pm) **WIDTH IS DERIVED FROM THE POPPED-OUT BANDS, not a user-chosen size.**
   The module width is the base panel plus the content extent of whichever bands are popped out
