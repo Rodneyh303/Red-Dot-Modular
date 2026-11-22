@@ -98,11 +98,21 @@ Red first, then green, then the full suite. Commit PART A on its own.
 - Drag: default = continuous with the existing magnetism toward integer positions; SHIFT = fine
   (slower, Rack's own modifier convention); CTRL/SUPER = discrete click-through, one integer
   position per small pixel step (120 px/step is far too slow for 65 positions; ~8-12 px — expose as
-  a named constant, Rodney will tune by feel). Double-click resets to f = 0.
-- SNAP ON RELEASE (`onDragEnd`): round the param to the nearest integer position BEFORE the undo
-  `ParamChange` is pushed (otherwise undo records the pre-snap value). A snap must be exact (k/32).
-- CV modulation adds a continuous fraction on top of the base; the snap applies to the knob base only.
-  (Open question for Rodney: should canon-grade operation quantise the CV-added offset too?)
+  a named constant, Rodney will tune by feel).
+- DOUBLE-CLICK -> NEUTRAL (Rodney's gesture): reset to f = 0 / frac = 0 = the LIVE read, reflecting the
+  MOST RECENT draw (no offset). Neutral == the centre of the bidirectional range == live; one gesture
+  gets back to "just the current draw" from anywhere.
+- RELEASE BEHAVIOUR IS A MODE (Rodney): a per-knob (or context-menu) choice —
+  (a) SNAP-ON-RELEASE: on `onDragEnd` round the param to the nearest integer position BEFORE the undo
+      `ParamChange` is pushed (else undo records the pre-snap value). Exact (k/32). This is the canon /
+      land-on-a-clean-draw mode.
+  (b) FREE-FLOAT: no snap — the fractional offset is held wherever released. This is the expressive /
+      morph mode (sit "between" two draws). Default: pick one and say which; make it a one-flag switch.
+- CV modulation adds a continuous fraction on top of the base (so the fractional position can be
+  MODULATED or HELD at any point within a phrase — the brownian-bridge read is a genuine intermediate
+  correlated draw-state, not an output crossfade). The release snap applies to the knob base only.
+  (Open question for Rodney: should canon-grade operation quantise the CV-added offset too? — that is
+  the same fork as the release mode: quantise for a mirror-exact canon, leave continuous for morphing.)
 
 ### Tests (failing first; Rack-free)
 Add `test/test_scrub_bidir.cpp` (register):
@@ -121,6 +131,16 @@ Add `test/test_scrub_bidir.cpp` (register):
    eviction of a draw still needed by the current window); a miss recomputes bit-identically.
 6. Snap: a knob-level pure helper `snapToIntegerPosition(v)` (keep it Rack-free in a core header so it
    is testable) — nearest integer, ties defined, exact k/32 output, idempotent.
+7. HELD-FRAC MARGINAL UNIFORMITY (Rodney: "we preserve uniform throughout until Distributions"): the
+   scrub read at a HELD fractional offset is marginally uniform per step, exactly as at integer draws.
+   Read the PRE-DISTRIBUTION draw output (the copula/quantile stage — NOT after the warp/Distribution
+   shaping, which is where non-uniform shaping legitimately enters). For frac in {0.15, 0.4, 0.6, 0.85}
+   (and a few integer f), per-step KS of 1000 INDEPENDENT samples (draw indices spaced > K = 64 apart —
+   consecutive draws are autocorrelated and inflate KS) stays under the 5% critical value (~0.043).
+   This proves the MORPH / free-float mode is uniform, not just assumed; the brownian-bridge endpoints
+   are standard normal and the interpolation stays Gaussian, so the marginal should hold at any frac —
+   the test pins it. Mutation: a non-bridge crossfade of the two draws' OUTPUTS (instead of the normal-
+   space z interpolation) breaks per-step uniformity at frac!=0 -> this test fails.
 Mutation-check: truncate with `(int)` instead of floor -> test 2 fails; keep SCRUB_K at 6 -> test 5
 or 1 fails; snap after the undo push (simulated order helper) -> a snap-order test fails.
 Red first, then green, then the full suite.
