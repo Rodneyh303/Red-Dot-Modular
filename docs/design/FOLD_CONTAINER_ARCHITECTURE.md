@@ -65,6 +65,26 @@ struct FoldBand {               // one existing panel, re-hostable at an x-origi
 A virtual interface or a struct-of-fn-pointers both fit; a virtual `IFoldBand` is the Rack-idiomatic
 choice. Each existing panel provides ONE concrete band.
 
+## Polymorphism choice — VIRTUAL interface for composition, TEMPLATES at the leaves (Rodney 2026-11-22)
+Decided: a virtual `IFoldBand` + the Rack-virtual container bases, NOT an all-template (CRTP /
+`ContainerWidget<Bands...>`) design. Reasons specific to this problem:
+- Rack already forces runtime dispatch — `ModuleWidget`/`Module` draw()/step()/onButton() are virtual
+  overrides and children live in `std::vector<Widget*>`. Templates cannot remove the dispatch that
+  matters.
+- Pop-in/out makes the band collection RUNTIME-MUTABLE and heterogeneous: the container iterates a
+  `std::vector<IFoldBand*>` that changes as the user toggles bands. Different template instantiations
+  cannot share a vector without type erasure (= virtual dispatch anyway). This is the deciding factor.
+- None of it is a hot path (layout-time + once-per-frame over a few bands; the audio thread never
+  touches it), so the templates' inlining/compile-time edge buys nothing measurable here.
+- The band OPERATIONS are settled (place/draw/declarePorts/extent/edge) while implementations multiply
+  → stable interface, varying implementation, open to new panels with zero container changes: the
+  virtual-interface sweet spot. Adding a panel = a new `IFoldBand` subclass.
+TEMPLATES stay at the LEAF helpers where the concrete type IS known at the call site —
+`placeStoreKnob<Store, KnobTag>`, the knob-face tags — so each band's virtual `place()` is a thin
+override calling templated, inlined helpers. Virtual at the collection, compile-time at the knob.
+AVOID: CRTP/type-list containers (fix the band list at compile time, fight pop-in/out, instantiate
+once per slug for no runtime gain, still can't escape Rack's virtual draw/step).
+
 ## The per-panel refactor recipe (mechanical, golden-safe, little rework)
 Existing panel widgets embed placement + draw in their ModuleWidget constructor. To share them with
 a container WITHOUT a rewrite, extract (don't rewrite) three position-parameterised free functions
