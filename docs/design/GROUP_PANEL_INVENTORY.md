@@ -126,6 +126,17 @@ Causeway (future, Straits-like poly fold).
     if they prove useful. The unification does not hinge on resolving them — Sends still dissolves to
     per-voice attenuverters + Distribution depth, with the pre/post control retained only if it earns
     its place.
+  * KEEP THE GLOBAL PROB-OUT GROUP (Rodney 2026-11-22 — the one real asymmetry). Both Macro and East
+    already emit poly prob CV outs (PROB_OUT_START): Macro = the global-mod value across voices, East =
+    the resolved per-voice follow/override value. In the unified model BOTH reads still exist (global =
+    the global-default row + its mod; per-voice = effective[v]), so keep BOTH output groups on the one
+    Sands. This is the ONE output that does NOT fold into the per-voice poly out: on the INPUT side the
+    poly convention merged Macro/East (mono cable = global), but on the OUTPUT side you cannot borrow
+    ch0 for the global because ch0 is V1 — so the global prob out stays a DISTINCT jack group. Not a
+    capability loss: it is a trivial read of the global-default row, retained deliberately. Its value is
+    being a STABLE GLOBAL REFERENCE independent of per-voice overrides (when voices follow macro the
+    East out already equals it; it earns its separate existence in the overridden case — exactly when
+    both signals are wanted).
   * END STATE: one Sands visual (global page + 16 voice pages), one Distribution (same page model), NO
     Macro module, NO Sends module — Sends' function redistributed to per-voice CV attenuverters +
     Distribution per-voice depth. A real module-count deletion, not a reshuffle.
