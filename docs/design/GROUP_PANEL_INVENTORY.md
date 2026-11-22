@@ -88,10 +88,28 @@ Causeway (future, Straits-like poly fold).
   (2? 4?), since each set multiplies the port enum and must be frozen up front.
 
 ## Open questions (resolve before the port freeze)
-- SANDS FAMILY: one fold container (Macro + East + both Distributions + Sends) or TWO (a Macro-side
-  fold and an East-side fold)? Rodney frames Sands+Distribution+Sends as one probability read/modify
-  family; the inventory currently lists Macro and East as separate hosts. The association criterion
-  doesn't settle it (both tiers live on the same Monsoon). Rodney's call.
+- SANDS FAMILY: TWO groups FOR NOW (Macro + Sends + Distribution; East + Distribution) — Rodney
+  2026-11-22. With a known FUTURE SIMPLIFICATION to ONE group, pursued AFTER the fold proves out on
+  Straits (do not block the fold on an engine refactor; do the refactor against the characterization
+  tests). The unification (recorded so it is not lost):
+  * The ONLY real Macro/East difference is "applies across all voices" (Macro) vs "per-voice override
+    or follow-Macro" (East). That is ONE model: a per-voice value + a GLOBAL DEFAULT row + a per-voice
+    follow flag — effective(v) = follow[v] ? globalDefault : own[v]. The engine already resolves this;
+    today it is just expressed as TWO TIERS with twin code (effectiveMacroRowLor vs effectiveVoiceLor,
+    macroRowIdentity vs voiceLorIdentity, the macro-lane-seed fix that exists only to keep the two seed
+    laws identical). One per-voice store + one global-default row removes the twinning.
+  * SAME REFACTOR LINE as killing "mono is special" (mono became voice 0): killing "macro is special"
+    makes Macro the global-default row of the per-voice model. Step two of the same simplification.
+  * THE JACKS collapse fully via the Rack poly convention: ONE poly input per lane, a MONO cable
+    broadcasts ch0 to all (= the Macro/global behaviour) and a POLY cable targets ch==voice (= the East
+    per-voice behaviour). This IS the East convention already (ch==voiceSlot, 1-channel broadcasts,
+    StraitsEastSandsVisual.cpp ~1461). So Distribution's "global vs poly" is one jack read two ways.
+  * THE KNOBS do NOT collapse to one control — you still need a global default + 16 overrides + follow
+    flags (that is the feature). But in a fold that is just a GLOBAL band + a PER-VOICE band over one
+    store, so the module count still drops to ONE Sands host (not Macro-visual + East-visual).
+  * RISK: touches the bug-prone resolve paths (16-triage, macro-lane-seed, voice-frame-read) — do it
+    deliberately against the characterization tests, after the fold. The fold SETS IT UP: once Sands is
+    bands over one store, collapsing the two tiers is a well-scoped refactor rather than a tangle.
 - Causeway's home (Monsoon group vs Straits/poly group).
 - Straits: scrolling knob band vs raising kMaxHp (the cap breach is real).
 - Change Alley: the exact 3/3/2 jack set and the max number of sets.
