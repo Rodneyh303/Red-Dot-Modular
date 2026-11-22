@@ -1,5 +1,13 @@
 # CC prompt — Fold step 2: the seamless draw (titled bands, no seam)
 
+> **STATUS (2026-11-22): §1 (FoldBandLayoutCore.hpp) and §2 (test_fold_band_layout, registered,
+> green, mutation-proven) are DONE — built directly, not by CC. CC's remaining work is §3 THE DRAW
+> only (SandsFold.cpp): consume the core, the StraitsSeamFiller edges, the theme finding. Do NOT
+> re-implement the core; the layout arithmetic lives in FoldBandLayoutCore.hpp. Note also
+> FoldBandSetCore.hpp (width-from-enabled-bands + edge-pinned order + removal guard, test_fold_band_set):
+> the band SET/width/order feeds layoutBands(totalPx=FoldBandSetCore width, specs in FoldBandSetCore order).**
+
+
 Branch: `fix/fold-resize-spike` (continue). Plan context: `docs/design/SEAMLESS_FOLD_PLAN.md`
 (build order step 2) and `SEAMLESS_SUBPANEL_IDEA.md`. Do this AFTER the push-order fix
 (`CC_FIX_FOLD_PUSH_ORDER.md`) lands, or in a separate commit series; they touch different code
