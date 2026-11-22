@@ -82,13 +82,18 @@ Mutation-check: (a) channel index off by one -> 1 fails; (b) no zeroing of unfed
 (e) delete the delegated-cell guard -> 6 fails. Show red first, then green, then the full suite.
 
 ## Open questions (Rodney's calls — default proposals in brackets; do NOT decide silently)
-- Q1. Which module gets the per-voice publisher? [the NEW fold model only; the existing
-  `SandsDistributionExpander` keeps today's displayed-voice/channel-0 behaviour byte-identical,
-  consistent with "old modules are not deleted/changed". Alternative: also upgrade the old module,
-  which changes how existing patches behave: a poly cable on an old East Distribution jack today
-  modulates only the displayed voice from channel 0.]
-- Q2. Mono cable on an East-role jack: [broadcast to all voices (standard poly convention). Note
-  this differs from today's "mono cable modulates the displayed voice only".]
+- Q1. RESOLVED (Rodney 2026-11-22): UPDATE BOTH — the existing `SandsDistributionExpander` AND the
+  new fold model. Distribution modulation NOT being poly across voices when paired with East is a
+  current OVERSIGHT: East's other per-voice mods (LOR dir/deleg gate-mods, the voice-range CV) are
+  already poly `ch == voiceSlot`, so Distribution should match. Accept the existing-patch behaviour
+  change (a poly cable on an old East Distribution jack today modulates only the displayed voice from
+  channel 0; after this it modulates every voice by channel). This is the East-role behaviour only —
+  the MACRO-role Distribution (cross-voice, channel 0) is unchanged.
+- Q2. RESOLVED (Rodney 2026-11-22): a mono (1-channel) cable BROADCASTS to all voices — matching
+  East's OWN poly-CV convention verbatim (`ch == voiceSlot`, "the broadcast rule: a 1-channel cable
+  hits every voice", StraitsEastSandsVisual.cpp ~1461). So NOT a special case: reuse the same
+  `getChannels()==1 ? broadcast` idiom the East LOR gate-mods use. (This differs from today's "mono
+  cable modulates the displayed voice only" — part of the Q1 oversight fix.)
 - Q3. Control-rate divider value N, after the bench numbers.
 - Q4. Voice count: slots beyond the engine's active voice count — store and ignore, or skip the
   rebuild? [store and skip the rebuild for inactive voices; zero them when they deactivate.]
