@@ -1774,7 +1774,7 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
             float frac = v - std::floor(v);
             // markSemi correctness (QMIX_LANE_PARITY §"one correctness rule"): the QUANTISED branch
             // names its degree in outSem, and the generated branch does so via genPitchLive — so the
-            // caller's triggerNote/slideNote/extendHold marks lastSemitone from WHICHEVER value the mux
+            // caller's triggerNote/continueNote marks lastSemitone from WHICHEVER value the mux
             // picked. "What we picked" and "what CA/Lantern see" never drift.
             outSem = pe.tuning.isDefault12TET ? (int(std::round(frac * 12.f)) % 12)
                                               : pe.tuning.nearestDegree(frac);
@@ -2202,6 +2202,13 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
     struct PolyPitchDraw { float pitchV = 0.f; int sem = 0; bool isQuant = false; };
     PolyPitchDraw polyPitchDraw(dotModular::VoiceSlot voiceIdx, const PatternInput& input,
                                 const PolyVoice& v, int melIdx, int octIdx, bool qmixAlways);
+
+    // (CC_PROMPT_POLY_TIE_EMERGENT, then the collapse) TIE IS EMERGENT — and the
+    // rule now lives WITH the action it selects, in GateState: kPitchEps,
+    // isSamePitch/isSameAsHeld and continueNote are one unit there, so no join can
+    // pair the wrong test with the wrong action. Every join site (mono's join, the
+    // poly onset landing, the connect landing, the mid-hold arm) calls
+    // gs.continueNote and reads the label back.
 
     // High-level DNA Actions
     void syncVisuals(const PatternInput& in);

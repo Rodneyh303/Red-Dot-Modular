@@ -13,8 +13,9 @@
  *
  * Interface:
  *   triggerNote()   — play a note (retrigger gate, update pitch)
- *   slideNote()     — legato: update pitch, extend hold, no retrigger
- *   extendHold()    — tie: extend hold, no pitch/retrigger change
+ *   continueNote()  — THE ONE JOIN: gate continues, pitch ALWAYS written, the
+ *                     Tie-vs-Legato label EMERGES from the pitch compare
+ *   slideMax()      — LegatoMax: forced slide, hold SET (not summed), no retrigger
  *   rest()          — optional tie-extend on rest; otherwise let ring naturally
  *   tick()          — call once per step edge; decrements hold, clears gate
  *   process()       — call every sample; ticks gatePulse, returns gate voltage
@@ -88,9 +89,10 @@ struct GateState {
     bool   slurMember      = false;
 
     // ── Articulation type (per voice) — the single source of truth the display reads ──
-    // Set by the three articulation methods: triggerNote → Single (a fresh attack, including an
-    // opt-out re-strike INSIDE a slur), slideNote → Legato (slid to a new pitch, no retrigger),
-    // extendHold → Tie (held same pitch). MidNote/hold leave it unchanged (the note continues).
+    // Set by the articulation methods: triggerNote → Single (a fresh attack, including an
+    // opt-out re-strike INSIDE a slur), continueNote → Tie or Legato DERIVED from the pitch
+    // compare (same degree AND octave → Tie; anything else → Legato), slideMax → Legato.
+    // MidNote/hold leave it unchanged (the note continues).
     // This is what the lantern reads per voice (voices[i].gs.lastNoteType) — and, later, what a
     // poly TIE/LEGATO output jack emits — so per-voice legato is exposed exactly like mono's,
     // rather than inferred from a 1ms gate dip that the display can't recover. Values match the
@@ -111,9 +113,44 @@ struct GateState {
     // FADER_SEQ_QUANT_COLOURS: isQuant routes the flash to the quant timer (green) instead of the
     // seq timer (red). Default false = seq (byte-identical to pre-collapse callers that omit it).
     void triggerNote(float pitchV, int semitone, int nvIdx, bool isQuant = false);
-    void slideNote(float pitchV, int semitone, int nvIdx, bool wasHeld, bool isQuant = false);
     void slideMax(float pitchV, int semitone, int nvIdx, bool isQuant = false);
-    void extendHold(int semitone, int nvIdx, bool isQuant = false);
+
+    // ── THE TIE LAW — predicate and action in ONE place ───────────────────────
+    // (CC_PROMPT_POLY_TIE_EMERGENT, then the collapse) A tie = the SAME DEGREE
+    // AND THE SAME OCTAVE. The degree term (sem == heldSem) keeps duplicate-pitch
+    // degrees (a user scale with doubled notes, a muted-degree quantize fold)
+    // SLIDES; the octave term rides the DRAWN VOLTAGE with a named epsilon, so
+    // microtonal tables and the quantiser's quantize() output compare consistently.
+    //
+    // kPitchEps ~ 0.12 cents sits far above float / table-vs-computed ULP dust
+    // (~1e-7 V) and far BELOW the finest tuning step (a cent = 8.3e-4 V). That
+    // second bound is the whole point and cuts BOTH ways: the epsilon admits
+    // numerical dust and NOTHING a user can author. A one-cent nudge is 8x the
+    // epsilon, so a RETUNED degree is NOT a tie — it SLIDES to the new tuning
+    // (gate continues, pitch follows the retuning, no portamento). That is the
+    // intended behaviour and the reason the cents cadence is latched to the STEP
+    // boundary (docs/design/TIE_UNDER_MICROTONALITY.md) rather than the frame:
+    // the slide lands on a quantised edge, not mid-read.
+    static constexpr float kPitchEps = 1e-4f;
+    static bool isSamePitch(float pitchV, float heldPitchV, int sem, int heldSem) {
+        return (sem == heldSem) && (std::fabs(pitchV - heldPitchV) < kPitchEps);
+    }
+    // The same test against THIS voice's own held note. Call it BEFORE any write.
+    bool isSameAsHeld(float pitchV, int semitone) const {
+        return isSamePitch(pitchV, currentPitchV, semitone, lastSemitone);
+    }
+
+    // THE ONE JOIN. Every site that continues a sounding note calls this — mono's
+    // join, the poly onset landing, the poly connect landing, the poly mid-hold arm.
+    // The gate continues (no retrigger when wasHeld); the DRAWN pitch and degree are
+    // ALWAYS written, so a join can never silently discard the octave it drew; and the
+    // Tie-vs-Legato label EMERGES from isSameAsHeld rather than being chosen by the
+    // caller. Returns the label it derived, so a caller needing the verdict (the
+    // display's MonoDecision) reads it back instead of repeating the test — a caller
+    // can no longer pair the wrong test with the wrong action.
+    // wasHeld=false is the cold open (first note of a legato run): retrigger, hold SET.
+    NoteType continueNote(float pitchV, int semitone, int nvIdx, bool wasHeld, bool isQuant = false);
+
     void rest(bool tieExtend, int nvIdx);
     // Tick: call once per 1/16 step edge. Decrements the whole-step DECISION
     // counter (holdRemain) + semi LED timers. Does NOT close the gate (that's

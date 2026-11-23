@@ -38,7 +38,7 @@ struct V {
     // A landing re-articulate produces a note that may CLOSE before the next edge.
     // The test drives that via closeGate(); the engine models it with the pulse timer.
     void trigger() { gateHeld = true;  last = 'T'; }   // fresh onset (retrigger)
-    void connect() { gateHeld = true;  last = 'C'; }   // slide / extendHold (no retrigger)
+    void connect() { gateHeld = true;  last = 'C'; }   // continueNote join (no retrigger)
     void silent()  { gateHeld = false; last = '.'; }
     void hold()    {                   last = '-'; }   // MidNote: gate unchanged
 };

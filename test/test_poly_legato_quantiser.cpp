@@ -116,12 +116,19 @@ static void forestDrive(SequencerEngine& eng, bool gateOpen, const bool* latch) 
 }
 
 // The march. coverage: the per-site counters (the anti-lying guard). quantCV: the
-// per-voice CV setter (called after setup). Returns the FNV digest of the full
-// (pitch, gate, verdict) stream — the byte-identity leg.
+// per-voice CV setter (called after setup). armQSpread: THE SPREAD-ARMED LEG —
+// refreshPolyRandomCell is a NO-OP without the spread cache (it early-returns at
+// !cachedSpreadInitialized), so in the plain rig a dropped quantiserPitchSource
+// guard is byte-invisible (the S1-S3 QMIX refreshes do nothing; the pitch path is
+// untouched either way). Arming ONLY the QMIX lane's spread makes each refresh
+// pull the cell toward the V1 anchor (applyPoly's lerp, non-idempotent), so the
+// NUMBER of refresh passes — onset-only with the guard intact, onset + S1-S3 with
+// the guard dropped — is observable in the canary/digest. Returns the FNV digest
+// of the full (pitch, gate, verdict) stream + the canary — the byte-identity legs.
 struct MarchOut { uint64_t digest; int s1, s3, holds, events; };
 struct BadDraw { int step = -1, voice = -1; float got = 0.f, want = 0.f; };
 static MarchOut march(uint32_t seed, bool quantiser, float cv0, float qmixLvl,
-                      bool octLive, float octLvl, BadDraw* bad = nullptr) {
+                      bool octLive, float octLvl, BadDraw* bad = nullptr, bool armQSpread = false) {
     PhiloxRng rng; rng.seed64((uint64_t)seed * 747796405u + 2891336453u + 7u);
     SequencerEngine eng; eng.reset();
     injectLegacyStarGraph(eng);
@@ -136,6 +143,12 @@ static MarchOut march(uint32_t seed, bool quantiser, float cv0, float qmixLvl,
         pv.qmixOctLive = octLive; pv.qmixOctLevel = octLvl;
         pv.restProb = 0.02f;          // let the chains build
         pv.legatoProb = 0.90f;        // mostly connect (S1); the roll still re-articulates (S3)
+    }
+    if (armQSpread) {
+        eng.pe.cachedSpreadInitialized = true;
+        eng.pe.cachedSpreadLiveQ = true;      // the QMIX lane ONLY (M/R stay no-op — the pitches are untouched)
+        for (int v = 0; v < 16; ++v)
+            eng.pe.cachedPolySpread[v][SequencerEngine::PL_QMIX] = 0.37f;   // each pass pulls 37% toward the V1 anchor
     }
     const float noteVal = (float)legacyNoteValueIndex(2 + (int)(rng.nextFloat() * 4.999f));
     const PatternInput in = makeInput(0.45f);
@@ -167,10 +180,14 @@ static MarchOut march(uint32_t seed, bool quantiser, float cv0, float qmixLvl,
         for (int v = 2; v <= 16; ++v) {
             const auto& pv = eng.voices[VoiceResolver::slot(v)];
             const MonoDecision verdict = eng.polyVerdict_[VoiceResolver::slot(v).v];
-            if (landing && verdict == MonoDecision::Legato) { ++out.s1; ++out.events; }
+            // (tie-emergent, CC_PROMPT_POLY_TIE_EMERGENT) the s1 counter is LABEL-AGNOSTIC:
+            // the connect arm now DERIVES its label — a same-pitch draw is a Tie (the old
+            // zero-interval Legato), a different draw a Legato. This suite's constant
+            // per-voice CVs make every connect a Tie, so counting Legato only starved it.
+            if (landing && (verdict == MonoDecision::Legato || verdict == MonoDecision::Tie)) { ++out.s1; ++out.events; }
             if (landing && verdict == MonoDecision::NewNote) { ++out.s3; ++out.events; }
             // THE LAW (quantiser mode, all-quantised): every S1/S3 draw == quantize(own CV)
-            if (quantiser && (verdict == MonoDecision::Legato || verdict == MonoDecision::NewNote)
+            if (quantiser && (verdict == MonoDecision::Legato || verdict == MonoDecision::NewNote || verdict == MonoDecision::Tie)
                 && pv.gs.gateHeld) {
                 const float want = eng.quantiserCV[VoiceResolver::slot(v).v] < 0.f ? 0.f : (eng.quantiserCV[VoiceResolver::slot(v).v] > 5.f ? 5.f : eng.quantiserCV[VoiceResolver::slot(v).v]);   
                 if (std::fabs(pv.gs.currentPitchV - want) > 1e-4f && bad && bad->step < 0) {
@@ -320,6 +337,23 @@ int main() {
         std::snprintf(msg, sizeof msg, "byte-identity: the quantiser-OFF digest %llu != the pre-change fixture %llu (an unguarded QMIX draw moved RNG)",
                       (unsigned long long)m.digest, (unsigned long long)kPreFixDigest);
         CHECK(m.digest == kPreFixDigest, msg);
+    }
+
+    // ═══ 5. THE SPREAD-ARMED byte-identity leg — the guard's (d)-catcher ═══
+    // The original mutation run's "drop the guard" check was VOID (a stale
+    // binary), and the honest re-run SURVIVED: refreshPolyRandomCell no-ops
+    // without the spread cache, so the plain rig cannot see the S1-S3 QMIX
+    // refreshes a dropped guard would add. This leg arms ONLY the QMIX lane's
+    // spread (applyPoly's non-idempotent lerp toward the V1 anchor), making the
+    // refresh-pass count observable: the fixture pins the GUARDED engine's
+    // digest; the unguarded mutant's extra passes move the canary -> KILLED.
+    {
+        const uint64_t kSpreadGuardDigest = 4233743815775381588ull;   // the GUARDED engine (captured from the unmutated run)
+        const MarchOut m = march(11u, /*quantiser=*/false, 0.f, 1.0f, false, 1.0f,
+                                 nullptr, /*armQSpread=*/true);
+        std::snprintf(msg, sizeof msg, "spread-armed byte-identity: the digest %llu != the fixture %llu (the QMIX refresh-pass count moved — the guard dropped?)",
+                      (unsigned long long)m.digest, (unsigned long long)kSpreadGuardDigest);
+        CHECK(m.digest == kSpreadGuardDigest, msg);
     }
 
     if (g_fail == 0) std::printf("all green\n");

@@ -79,9 +79,14 @@ struct VoiceState {
         holdRemain    = gs_noteSteps(nvIdx);
     }
 
-    // slideNote: legato — pitch changes, no retrigger (unless cold start).
-    void slideNote(float pitchV, int sem, int nvIdx, bool wasHeld) {
+    // continueNote: THE ONE JOIN (mirrors GateState::continueNote) — the gate
+    // continues, the drawn pitch and degree are ALWAYS written, and the Tie-vs-
+    // Legato label EMERGES from the same-degree-AND-octave compare. Returns the
+    // tie verdict so this double cannot drift from the real law structurally.
+    bool continueNote(float pitchV, int sem, int nvIdx, bool wasHeld) {
         float dur = gs_noteSteps(nvIdx);
+        const bool tie = wasHeld && (sem == lastSemitone)
+                      && (std::fabs(pitchV - currentPitchV) < 1e-4f);
         currentPitchV = pitchV;
         lastSemitone  = sem;
         if (wasHeld) {
@@ -92,13 +97,7 @@ struct VoiceState {
             holdRemain    = dur;
             gateHeld      = true;
         }
-    }
-
-    // extendHold: tie — same pitch, just extend.
-    void extendHold(int sem, int nvIdx) {
-        holdRemain += gs_noteSteps(nvIdx);
-        gateHeld = true;
-        lastSemitone = sem;
+        return tie;
     }
 };
 
@@ -160,7 +159,8 @@ struct PolyEngine {
                 return;
             case MonoDecision::Tie:
                 if (wasHeld)
-                    v.gs.extendHold(v.gs.lastSemitone, lastStepResult.nvIdx);
+                    v.gs.continueNote(v.gs.currentPitchV, v.gs.lastSemitone,
+                                      lastStepResult.nvIdx, /*wasHeld=*/true);
                 return;
             case MonoDecision::Legato:
             case MonoDecision::LegatoMax:
@@ -179,10 +179,7 @@ struct PolyEngine {
         if (lastStepResult.decision == MonoDecision::NewNote) {
             v.gs.triggerNote(pitchV, sem, lastStepResult.nvIdx);
         } else {
-            if (sem == v.gs.lastSemitone && wasHeld)
-                v.gs.extendHold(sem, lastStepResult.nvIdx);
-            else
-                v.gs.slideNote(pitchV, sem, lastStepResult.nvIdx, wasHeld);
+            v.gs.continueNote(pitchV, sem, lastStepResult.nvIdx, wasHeld);
         }
     }
 
@@ -315,7 +312,7 @@ int main() {
         e.lastStepResult.decision   = MonoDecision::Tie;
         e.lastStepResult.nvIdx      = 6;     // sixteenth = 1.0 step
         e.executePolyVoice(0);
-        // After tick: holdRemain=1.  extendHold adds gs_noteSteps(6)=1.0  → 2.0
+        // After tick: holdRemain=1.  the tie join adds gs_noteSteps(6)=1.0  → 2.0
         EXPECT_NEAR(e.voices[0].gs.holdRemain, 2.0f, 1e-4f);
     });
 
@@ -480,7 +477,7 @@ int main() {
         e.lastStepResult.nvIdx    = 6;      // 1.0 step
         e.nextPitchV = 3.0f; e.nextSem = 9;
         e.executePolyVoice(0);
-        // tick: holdRemain 2→1, then slideNote(wasHeld=true) extends: 1+1=2
+        // tick: holdRemain 2→1, then continueNote(wasHeld=true) extends: 1+1=2
         EXPECT_NEAR(e.voices[0].gs.holdRemain, 2.0f, 1e-4f);
     });
 
@@ -493,7 +490,7 @@ int main() {
         e.lastStepResult.nvIdx    = 6;
         e.nextPitchV = 2.5f; e.nextSem = 7;
         e.executePolyVoice(0);
-        // slideNote(wasHeld=false) opens gate with pulse
+        // continueNote(wasHeld=false) opens gate with pulse
         EXPECT(e.voices[0].gs.gateHeld);
         EXPECT(e.voices[0].gs.gateTriggered);
     });
@@ -527,7 +524,7 @@ int main() {
     SUITE("Poly-internal tie — legato zone, same semitone as previous");
     // ─────────────────────────────────────────────────────────────────────────
 
-    TEST("Legato + same semitone + held: poly-internal tie (extendHold)", {
+    TEST("Legato + same semitone + held: poly-internal tie (continueNote)", {
         PolyEngine e; e.reset(); e.numPolyVoices = 1;
         e.voices[0].gs.gateHeld     = true;
         e.voices[0].gs.holdRemain   = 2.f;
@@ -540,7 +537,7 @@ int main() {
         e.nextSem = 7;   // SAME as lastSemitone → poly-internal tie
         e.nextPitchV = 2.0f;
         e.executePolyVoice(0);
-        // tick: holdRemain 2→1; extendHold adds 1 → holdRemain=2
+        // tick: holdRemain 2→1; the tie join adds 1 → holdRemain=2
         EXPECT(!e.voices[0].gs.gateTriggered);
         EXPECT(e.voices[0].gs.gateHeld);
         EXPECT_NEAR(e.voices[0].gs.holdRemain, 2.0f, 1e-4f);
@@ -557,7 +554,7 @@ int main() {
         e.nextSem    = 7;  // same semitone, but wasHeld=false → slide, not tie
         e.nextPitchV = 2.0f;
         e.executePolyVoice(0);
-        // wasHeld=false → slideNote opens gate with pulse
+        // wasHeld=false → continueNote opens gate with pulse
         EXPECT(e.voices[0].gs.gateTriggered);
     });
 
