@@ -17,6 +17,20 @@ Rodney: existing patches need not load identically.
 - Slew contract (PatternEngine.hpp ~1362, MonsoonSandsManager.cpp ~1181): latched every control
   cycle, consumed ONLY at the roll/boundary, "slew must be constant across a phrase".
 
+## PART A IS A CA1 OPPORTUNITY — BUILD THE SKELETON, DO NOT ADD A COPY (2026-11-23)
+CONCEPT_ODR_AUDIT.md **CA1 (HIGH, outstanding)**: "the latched-at-boundary control lifecycle is
+copy-pasted per control" — and it has already DRIFTED TWICE (the double-commit bug, then BUG 6's
+entry-vs-landed phase edge). No `LatchedAtBoundary` skeleton exists in src yet (grep: none).
+The MA DEPTH (K) control specified below is a NEW latched-at-boundary control, and slew is an existing
+one. Writing Part A as "add `*SlewPhrase`, then later add `*DepthPhrase` beside it" ADDS TWO MORE
+COPIES of the exact lifecycle CA1 indicts. Writing it ONCE as the skeleton — pending/committed storage
++ commit-on-boundary + the per-control policy for "what counts as my edge" — makes the scrub work PAY
+DOWN CA1 instead of worsening it, and gives the audit its first instance to migrate the others onto.
+Do Part A skeleton-shaped. Related: CA2 (per-axis lifecycle hand-unrolled x3) is WHY there are six
+scrub sites; the single `scrubPosition` helper all six call is the CA2-shaped mitigation already
+required below. CA4 (LOW) is explicitly logged to be decided "when CA1 is tackled" — so it comes into
+scope here too.
+
 ## PART A — slew consumed at the DRAW boundary only
 AMENDMENT (2026-11-22): the boundary is the wrap of the EFFECTIVE DRAW WINDOW (the span of random cells one
 slewed buffer represents), NOT necessarily the pattern-length wrap. Today `result.wrapped` is
