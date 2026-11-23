@@ -127,6 +127,15 @@ Causeway (future, Straits-like poly fold).
     for BOTH the Sands probability visual AND the Distribution (2026-11-23) — the SAME row-selector
     affordance reused on both, not two bespoke designs. Net editor cost: "add GLOBAL as a 17th selectable
     row for the existing view+controls" — modest, mostly reuse (the earlier "not a cheap win" over-swung).
+    OPTION CONSIDERED + REJECTED (Rodney 2026-11-23): promote the EXISTING per-voice macro/independent
+    toggles to EDIT toggles — a following voice's page edits macro (its shown values ARE the macro
+    values), an independent voice's page edits the override. Virtue: ZERO new UI, conceptually honest.
+    Rejected because a SEPARATE GLOBAL VIEW is cleaner: (1) promote-toggles has a SILENT SCOPE SURPRISE
+    — editing what looks like one following voice changes ALL followers (they follow the global you just
+    wrote), invisible at the edit point; a GLOBAL view makes "this changes all followers" EXPLICIT. (2)
+    It overloads the follow/independent toggle (a per-voice STATE) with an edit-MODE meaning — the
+    separate view keeps the toggle meaning one thing. Clarity wins here because the failure mode is
+    silent wrong-scope edits. DECISION: the separate GLOBAL row-selector view (above).
   * THE CV MODEL: a MONO CV input (Rack auto-replicates it across all poly channels = the global
     signal, free) PLUS a POLY CV input (per-voice). Each voice gets TWO per-channel attenuverters: one
     for how much of the GLOBAL signal it takes, one for its own POLY signal. Effective(v) =
