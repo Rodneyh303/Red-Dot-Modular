@@ -1573,17 +1573,21 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
 
         // (mod unused after de-param — store-backed widgets read Monsoon directly via getMonsoon().)
 
-        // INERT until the Straits East CV expander is attached: it defines the
-        // poly voice count, so without it there are no poly lanes to show. Show
-        // the hint and skip all data work (no frozen bars).
-        // INERT unless poly data actually exists: needs the Straits East CV
-        // expander AND at least one poly voice (matches engine polyBaseActive =
-        // cachedPolyVoiceExpander && numPolyVoices>=1). Without that there are no
-        // poly lanes to show. (If you later want a lone single voice to also read
-        // as inert because spread is degenerate, change >=1 to >=2 here and in
-        // the Macro visual — left at >=1 to match the engine's poly gate.)
-        if (monsoon->expanderManager.cachedPolyVoiceExpander == nullptr
-            || monsoon->engine.numPolyVoices < 1) {
+        // INERT only on the POLY pages (V2+) when poly data does not exist. V1 (the mono
+        // voice, tab 0) is East's own editable voice and needs NO Straits expander — the
+        // "needs Straits" gate was vestigial from before Sands Mono was retired (Rodney,
+        // 2026-11-22). Poly data needs the Straits East CV expander (it defines the poly
+        // voice count) AND at least one poly voice (matches engine polyBaseActive =
+        // cachedPolyVoiceExpander && numPolyVoices>=1). The tab test reads the tab group
+        // directly (selectedVoice is only synced further down). setActiveCount runs BEFORE
+        // the gate so V2+ grey out without Straits, and a stale poly selection falls back
+        // to V1 (the message then shows only if a poly page is somehow still selected).
+        const bool polyAvailable = monsoon->expanderManager.cachedPolyVoiceExpander != nullptr
+                                   && monsoon->engine.numPolyVoices >= 1;
+        const int  tabNow        = tabGroup ? tabGroup->getSelectedTab() : 0;
+        if (tabGroup)
+            tabGroup->setActiveCount(dotModular::VoiceResolver(monsoon->engine).activeVoiceCount());
+        if (!polyAvailable && tabNow >= 1) {
             visualEditor->inert = true;
             visualEditor->inertMessage = "Attach Straits East expander";
             visualEditor->clearPlaySteps();
