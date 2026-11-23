@@ -112,14 +112,21 @@ Causeway (future, Straits-like poly fold).
     16, a different KIND of thing — not a 17th voice tab). The MODEL collapses cleanly (one per-voice
     store + global-default row + follow) and the JACKS collapse (poly convention); the EDITOR does NOT
     collapse for free. It needs a GLOBAL-EDIT AFFORDANCE distinct from the voice pages — the least-bad
-    is an explicit "ALL / GLOBAL" tab (semantically distinct from V1..V16) whose edit target is the
-    global-default row; following voices update live, overridden voices do not. This reuses the tab
-    MECHANISM but is NEW work (the East visual has no global-edit mode today). So the editor saving is
-    "one Sands module instead of Macro-visual + East-visual, with a global-edit mode ADDED to East" —
-    real, but NOT a cheap win. The global-mod view is REQUIRED for BOTH the Sands probability visual
-    AND the Distribution (Rodney 2026-11-23) — but it is the SAME affordance applied twice, not two
-    bespoke designs: design the global-edit view ONCE, reuse it on both surfaces. "Not cheap" must not
-    become "twice as expensive".
+    is an explicit "ALL / GLOBAL" tab (semantically distinct from V1..V16) . REFINED (Rodney 2026-11-23 — separate macro CONTROLS from the VIEW; do not conflate them). Once
+    macro is the global-default ROW in the per-voice model, BOTH the view and the controls just POINT AT
+    A ROW: view voice N = render row N; view global = render the global-default row (same lane renderer);
+    edit voice N = write row N; edit global = write the global-default row (same controls). So the editor
+    is ONE editor with a ROW SELECTOR of 17 targets: V1..V16 + GLOBAL. GLOBAL is NOT "voice 0" (not
+    voice-shaped) — it is one more SELECTABLE ROW the existing view+controls aim at. This is MOSTLY REUSE,
+    cheaper than a bespoke global-edit mode: you add a selectable target, not a new surface.
+    VIEW-WHILE-EDITING-GLOBAL: point the VIEW at the global row too (render the global pattern directly),
+    NOT at an actual voice — this avoids the override blind spot (editing global while viewing an
+    OVERRIDING voice would show no change). Rodney's three selector options (inherit last voice / a macro
+    channel knob / a global toggle) are just different SELECTORS for the GLOBAL target; prefer any that
+    drives the VIEW to the global row (avoid plain inherit-last-voice for the blind-spot reason). REQUIRED
+    for BOTH the Sands probability visual AND the Distribution (2026-11-23) — the SAME row-selector
+    affordance reused on both, not two bespoke designs. Net editor cost: "add GLOBAL as a 17th selectable
+    row for the existing view+controls" — modest, mostly reuse (the earlier "not a cheap win" over-swung).
   * THE CV MODEL: a MONO CV input (Rack auto-replicates it across all poly channels = the global
     signal, free) PLUS a POLY CV input (per-voice). Each voice gets TWO per-channel attenuverters: one
     for how much of the GLOBAL signal it takes, one for its own POLY signal. Effective(v) =
