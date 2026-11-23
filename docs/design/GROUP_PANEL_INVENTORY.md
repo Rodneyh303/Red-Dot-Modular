@@ -116,7 +116,10 @@ Causeway (future, Straits-like poly fold).
     global-default row; following voices update live, overridden voices do not. This reuses the tab
     MECHANISM but is NEW work (the East visual has no global-edit mode today). So the editor saving is
     "one Sands module instead of Macro-visual + East-visual, with a global-edit mode ADDED to East" —
-    real, but NOT a cheap win. Same for the global/macro Distribution (its own global-edit affordance).
+    real, but NOT a cheap win. The global-mod view is REQUIRED for BOTH the Sands probability visual
+    AND the Distribution (Rodney 2026-11-23) — but it is the SAME affordance applied twice, not two
+    bespoke designs: design the global-edit view ONCE, reuse it on both surfaces. "Not cheap" must not
+    become "twice as expensive".
   * THE CV MODEL: a MONO CV input (Rack auto-replicates it across all poly channels = the global
     signal, free) PLUS a POLY CV input (per-voice). Each voice gets TWO per-channel attenuverters: one
     for how much of the GLOBAL signal it takes, one for its own POLY signal. Effective(v) =
@@ -125,12 +128,12 @@ Causeway (future, Straits-like poly fold).
     already slated to "end up a bit like Straits").
   * WHAT SURVIVES OF SENDS (its 3 parts redistribute): per-voice mix-in sends → the per-voice
     global-amount attenuverter (above); distribution-param send amounts → the Distribution's own
-    per-voice depth knobs (the 56 East-Distribution depths already decided); PRE/POST taps → HOLD IF
-    USEFUL (Rodney 2026-11-22 — not a blocker): they encode WHERE the global injects, not HOW MUCH, so
-    they do not become an attenuverter, but they can be KEPT as an optional per-voice pre/post control
-    if they prove useful. The unification does not hinge on resolving them — Sends still dissolves to
-    per-voice attenuverters + Distribution depth, with the pre/post control retained only if it earns
-    its place.
+    per-voice depth knobs (the 56 East-Distribution depths already decided); PRE/POST taps → LIKELY
+    DROPPED (Rodney 2026-11-23). PRE/POST was a SEND-ROUTING concept (where in a chain the global
+    injects). Once the global is just a MODULATION SOURCE each voice scales with its own attenuverter,
+    there is no injection point — only an amount — so the taps have nowhere to live. They were an
+    artifact of the "send" framing, not load-bearing. Sends reduces to ONE kind of control: a per-voice
+    attenuverter on the global mod. (Retain a pre/post control only if a concrete use appears.)
   * KEEP THE GLOBAL PROB-OUT GROUP (Rodney 2026-11-22 — the one real asymmetry). Both Macro and East
     already emit poly prob CV outs (PROB_OUT_START): Macro = the global-mod value across voices, East =
     the resolved per-voice follow/override value. In the unified model BOTH reads still exist (global =
