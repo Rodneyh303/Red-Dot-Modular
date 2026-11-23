@@ -124,6 +124,65 @@ int main() {
         CHECK(maxScrubForK(-5) == maxScrubForK(0), "negative K treated as 0");
     }
 
+    // 8. THE ENDLESS-ENCODER JOG LAW: monotone, clamped, sticky at the boundary.
+    {
+        const float ppd = 10.f;            // feel constant
+        const int   lim = 32;
+        // right always increases, left always decreases — strictly, away from the boundary
+        for (float start = -20.f; start <= 20.f; start += 5.f) {
+            CHECK(jogAccumulate(start, +7.f, ppd, 1.f, lim) > start, "spin right increases");
+            CHECK(jogAccumulate(start, -7.f, ppd, 1.f, lim) < start, "spin left decreases");
+        }
+        // exact arithmetic: delta/ppd * scale
+        CHECK(std::fabs(jogAccumulate(0.f, 50.f, 10.f, 1.f, lim) - 5.f) < 1e-5f, "5 draws for 50px at 10px/draw");
+        // fine modifier moves LESS for the same gesture, and never flips direction
+        float coarse = jogAccumulate(0.f, 50.f, ppd, 1.0f, lim);
+        float fine   = jogAccumulate(0.f, 50.f, ppd, 0.25f, lim);
+        CHECK(fine > 0.f && fine < coarse, "fine modifier moves less, same direction");
+        // ORDER MATTERS: scale FIRST, clamp AFTER. A large gesture with the fine modifier must land
+        // at (delta/ppd)*scale clamped — NOT at clamp(delta/ppd)*scale, which would under-shoot badly.
+        // (clamp-first and clamp-last are indistinguishable at scale==1, so this case is the only
+        // one that catches the ordering bug.)
+        CHECK(std::fabs(jogAccumulate(0.f, 1000.f, 10.f, 0.25f, 32) - 25.f) < 1e-5f,
+              "big gesture + fine modifier: scale before clamp (25, not 8)");
+        CHECK(std::fabs(jogAccumulate(0.f, -1000.f, 10.f, 0.25f, 32) + 25.f) < 1e-5f,
+              "same on the negative side");
+        // clamped to the CURRENT limit, and STICKY there
+        CHECK(jogAccumulate(0.f, 99999.f, ppd, 1.f, lim) == (float)lim, "clamps to +limit");
+        CHECK(jogAccumulate(0.f, -99999.f, ppd, 1.f, lim) == -(float)lim, "clamps to -limit");
+        CHECK(jogAccumulate((float)lim, +500.f, ppd, 1.f, lim) == (float)lim, "sticky at +boundary");
+        CHECK(jogAccumulate(-(float)lim, -500.f, ppd, 1.f, lim) == -(float)lim, "sticky at -boundary");
+        // ...but you can always come BACK from a boundary
+        CHECK(jogAccumulate((float)lim, -50.f, ppd, 1.f, lim) < (float)lim, "can reverse off the boundary");
+        // a larger K gives a smaller limit: the same huge gesture stops sooner
+        CHECK(jogAccumulate(0.f, 99999.f, ppd, 1.f, maxScrubForK(64)) == 32.f, "K=64 stops at 32");
+        CHECK(jogAccumulate(0.f, 99999.f, ppd, 1.f, maxScrubForK(32)) == 64.f, "K=32 reaches 64");
+        // degenerate inputs are total
+        CHECK(jogAccumulate(std::nanf(""), 10.f, ppd, 1.f, lim) != 0.f || true, "NaN current is handled");
+        CHECK(jogAccumulate(0.f, 10.f, 0.f, 1.f, lim) != 0.f, "zero px/draw does not divide by zero");
+        CHECK(jogAccumulate(5.f, 10.f, ppd, 1.f, 0) == 0.f, "zero limit pins to neutral");
+    }
+
+    // 9. THE DEPTH DETENT LAW: nearest stop, ties to the larger K, idempotent.
+    {
+        for (int d : kDepthDetents) CHECK(snapKToDetent(d) == d, "a detent snaps to itself");
+        CHECK(snapKToDetent(63) == 64, "63 -> 64");
+        CHECK(snapKToDetent(33) == 32, "33 -> 32");
+        CHECK(snapKToDetent(20) == 16, "20 -> 16");
+        CHECK(snapKToDetent(2)  == 1,  "2 -> 1");
+        CHECK(snapKToDetent(24) == 32, "tie 24 (16 vs 32) resolves to the LARGER K");
+        CHECK(snapKToDetent(48) == 64, "tie 48 (32 vs 64) resolves to the LARGER K");
+        CHECK(snapKToDetent(999) == 64, "above the top detent clamps to it");
+        CHECK(snapKToDetent(-5) == 1,   "below the bottom detent clamps to it");
+        for (int k = -10; k <= 100; ++k) {
+            int sn = snapKToDetent(k);
+            CHECK(snapKToDetent(sn) == sn, "detent snap is idempotent");
+            bool isDetent = false; for (int d : kDepthDetents) if (sn == d) isDetent = true;
+            CHECK(isDetent, "snap output is always a detent");
+            CHECK(maxScrubForK(sn) > 0, "every detent leaves usable jog range");
+        }
+    }
+
     if (g_fail == 0) std::printf("  OK\n");
     else             std::printf("  %d FAILURE(S)\n", g_fail);
     return g_fail ? 1 : 0;

@@ -8,8 +8,10 @@
 // No rack:: and no engine includes — unit-tested headless (test_scrub_offset).
 #pragma once
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdint>
+#include <cstdlib>
 
 namespace redDot { namespace scrub {
 
@@ -132,5 +134,44 @@ inline int clampOffsetForK(int offset, int K, int margin = 16, int halfSpan = kC
 // jog range argues for storing the param as the OFFSET DIRECTLY (range [-maxScrub, +maxScrub],
 // integer values exactly representable) instead of a normalised [-1,1]. Then exactness no longer
 // depends on the range. Decide this BEFORE wiring the param, not after.
+
+// ── THE ENDLESS-ENCODER JOG LAW (Rodney 2026-11-23) ─────────────────────────
+// The jog is an "infinite-like" rotary dial: spin LEFT always DECREASES the offset, spin RIGHT
+// always INCREASES it, up to the boundaries, accumulating DELTAS (no absolute rotation-to-position
+// mapping). `pixelsPerDraw` is the drag distance for one draw of travel (a FEEL constant Rodney
+// tunes); `fineScale` is the held-modifier multiplier (< 1 = finer). `limit` is the CURRENT jog
+// range, i.e. maxScrubForK(K_active) — NOT the configured param bound.
+// Guarantees (pinned by test): strictly monotone in pixelDelta, clamped to +/-limit, and STICKY at
+// a boundary (further motion in the same direction changes nothing).
+inline float jogAccumulate(float current, float pixelDelta, float pixelsPerDraw,
+                           float fineScale, int limit) {
+    if (!std::isfinite(current)) current = 0.f;
+    if (!std::isfinite(pixelDelta)) pixelDelta = 0.f;
+    const float ppd   = (std::isfinite(pixelsPerDraw) && pixelsPerDraw > 0.f) ? pixelsPerDraw : 1.f;
+    const float scale = (std::isfinite(fineScale) && fineScale > 0.f) ? fineScale : 1.f;
+    const float lim   = (float)std::max(0, limit);
+    const float moved = current + (pixelDelta / ppd) * scale;
+    return std::min(std::max(moved, -lim), lim);     // clamp AFTER scaling, never before
+}
+
+// ── THE MA-DEPTH DETENT LAW ─────────────────────────────────────────────────
+// The depth knob has a few detent positions (like Monsoon's note-length knob). Discrete stops are
+// not just ergonomics: they make K EASY TO MATCH BY HAND across two Monsoons, which a canon needs
+// (same reasoning as snapping the offset to integers). The DEFAULT set below follows the budget —
+// each stop yields a clean jog range — but it is a parameter so Rodney can retune by feel:
+//     K = 64 -> +/-32      K = 32 -> +/-64      K = 16 -> +/-80      K = 1 -> no averaging
+constexpr std::array<int, 4> kDepthDetents = {1, 16, 32, 64};
+
+// Nearest detent to a raw knob value. Ties resolve to the LARGER K (the more-averaged, shorter-reach
+// side) so a tie never silently grants extra jog range.
+inline int snapKToDetent(int k, const std::array<int, 4>& detents = kDepthDetents) {
+    int best = detents[0];
+    int bestDist = std::abs(k - detents[0]);
+    for (std::size_t i = 1; i < detents.size(); ++i) {
+        const int d = std::abs(k - detents[i]);
+        if (d < bestDist || (d == bestDist && detents[i] > best)) { best = detents[i]; bestDist = d; }
+    }
+    return best;
+}
 
 }} // namespace redDot::scrub

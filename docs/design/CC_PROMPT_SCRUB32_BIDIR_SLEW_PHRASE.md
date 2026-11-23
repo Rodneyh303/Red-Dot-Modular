@@ -67,6 +67,21 @@ Mutation-check: read `*SlewLatched` again in one ForVoice -> test 1 fails; forge
 the boundary consumer -> test 2 fails; forget it in `forceRecomputeSlewed` -> a CA-remap case fails.
 Red first, then green, then the full suite. Commit PART A on its own.
 
+## WHY THE JOG MATTERS BEYOND CANON — NON-DESTRUCTIVE EXPLORATION (Rodney 2026-11-23)
+"With at least 64 discrete draws to explore the user may not need to redraw often." This reframes the
+feature's PURPOSE, and is worth keeping as rationale:
+- The jog is a BROWSE mechanism over a large space of related patterns, not only a canon-alignment tool
+  or a morph. 64+ (up to 190 at K=16) distinct draw positions, each a full pattern.
+- Crucially the neighbours are CORRELATED (by r), so moving the jog gives GRADUAL variation — a
+  continuum of related patterns, not 64 unrelated rolls. That is far more musical than repeated redraws.
+- It is NON-DESTRUCTIVE AND REVERSIBLE: the jog is a pure function of (seed, counter, offset), so you
+  can always return to a position you liked. REDRAW is destructive — lose something good and it is gone
+  unless the seed is recoverable. So the jog turns variation from "destructive random resampling" into
+  "navigation of a correlated space you can always walk back through."
+- CONSEQUENCE for the instrument's shape: REDRAW's role changes to "I have exhausted this
+  neighbourhood, give me a new one", and the SEED becomes a neighbourhood selector rather than the
+  primary variation control. Worth bearing in mind when the panel/UX is tidied.
+
 ## MA DEPTH (K) — PANEL HOME, DETENTS, AND DRAW-CADENCE (Rodney 2026-11-23)
 - PANEL HOME: the 3 OFFSET READOUTS and the 3 MA DEPTH knobs (one each for R/M/Q) belong on MONSOON
   itself — all of this is fundamental, not expander material. Consistent with the fold criterion:
@@ -178,6 +193,14 @@ Red first, then green, then the full suite. Commit PART A on its own.
   nothing unrequested, but REPORT a proposal for linking (e.g. a modifier or a master) as an open
   question for Rodney.
 
+> **STATUS (2026-11-23 update): the jog's pure widget laws are ALSO done — `jogAccumulate`
+> (endless-encoder: monotone, clamped to the CURRENT maxScrubForK limit, STICKY at a boundary, and
+> SCALE-BEFORE-CLAMP so a big gesture with the fine modifier lands correctly — the clamp-first mutant
+> fails 3) and `snapKToDetent` (nearest depth detent, ties to the LARGER K so a tie never silently
+> grants extra jog range; the default set {1,16,32,64} is a parameter, retune by feel). The widget
+> should CALL these; the only widget work left is the Rack plumbing + the feel constants
+> (pixelsPerDraw, fineScale) which are Rodney's feel-test.**
+>
 > **STATUS (2026-11-22): the pure offset MATH is DONE — `src/dsp/ScrubOffsetCore.hpp`
 > (splitScrub FLOOR-safe, positionToParam/paramToPositionInt exact k/32, snapToIntegerPosition,
 > drawIndexHi/Lo bridge keys, scrubPositionFromMix, cacheHalfSpan), test_scrub_offset registered +
