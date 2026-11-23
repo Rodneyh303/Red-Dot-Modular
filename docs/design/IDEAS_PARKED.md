@@ -432,13 +432,3 @@ the collapse-all+declutter stamp-order compose). Battery 87/87 under BOTH mounts
 smoke skips gracefully; real SDK 2.5.2: the plugin-TU smoke 43/43) + UNIFORMITY_STRICT=1 +
 the anchor audit (28 anchors, all bound). Goldens untouched; zero engine surface (both
 changes are module-layer: the draws and the pending dispatch).
-
-## Output gates on their own module? (parked — come back to this, Rodney 2026-11-22)
-
-Observation: the output gates don't really belong on Sands. Sands is all about READING
-probabilities (draws, lanes, ranges, the Macro/East/Distribution tiers); gate shaping and
-the outputs themselves are a different concern. Idea: move the output gates (and whatever
-gate-shaping surface goes with them) to a module of their own, leaving Sands purely the
-probability reader. Not scoped — no analysis of what the output-gate surface includes today,
-how it couples to the engine write path (`GateState`, the poly voice outputs), or what the
-expander/chain topology would look like. Just a note to revisit.

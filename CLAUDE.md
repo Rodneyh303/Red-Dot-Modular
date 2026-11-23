@@ -16,9 +16,8 @@ ARE the durable memory; the chat is just the reasoning that produced them.
   with a test that FAILS before and PASSES after. When in doubt, read the code.
 - You CANNOT verify Rack/behavioural things (no Rack here). Give yourself TESTED, MECHANICAL
   tasks; say "needs Rack feel-test" for anything you can't run. The human feel-tests in Rack.
-- Branch discipline: `master` is the merge target (as of 2026-11-22 `lane-expander-refactor` was
-  merged back into master). Cut feature/fix branches off `master` and open PRs INTO `master`. Never
-  push straight to master.
+- Branch discipline: `lane-expander-refactor` is the live branch (NOT master). Cut feature/fix
+  branches off it and open PRs INTO it. Never push straight to master.
 
 ## BUILD + TEST
 - Unit tests (pure, no Rack): `bash test/run_all.sh` (all) or `bash test/run_all.sh <name>`

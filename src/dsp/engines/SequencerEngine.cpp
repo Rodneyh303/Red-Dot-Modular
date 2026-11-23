@@ -2034,7 +2034,12 @@ StepResult SequencerEngine::executeStep(int nvIdx, float r_rest, float r_legato_
         // connection real; otherwise fall through to NewNote (the slur had nothing to land
         // on → a fresh note). (Supersedes master's standalone r_legato_tie<legatoProb form:
         // the joining onset no longer re-rolls — prevSlur carries the decision.)
-        if (sem == gs.lastSemitone) {
+        // (CC_PROMPT_POLY_TIE_EMERGENT) TIE IS EMERGENT: the tie requires the same
+        // degree AND the same octave (the full drawn pitch, within kPitchEps). The
+        // old degree-only compare classed a same-degree/different-octave draw as a
+        // Tie and extendHold never touches currentPitchV — the new octave was
+        // silently discarded. Now it slides to the drawn pitch.
+        if (isSamePitch(pitchV, gs.currentPitchV, sem, gs.lastSemitone)) {
             gs.extendHold(sem, nvIdx, isQuant);
             gsStep.triggerNote(gs.currentPitchV, sem, nvIdx, isQuant);  // STEP: re-strike, same pitch
             result.decision = MonoDecision::Tie;
@@ -2816,31 +2821,13 @@ void SequencerEngine::executePolyVoice(VoiceSlot voiceIdx, const PatternInput& i
         // quantiserPitchSource); outside them it's inert and byte-identical to the legacy poly path.
         // POLARITY (§29): 0 = generated, 1 = quantised (draw crosses upward: r >= level → generated).
         // (C0 FAMILY 2) the qmix L/O/R feeds come from the lane chokepoint.
-        int qmL, qmO, qmR; LaneDir qmD;
-        effectiveLaneLor(voiceIdx, LaneId{PL_QMIX}, qmL, qmO, qmR, qmD);
-        int qmixIdx = getStrandIdx(polyLaneTick(voiceIdx, LaneId{PL_QMIX}), qmL, qmO, qmR);
-        refreshPolyRandomCell(voiceIdx, LaneId{PL_QMIX}, qmixIdx);
-        float r_qmix_voice = pe.warpRow(voiceIdx, LaneId{PL_QMIX})[qmixIdx];
-        bool qmixUseGenerated = quantiserPitchSource && (r_qmix_voice >= v.qmixLevel);
-        // QMIX_OCTAVE Stage 1 (CC_PROMPT_QMIX_OCTAVE): the SECOND read of the SAME r_qmix_voice
-        // draw — the octave axis's own threshold (the subgate pattern: multiple reads of one
-        // stream, different thresholds). qmixOctResolved() == qmixLevel while the qmixOctLive
-        // gate is closed (default, and Monsoon-alone) — bit-identical; with the Straits
-        // qmix-octave bank live (Stage 2) the resolved level diverges per voice and the mixed
-        // rows (one axis generated, one external) become reachable per voice.
-        const bool qmixOctUseGenerated = quantiserPitchSource && (r_qmix_voice >= v.qmixOctResolved());
-        const bool isQuant = quantiserPitchSource && !qmixUseGenerated;   // FADER_SEQ_QUANT_COLOURS (green flash)
-        // QUANTISER (Q1): this voice's pitch = quantised external CV (its own channel) in quantiser
-        // mode, else the internal melody+octave draw. voiceIdx is the voiceSlot (1..15 = V2..V16;
-        // slot 0 = the mono/executeStep path). voicePitch reads quantiserCV[slot] DIRECTLY — no +1
-        // (an older comment here described a pre-unification quantiserCV[voiceIdx+1] that no longer
-        // exists in the code). When qmixUseGenerated, forceGenerated pushes voicePitch through
-        // genPitchLive (mode-A pitch).
-        float pitchV = voicePitch(voiceIdx, sem, input,
-                                  (refreshPolyRandomCell(voiceIdx, LaneId{PL_MELODY}, melIdx), pe.warpRow(voiceIdx, LaneId{PL_MELODY})[melIdx]),
-                                  (refreshPolyRandomCell(voiceIdx, LaneId{PL_OCTAVE}, octIdx), pe.warpRow(voiceIdx, LaneId{PL_OCTAVE})[octIdx]),
-                                  /*forceGenerated(degree)=*/qmixUseGenerated,
-                                  /*octForceGenerated=*/qmixOctUseGenerated);
+        // (CC_PROMPT_POLY_LEGATO_QUANTISER) the ONE pitch-draw law — the q-mix
+        // sequence + voicePitch, verbatim (qmixAlways: the onset's QMIX refresh is
+        // UNCONDITIONAL, byte-identical to the shipped sequence). See polyPitchDraw.
+        const PolyPitchDraw ppd = polyPitchDraw(voiceIdx, input, v, melIdx, octIdx, /*qmixAlways=*/true);
+        sem = ppd.sem;
+        const bool isQuant = ppd.isQuant;   // FADER_SEQ_QUANT_COLOURS (green flash)
+        float pitchV = ppd.pitchV;
         // Accent as a poly lane (modelled after rest): this voice draws its OWN accent at
         // its own accent LOR and compares to its own accentProb — not shared from mono.
         // (C0 FAMILY 2) the accent L/O/R feeds come from the lane chokepoint.
@@ -2849,11 +2836,22 @@ void SequencerEngine::executePolyVoice(VoiceSlot voiceIdx, const PatternInput& i
         int accIdx = getStrandIdx(polyLaneTick(voiceIdx, LaneId{PL_ACCENT}), acL, acO, acR);
         refreshPolyRandomCell(voiceIdx, LaneId{PL_ACCENT}, accIdx);
         v.accented = (pe.warpRow(voiceIdx, LaneId{PL_ACCENT})[accIdx] < accTh);
+        // (CC_PROMPT_POLY_TIE_EMERGENT, Rodney's ruling 2026-11-22) the onset-path
+        // JOIN derives too: same degree AND same octave (the voice's OWN held
+        // pitch, isSamePitch) → a TIE (extendHold — the zero-interval "slide" to
+        // the same pitch is gone); anything else a real slide.
+        bool onsetTie = false;
         if (rd.gateType == MonoDecision::NewNote)
             v.gs.triggerNote(pitchV, sem, nvV, isQuant);
-        else if (wasHeldPoly || hadPolyTail)
-            // Mono is slurring/tying and THIS poly voice had a held predecessor → real slide.
-            v.gs.slideNote(pitchV, sem, nvV, /*wasHeld=*/true, isQuant);
+        else if (wasHeldPoly || hadPolyTail) {
+            // Mono is slurring/tying and THIS poly voice had a held predecessor →
+            // derive against the voice's own held pitch.
+            onsetTie = isSamePitch(pitchV, v.gs.currentPitchV, sem, v.gs.lastSemitone);
+            if (onsetTie)
+                v.gs.extendHold(sem, nvV, isQuant);
+            else
+                v.gs.slideNote(pitchV, sem, nvV, /*wasHeld=*/true, isQuant);
+        }
         else
             // Mono slurs but this poly voice had NO held gate (it was resting/silent on its
             // previous played step) — sliding would produce an isolated Legato cell (teal note
@@ -2861,12 +2859,14 @@ void SequencerEngine::executePolyVoice(VoiceSlot voiceIdx, const PatternInput& i
             // bug. Trigger a fresh note instead. (Direction-independent; surfaced in reverse
             // mode but present forward too.)
             v.gs.triggerNote(pitchV, sem, nvV, isQuant);
-        v.gsStep.triggerNote(pitchV, sem, nvV, isQuant);   // STEP: every played onset re-strikes (un-fused)
-        // F-1 capture: what this onset WAS — a fresh trigger (NewNote) or a real slide to a
-        // held state (Legato). Children fold this as the container's verdict (D4: an onsetting
-        // container names the opportunity type).
+        // STEP: every played onset re-strikes (un-fused); a tie re-strikes the held pitch.
+        v.gsStep.triggerNote(onsetTie ? v.gs.currentPitchV : pitchV, sem, nvV, isQuant);
+        // F-1 capture: what this onset WAS — a fresh trigger (NewNote), a true tie to a
+        // held state (Tie), or a real slide (Legato). Children fold this as the
+        // container's verdict (D4: an onsetting container names the opportunity type).
         polyVerdict_[voiceIdx.v] = (rd.gateType != MonoDecision::NewNote && (wasHeldPoly || hadPolyTail))
-                                       ? MonoDecision::Legato : MonoDecision::NewNote;
+                                       ? (onsetTie ? MonoDecision::Tie : MonoDecision::Legato)
+                                       : MonoDecision::NewNote;
         // F-4 (D5): this onset was ghost-placed (the voice PLAYED at a ghost cell of its
         // containers) — the ghost event its children will fold. A ghost-placed note that
         // SLID (the container's verdict was a Legato-from-dead offer) is still a ghost-cell
@@ -2946,7 +2946,6 @@ void SequencerEngine::executePolyVoice(VoiceSlot voiceIdx, const PatternInput& i
                 polyVerdict_[voiceIdx.v] = MonoDecision::Rest;   // F-1: silent at the landing
             } else {
                 const bool prevSlur = v.gs.slurForward;
-                const bool isTie    = (rd.gateType == MonoDecision::Tie);
                 // Mono invariant: "a slur can only connect to a still-sounding predecessor."
                 // A participating voice whose short note already closed via the Stage-2 clamp
                 // (gatePulseRemain hit 0 mid-step) is NOT still sounding at this edge, so it must
@@ -2960,48 +2959,53 @@ void SequencerEngine::executePolyVoice(VoiceSlot voiceIdx, const PatternInput& i
                 const bool stillSounding = wasHeldPoly || hadPolyTail;
                 const bool connect = prevSlur && stillSounding;
 #if RULE2_DEBUG
-                INFO("[R2 land ] v=%2d step=%3lld LE=%d part=%d prevSlur=%d sound=%d isTie=%d -> %s",
+                INFO("[R2 land ] v=%2d step=%3lld LE=%d part=%d prevSlur=%d sound=%d -> %s",
                     voiceIdx.v, (long long)pos_.phaseClock(transportTick_), (int)!varlegDelegated(voiceIdx.v, 1),
-                        (int)v.participating, (int)prevSlur, (int)stillSounding, (int)isTie,
+                        (int)v.participating, (int)prevSlur, (int)stillSounding,
                     connect ? "CONNECT" : "REARTICULATE");
 #endif
-                if (connect && isTie) {
-                    // committed tie → hold own pitch and extend (no redraw), like the follow-mono tie
-                    v.gs.extendHold(v.gs.lastSemitone, nvV);
-                    v.gsStep.triggerNote(v.gs.currentPitchV, v.gs.lastSemitone, nvV);  // STEP
+                // (CC_PROMPT_POLY_TIE_EMERGENT) TIE IS EMERGENT: mono's verdict no
+                // longer names this voice's tie. On a landing EVERY participating
+                // voice draws its OWN pitch through the one pitch-draw law, then
+                // derives tie-vs-slide against ITS OWN held pitch. The old
+                // `connect && isTie` freeze coupled every voice to a coincidence
+                // in MONO's draw (a mono tie only happens when mono's own draw
+                // happened to repeat its last degree).
+                int melL, melO, melR; LaneDir melD;
+                effectiveLaneLor(voiceIdx, LaneId{PL_MELODY}, melL, melO, melR, melD);
+                int octL, octO, octR; LaneDir octD;
+                effectiveLaneLor(voiceIdx, LaneId{PL_OCTAVE}, octL, octO, octR, octD);
+                int melIdx = getStrandIdx(polyLaneTick(voiceIdx, LaneId{PL_MELODY}), melL, melO, melR);
+                int octIdx = getStrandIdx(polyLaneTick(voiceIdx, LaneId{PL_OCTAVE}), octL, octO, octR);
+                // (CC_PROMPT_POLY_LEGATO_QUANTISER) S1 — the ONE pitch-draw law (the q-mix
+                // work only under quantiserPitchSource: outside quantiser modes this is
+                // exactly today's genPitchLive call, the RNG guard).
+                const PolyPitchDraw ppd = polyPitchDraw(voiceIdx, input, v, melIdx, octIdx, /*qmixAlways=*/false);
+                int sem = ppd.sem;
+                float pitchV = ppd.pitchV;
+                if (connect && isSamePitch(pitchV, v.gs.currentPitchV, sem, v.gs.lastSemitone)) {
+                    // same degree AND same octave → a true tie: hold own pitch, extend
+                    v.gs.extendHold(sem, nvV, ppd.isQuant);
+                    v.gsStep.triggerNote(v.gs.currentPitchV, sem, nvV, ppd.isQuant);  // STEP: re-strike, same pitch
                     polyVerdict_[voiceIdx.v] = MonoDecision::Tie;   // F-1: an extend names Tie
+                } else if (connect) {
+                    // a different pitch → slide to the new draw (keep chain accent)
+                    v.gs.slideNote(pitchV, sem, nvV, /*wasHeld=*/true, ppd.isQuant);   // connect (keep chain accent)
+                    v.gsStep.triggerNote(pitchV, sem, nvV, ppd.isQuant);   // STEP: re-strike (un-fused)
+                    polyVerdict_[voiceIdx.v] = MonoDecision::Legato;   // F-1: a connect-slide
                 } else {
-                    // committed legato → slide to own new pitch; opted out / not still sounding →
-                    // re-articulate fresh. Either way this voice draws its OWN pitch (melody/octave
-                    // LOR), never mono's.
-                    // (C0 FAMILY 2) the mel/oct L/O/R feeds come from the lane chokepoint.
-                    int melL, melO, melR; LaneDir melD;
-                    effectiveLaneLor(voiceIdx, LaneId{PL_MELODY}, melL, melO, melR, melD);
-                    int octL, octO, octR; LaneDir octD;
-                    effectiveLaneLor(voiceIdx, LaneId{PL_OCTAVE}, octL, octO, octR, octD);
-                    int melIdx = getStrandIdx(polyLaneTick(voiceIdx, LaneId{PL_MELODY}), melL, melO, melR);
-                    int octIdx = getStrandIdx(polyLaneTick(voiceIdx, LaneId{PL_OCTAVE}), octL, octO, octR);
-                    int sem = 0;
-                    refreshPolyRandomCell(voiceIdx, LaneId{PL_MELODY}, melIdx);
-                    refreshPolyRandomCell(voiceIdx, LaneId{PL_OCTAVE}, octIdx);
-                    float pitchV = pe.genPitchLive(sem, input, pe.warpRow(voiceIdx, LaneId{PL_MELODY})[melIdx], pe.warpRow(voiceIdx, LaneId{PL_OCTAVE})[octIdx]);
-                    if (connect) {
-                        v.gs.slideNote(pitchV, sem, nvV, /*wasHeld=*/true);   // connect (keep chain accent)
-                        polyVerdict_[voiceIdx.v] = MonoDecision::Legato;   // F-1: a connect-slide
-                    } else {
-                        // re-articulate: a fresh onset, so draw this voice's OWN accent (its accent
-                        // LOR vs its own accentProb), exactly as the chain onset does — a re-struck
-                        // note isn't stuck with the accent the chain opened on.
-                        // (C0 FAMILY 2) the accent L/O/R feeds come from the lane chokepoint.
-                        int acL, acO, acR; LaneDir acD;
-                        effectiveLaneLor(voiceIdx, LaneId{PL_ACCENT}, acL, acO, acR, acD);
-                        int accIdx = getStrandIdx(polyLaneTick(voiceIdx, LaneId{PL_ACCENT}), acL, acO, acR);
-                        refreshPolyRandomCell(voiceIdx, LaneId{PL_ACCENT}, accIdx);
-                        v.accented = (pe.warpRow(voiceIdx, LaneId{PL_ACCENT})[accIdx] < accTh);
-                        v.gs.triggerNote(pitchV, sem, nvV);                   // re-articulate
-                        polyVerdict_[voiceIdx.v] = MonoDecision::NewNote;   // F-1: a re-strike
-                    }
-                    v.gsStep.triggerNote(pitchV, sem, nvV);   // STEP: slide/re-artic both re-strike
+                    // re-articulate: a fresh onset, so draw this voice's OWN accent (its accent
+                    // LOR vs its own accentProb), exactly as the chain onset does — a re-struck
+                    // note isn't stuck with the accent the chain opened on.
+                    // (C0 FAMILY 2) the accent L/O/R feeds come from the lane chokepoint.
+                    int acL, acO, acR; LaneDir acD;
+                    effectiveLaneLor(voiceIdx, LaneId{PL_ACCENT}, acL, acO, acR, acD);
+                    int accIdx = getStrandIdx(polyLaneTick(voiceIdx, LaneId{PL_ACCENT}), acL, acO, acR);
+                    refreshPolyRandomCell(voiceIdx, LaneId{PL_ACCENT}, accIdx);
+                    v.accented = (pe.warpRow(voiceIdx, LaneId{PL_ACCENT})[accIdx] < accTh);
+                    v.gs.triggerNote(pitchV, sem, nvV, ppd.isQuant);                   // re-articulate
+                    v.gsStep.triggerNote(pitchV, sem, nvV, ppd.isQuant);   // STEP: re-strike
+                    polyVerdict_[voiceIdx.v] = MonoDecision::NewNote;   // F-1: a re-strike
                 }
                 // Re-roll the forward commitment for the NEXT landing (mirror mono's LEAD, per voice).
                 { int legIdx2 = getLegatoStepForVoice(voiceIdx);
@@ -3016,10 +3020,18 @@ void SequencerEngine::executePolyVoice(VoiceSlot voiceIdx, const PatternInput& i
             // ── MidNote hold path (mono is sustaining mid-note, not at a landing edge) ─────
             // Poly follows mono gate presence strictly IF it was already active ("in").
             if (rd.holdFollow && wasHeldPoly) {   // C4: the tuple's hold-follow; own armed window below
-                if (rd.gateType == MonoDecision::Legato || rd.gateType == MonoDecision::LegatoMax) {
-                    // Mono slid to a NEW pitch (a real pitch move) → poly draws its OWN new pitch
-                    // (its own melody/octave LOR) and slides to it. Poly tracks mono's articulation
-                    // shape, never mono's actual notes.
+                if (rd.gateType == MonoDecision::Legato || rd.gateType == MonoDecision::LegatoMax
+                    || rd.gateType == MonoDecision::Tie) {
+                    // (CC_PROMPT_POLY_TIE_EMERGENT) the merged HELD arm: mono chose at
+                    // this edge, so this voice draws its OWN pitch through the one
+                    // pitch-draw law and derives tie-vs-slide against ITS OWN held
+                    // pitch, exactly as S1 does (the old code keyed the arms on
+                    // mono's verdict — a slide arm and a freeze arm). Poly tracks
+                    // mono's articulation SHAPE, never mono's actual notes.
+                    // STRUCTURALLY UNREACHABLE today: monoConnectLanding routed on
+                    // the same const rd.gateType, so gateType can never be
+                    // Legato/LegatoMax/Tie here — kept uniform per Rodney's
+                    // 2026-11-22 ruling (correct if the routing ever changes).
                     // (C0 FAMILY 2) the mel/oct L/O/R feeds come from the lane chokepoint.
                     int melL, melO, melR; LaneDir melD;
                     effectiveLaneLor(voiceIdx, LaneId{PL_MELODY}, melL, melO, melR, melD);
@@ -3027,18 +3039,22 @@ void SequencerEngine::executePolyVoice(VoiceSlot voiceIdx, const PatternInput& i
                     effectiveLaneLor(voiceIdx, LaneId{PL_OCTAVE}, octL, octO, octR, octD);
                     int melIdx = getStrandIdx(polyLaneTick(voiceIdx, LaneId{PL_MELODY}), melL, melO, melR);
                     int octIdx = getStrandIdx(polyLaneTick(voiceIdx, LaneId{PL_OCTAVE}), octL, octO, octR);
-                    int sem = 0;
-                    refreshPolyRandomCell(voiceIdx, LaneId{PL_MELODY}, melIdx);
-                    refreshPolyRandomCell(voiceIdx, LaneId{PL_OCTAVE}, octIdx);
-                    float pitchV = pe.genPitchLive(sem, input, pe.warpRow(voiceIdx, LaneId{PL_MELODY})[melIdx], pe.warpRow(voiceIdx, LaneId{PL_OCTAVE})[octIdx]);
-                    v.gs.slideNote(pitchV, sem, nvV, wasHeldPoly);
-                    v.gsStep.triggerNote(pitchV, sem, nvV); v.gs.slurMember = true;  // STEP/SLEG
-                    polyVerdict_[voiceIdx.v] = MonoDecision::Legato;   // F-1: a mid-hold slide
-                } else if (rd.gateType == MonoDecision::Tie) {
-                    // Mono held the same pitch (tie) → poly holds its own current pitch, extends hold.
-                    v.gs.extendHold(v.gs.lastSemitone, nvV);
-                    v.gsStep.triggerNote(v.gs.currentPitchV, v.gs.lastSemitone, nvV); v.gs.slurMember = true;  // STEP/SLEG
-                    polyVerdict_[voiceIdx.v] = MonoDecision::Tie;   // F-1: a mid-hold extend
+                    // (CC_PROMPT_POLY_LEGATO_QUANTISER) S2 — the ONE pitch-draw law (the same
+                    // RNG guard: no QMIX work outside quantiser modes).
+                    const PolyPitchDraw ppd = polyPitchDraw(voiceIdx, input, v, melIdx, octIdx, /*qmixAlways=*/false);
+                    int sem = ppd.sem;
+                    float pitchV = ppd.pitchV;
+                    if (isSamePitch(pitchV, v.gs.currentPitchV, sem, v.gs.lastSemitone)) {
+                        // same degree AND same octave → hold own current pitch, extend
+                        v.gs.extendHold(sem, nvV, ppd.isQuant);
+                        v.gsStep.triggerNote(v.gs.currentPitchV, sem, nvV, ppd.isQuant); v.gs.slurMember = true;  // STEP/SLEG
+                        polyVerdict_[voiceIdx.v] = MonoDecision::Tie;   // F-1: a mid-hold extend
+                    } else {
+                        // a different pitch → slide to the new draw
+                        v.gs.slideNote(pitchV, sem, nvV, wasHeldPoly, ppd.isQuant);
+                        v.gsStep.triggerNote(pitchV, sem, nvV, ppd.isQuant); v.gs.slurMember = true;  // STEP/SLEG
+                        polyVerdict_[voiceIdx.v] = MonoDecision::Legato;   // F-1: a mid-hold slide
+                    }
                 } else {
                     // MidNote: mono is HOLDING a note still sounding — nothing was chosen this step
                     // (the executeStep guard returned early). Poly follows mono's hold ONLY while THIS
@@ -3060,6 +3076,49 @@ void SequencerEngine::executePolyVoice(VoiceSlot voiceIdx, const PatternInput& i
             }
         }
     }
+}
+
+// (CC_PROMPT_POLY_LEGATO_QUANTISER) THE ONE POLY PITCH-DRAW LAW — the onset path
+// and the S1/S2/S3 sites (the committed slide + re-articulate, the mid-hold
+// follow, the re-strike arm) all draw through this, so the four cannot drift
+// again. Per draw: the q-mix sequence verbatim from the onset path (the SAME
+// r_qmix_voice draw, the degree threshold v.qmixLevel, the octave threshold
+// v.qmixOctResolved() — each axis keeps its own quantiser decision, the MIXED
+// rows included), then voicePitch. qmixAlways: the ONSET path refreshes/draws
+// QMIX unconditionally (byte-identical to its shipped sequence, including
+// outside quantiser modes); S1-S3 pass false — their QMIX work happens only
+// under quantiserPitchSource, so outside quantiser modes they reduce to EXACTLY
+// today's sequence (the mel/oct refreshes + genPitchLive, no QMIX draw, no
+// RNG/lane movement — the byte-identity guard: an unguarded QMIX refresh could
+// shift RNG state with the quantiser off).
+SequencerEngine::PolyPitchDraw SequencerEngine::polyPitchDraw(
+        dotModular::VoiceSlot voiceIdx, const PatternInput& input, const PolyVoice& v,
+        int melIdx, int octIdx, bool qmixAlways) {
+    PolyPitchDraw out;
+    if (quantiserPitchSource || qmixAlways) {
+        // (C0 FAMILY 2) the qmix L/O/R feeds come from the lane chokepoint.
+        int qmL, qmO, qmR; LaneDir qmD;
+        effectiveLaneLor(voiceIdx, LaneId{PL_QMIX}, qmL, qmO, qmR, qmD);
+        int qmixIdx = getStrandIdx(polyLaneTick(voiceIdx, LaneId{PL_QMIX}), qmL, qmO, qmR);
+        refreshPolyRandomCell(voiceIdx, LaneId{PL_QMIX}, qmixIdx);
+        float r_qmix_voice = pe.warpRow(voiceIdx, LaneId{PL_QMIX})[qmixIdx];
+        bool qmixUseGenerated = quantiserPitchSource && (r_qmix_voice >= v.qmixLevel);
+        const bool qmixOctUseGenerated = quantiserPitchSource && (r_qmix_voice >= v.qmixOctResolved());
+        out.isQuant = quantiserPitchSource && !qmixUseGenerated;   // FADER_SEQ_QUANT_COLOURS (green flash)
+        out.pitchV = voicePitch(voiceIdx, out.sem, input,
+                                (refreshPolyRandomCell(voiceIdx, LaneId{PL_MELODY}, melIdx), pe.warpRow(voiceIdx, LaneId{PL_MELODY})[melIdx]),
+                                (refreshPolyRandomCell(voiceIdx, LaneId{PL_OCTAVE}, octIdx), pe.warpRow(voiceIdx, LaneId{PL_OCTAVE})[octIdx]),
+                                /*forceGenerated(degree)=*/qmixUseGenerated,
+                                /*octForceGenerated=*/qmixOctUseGenerated);
+        return out;
+    }
+    // outside a quantiser mode (S1-S3): EXACTLY today's sequence — no QMIX work.
+    refreshPolyRandomCell(voiceIdx, LaneId{PL_MELODY}, melIdx);
+    refreshPolyRandomCell(voiceIdx, LaneId{PL_OCTAVE}, octIdx);
+    out.pitchV = pe.genPitchLive(out.sem, input,
+                                 pe.warpRow(voiceIdx, LaneId{PL_MELODY})[melIdx],
+                                 pe.warpRow(voiceIdx, LaneId{PL_OCTAVE})[octIdx]);
+    return out;
 }
 
 void SequencerEngine::executePolyVoices(const PatternInput& input) {
@@ -3116,7 +3175,11 @@ float SequencerEngine::quantize(float vIn) {
     if (std::abs(vIn - lastQuantIn) < 1e-6f) return lastQuantOut;
     lastQuantIn = vIn;
 
-    if (activeSemiCount == 0) return pe_clamp(vIn, 0.f, 5.f);
+    // Cold/empty-scale path (no active degrees — a fresh or reset engine before a scale is
+    // set; effectively unreachable live, where a scale is always active). It MUST write
+    // lastQuantOut too, or the top-of-function memo (keyed on lastQuantIn, set just above)
+    // serves the stale reset value (0.0) to a repeated same input instead of the clamp.
+    if (activeSemiCount == 0) { lastQuantOut = pe_clamp(vIn, 0.f, 5.f); return lastQuantOut; }
     int octave = (int)vIn;
     float bestScore = -1.f;
     float bestV = vIn;

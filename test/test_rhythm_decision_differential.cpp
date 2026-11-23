@@ -355,9 +355,9 @@ static void marchModeBS(int seed, Capture& cap, int& c2n, int& envn) {
 // 0xa843e2ff14883ab9 / 0x30aed95ef0e65fb8 / 0xcffae9458b9257fd EXACTLY
 // (92928 checks, 0 failed). The marches' rng draws are mapped through
 // legacyNoteValueIndex — same musical values, same draw sequence.
-static const uint64_t GOLDEN_A  = 0x6a57a9766799c379ULL;   // UNMOVED (clock/phase — the wander fix touches gate-mode poly only)
-static const uint64_t GOLDEN_B  = 0x44070ab41e9af7c1ULL;   // re-pinned (per-voice wander, CC_FIX_PER_VOICE_ADVANCE_WANDER: delegated voices now decide on their own draws in gate mode)
-static const uint64_t GOLDEN_BS = 0x88c738c30adebe96ULL;   // re-pinned (per-voice wander — same move as GOLDEN_B)
+static const uint64_t GOLDEN_A  = 0x6a57a9766799c379ULL;   // UNMOVED (clock/phase — the wander fix touches gate-mode poly only; also UNMOVED by the tie change: mode A never runs the join sites)
+static const uint64_t GOLDEN_B  = 0xf6311c05776c0467ULL;   // re-pinned (per-voice wander, CC_FIX_PER_VOICE_ADVANCE_WANDER; then tie-emergent CC_PROMPT_POLY_TIE_EMERGENT: same-degree/different-octave mono joins now SLIDE to the drawn octave, and poly S1 derives its own tie instead of freezing on mono's — the mode-B trace moves, mode A does not)
+static const uint64_t GOLDEN_BS = 0xb01edb7cad398f9fULL;   // re-pinned (per-voice wander — same move as GOLDEN_B; then tie-emergent — same move as GOLDEN_B)
 
 int main() {
     std::printf("\033[1mrhythm decision differential — the R-1 oracle (stage R)\033[0m\n");

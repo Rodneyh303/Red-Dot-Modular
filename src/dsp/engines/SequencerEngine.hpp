@@ -2192,6 +2192,32 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
     //  and the quantiser is now the q-mix axis engaged per-step in the dispatch, not an engine mode.)
     float quantize(float vIn);
 
+    // (CC_PROMPT_POLY_LEGATO_QUANTISER) THE ONE POLY PITCH-DRAW LAW: the onset
+    // path AND the slide / re-articulate / mid-hold sites all draw through this,
+    // so the four cannot drift again. qmixAlways: the onset path refreshes/draws
+    // QMIX unconditionally (byte-identical to its shipped sequence); the other
+    // sites pass false — their QMIX work happens only under quantiserPitchSource,
+    // so outside quantiser modes they reduce to exactly today's genPitchLive call
+    // (no QMIX draw, no RNG/lane movement — the byte-identity guard).
+    struct PolyPitchDraw { float pitchV = 0.f; int sem = 0; bool isQuant = false; };
+    PolyPitchDraw polyPitchDraw(dotModular::VoiceSlot voiceIdx, const PatternInput& input,
+                                const PolyVoice& v, int melIdx, int octIdx, bool qmixAlways);
+
+    // (CC_PROMPT_POLY_TIE_EMERGENT) TIE IS EMERGENT — the ONE rule every join
+    // derives from (mono's join, the poly S1 landing, the S2 mid-hold arm, the
+    // onset-path slide): a tie = the SAME DEGREE AND THE SAME OCTAVE. The degree
+    // term (sem == heldSem) keeps duplicate-pitch degrees (a user scale with
+    // doubled notes, a muted-degree quantize fold) SLIDES; the octave term rides
+    // the DRAWN VOLTAGE with a named epsilon, so microtonal tables and the
+    // quantiser's quantize() output compare consistently (a mid-phrase cents
+    // nudge of the same degree stays a tie; an octave move never does).
+    // kPitchEps ~ 0.12 cents sits far below the finest tuning step (a cent =
+    // 8.3e-4 V) and far above float / table-vs-computed ULP dust (~1e-7 V).
+    static constexpr float kPitchEps = 1e-4f;
+    static bool isSamePitch(float pitchV, float heldPitchV, int sem, int heldSem) {
+        return (sem == heldSem) && (std::fabs(pitchV - heldPitchV) < kPitchEps);
+    }
+
     // High-level DNA Actions
     void syncVisuals(const PatternInput& in);
 

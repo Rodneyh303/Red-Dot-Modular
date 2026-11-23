@@ -56,3 +56,51 @@ the pitch move?" and gives a defensible answer under ANY tuning system — 12-TE
 ## Open
 - Confirm the cents cadence should be latched (and at which boundary — step, draw, or phrase).
 - Until then, strict stands and the comment must be corrected to describe the actual behaviour.
+
+
+## THE DEEPER SIMPLIFICATION — DO WE NEED TIE vs LEGATO AT ALL? (Rodney 2026-11-23)
+Rodney: "if we draw legato then we keep gate high whether pitch changes or not. That doesn't need to
+split strict tie from non-strict tie." Verified in `GateState.cpp` — he is right, the split is nearly
+vestigial.
+
+### What the two operations actually do (wasHeld case)
+- `slideNote(pitchV, sem, nv, wasHeld, isQuant)`: `currentPitchV = pitchV; lastSemitone = sem;`
+  `holdRemain += dur; gateHeld = true; armGatePulses(...); markSemi(sem, dur, isQuant);`
+  label Legato.
+- `extendHold(sem, nv, isQuant)`: `holdRemain += add; gateHeld = true; armGatePulses(...);`
+  `markSemi(sem, holdRemain, isQuant);` label Tie.
+IDENTICAL gate handling. **No portamento difference** — `slideNote` does NOT glide, it sets the pitch
+instantly. The ONLY real differences are three OMISSIONS in `extendHold`:
+  1. `currentPitchV` is NOT written  (this IS the octave-discard bug the tie work fixed around)
+  2. `lastSemitone` is NOT written
+  3. `markSemi`'s duration arg: `holdRemain` (accumulated) vs `dur` (this note's length)
+
+### The load-bearing accident
+Omissions 1 and 2 are benign ONLY BECAUSE `isSamePitch` is STRICT (a tie requires same degree AND same
+pitch, so not writing them is harmless). LOOSEN the tie rule — either cents option above — and both
+omissions become LIVE BUGS immediately. The strictness is silently load-bearing for a correctness
+reason that was never written down. That alone argues for unifying.
+
+### Recommendation: ONE operation, emergent label
+Replace the `if (connect && isSamePitch) extendHold else slideNote` branch with a single
+`continueNote(pitchV, sem, nv, isQuant)` that ALWAYS writes pitch and semitone, extends `holdRemain`,
+holds the gate, re-arms the pulses and marks the semi. Compute the Tie/Legato LABEL emergently from
+whether the pitch moved. Benefits:
+- **Eliminates the bug class**: the octave-discard bug existed because a branch could skip writing the
+  pitch. With one always-writing operation it is UNREPRESENTABLE (writing an unchanged pitch is a no-op).
+- **Makes the cents/tolerance question mechanically moot**: any tie rule is safe because the state is
+  always written correctly regardless of which branch "would" have been taken.
+- **Removes the branch** the emergent-tie work had to thread `isQuant` through on every arm.
+- **Finishes the direction**: tie stopped being a DECISION (emergent-tie work); this stops it being a
+  CODE PATH. The label becomes a readout — which is all `tieHold`, the Lantern colours and the
+  (callerless) `setTieGateOutput` ever needed.
+
+### The ONE thing to decide (the only behavioural delta)
+`markSemi`'s duration argument — `dur` vs `holdRemain`. Writing pitch/semitone on a tie are no-ops, so
+the unification is otherwise BYTE-IDENTICAL; the marked span is the single real difference and the
+unified call must pick one. Testable against the goldens, not arguable.
+
+### Discipline
+`GateState` is the audio path and the STEPS_32 goldens cover it. Do the unification byte-identical
+FIRST (pick the markSemi arg that reproduces current output, prove it against the full battery), and
+only then consider changing the marked span if it is wrong.
