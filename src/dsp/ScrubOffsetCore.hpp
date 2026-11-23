@@ -79,4 +79,46 @@ inline int64_t drawIndexLo(int64_t N, int f) { return N - f - 1; }   // the brid
 // plus the copula window and a margin (the symmetric BIDIRECTIONAL rule).
 inline int cacheHalfSpan(int margin = 16) { return COPULA_K + SCRUB_K + std::max(0, margin); }
 
+// ── THE CACHE BUDGET: moving-average depth TRADES AGAINST jog range ──────────
+// (Rodney 2026-11-23.) The cache half-span is a FIXED allocation of draw entries, and it is
+// spent on two things: the copula window (K draws) and the jog offset range (SCRUB each side).
+// So if the MOVING-AVERAGE PERIOD becomes user-selectable and the user picks a SHORTER one,
+// the freed entries become EXTRA JOG RANGE at no cache cost:
+//     K + scrub + margin <= kCacheHalfSpan
+// With the current allocation (112) and margin 16 the K+scrub budget is 96:
+//     K = 64 -> scrub +/-32   (today's default)
+//     K = 32 -> scrub +/-64   (Rodney's example: halving the average doubles the shuttle)
+//     K = 16 -> scrub +/-80
+// A shorter average is less smoothing / less temporal correlation but a longer reach; a longer
+// average is more correlated but a shorter reach. That is a real musical trade, not a limitation.
+constexpr int kCacheHalfSpan = COPULA_K + SCRUB_K + 16;   // 112 — the fixed entry allocation
+
+// The jog range available for a chosen moving-average period K (clamped non-negative).
+inline int maxScrubForK(int K, int margin = 16, int halfSpan = kCacheHalfSpan) {
+    const int k = std::max(0, K);
+    return std::max(0, halfSpan - k - std::max(0, margin));
+}
+// The inverse: the longest moving-average period that still affords a given jog range.
+inline int maxKForScrub(int scrub, int margin = 16, int halfSpan = kCacheHalfSpan) {
+    const int sc = std::max(0, scrub);
+    return std::max(0, halfSpan - sc - std::max(0, margin));
+}
+// Does a (K, scrub) pair fit the allocation?
+inline bool budgetFits(int K, int scrub, int margin = 16, int halfSpan = kCacheHalfSpan) {
+    return std::max(0, K) + std::max(0, scrub) + std::max(0, margin) <= halfSpan;
+}
+// When K changes the jog range changes with it: re-clamp a live offset into the new range
+// (same shape as the viewport's re-clamp — keep the position where it is if it still fits).
+inline int clampOffsetForK(int offset, int K, int margin = 16, int halfSpan = kCacheHalfSpan) {
+    const int lim = maxScrubForK(K, margin, halfSpan);
+    return std::min(std::max(offset, -lim), lim);
+}
+
+// PARAM-REPRESENTATION CONSEQUENCE (flag for the engine/widget wiring): positionToParam above
+// normalises by the FIXED SCRUB_K (k/32 — exact because 32 is a power of two). Once the range is
+// VARIABLE, k/range is exact only when `range` is a power of two (64 is, 80 is not). So a variable
+// jog range argues for storing the param as the OFFSET DIRECTLY (range [-maxScrub, +maxScrub],
+// integer values exactly representable) instead of a normalised [-1,1]. Then exactness no longer
+// depends on the range. Decide this BEFORE wiring the param, not after.
+
 }} // namespace redDot::scrub

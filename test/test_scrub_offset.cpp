@@ -88,6 +88,35 @@ int main() {
     CHECK(cacheHalfSpan(16) == 64 + 32 + 16, "half span = K + SCRUB_K + margin");
     CHECK(cacheHalfSpan() >= SCRUB_K + COPULA_K, "half span covers offset + window");
 
+    // 7. THE CACHE BUDGET: moving-average depth trades against jog range (Rodney 2026-11-23).
+    //    The allocation is fixed; K + scrub + margin <= kCacheHalfSpan.
+    {
+        CHECK(kCacheHalfSpan == 112, "the fixed cache allocation is 112 entries each side");
+        // Rodney's worked table (independent arithmetic: 112 - K - 16)
+        CHECK(maxScrubForK(64) == 32, "K=64 -> jog +/-32 (today's default)");
+        CHECK(maxScrubForK(32) == 64, "K=32 -> jog +/-64 (halving the average doubles the shuttle)");
+        CHECK(maxScrubForK(16) == 80, "K=16 -> jog +/-80");
+        // the invariant holds exactly wherever the range is positive
+        for (int K = 0; K <= 96; ++K) {
+            int sc = maxScrubForK(K);
+            CHECK(sc >= 0, "jog range never negative");
+            if (sc > 0) CHECK(K + sc + 16 == kCacheHalfSpan, "K + scrub + margin == allocation");
+            CHECK(budgetFits(K, sc), "the advertised pair fits the budget");
+            if (sc > 0) CHECK(!budgetFits(K, sc + 1), "one more than advertised does NOT fit");
+        }
+        // inverse consistency
+        for (int K : {16, 32, 48, 64}) CHECK(maxKForScrub(maxScrubForK(K)) == K, "maxK inverts maxScrub");
+        // monotone: a longer average always buys a shorter reach
+        for (int K = 0; K < 96; ++K) CHECK(maxScrubForK(K) >= maxScrubForK(K + 1), "range monotone in K");
+        // changing K re-clamps a live offset
+        CHECK(clampOffsetForK(50, 32) == 50, "offset 50 is legal at K=32 (limit 64)");
+        CHECK(clampOffsetForK(50, 64) == 32, "the same offset clamps to 32 when K rises to 64");
+        CHECK(clampOffsetForK(-50, 64) == -32, "clamps symmetrically on the negative side");
+        // guards
+        CHECK(maxScrubForK(999) == 0,  "an absurd K leaves no jog range (clamped, not negative)");
+        CHECK(maxScrubForK(-5) == maxScrubForK(0), "negative K treated as 0");
+    }
+
     if (g_fail == 0) std::printf("  OK\n");
     else             std::printf("  %d FAILURE(S)\n", g_fail);
     return g_fail ? 1 : 0;

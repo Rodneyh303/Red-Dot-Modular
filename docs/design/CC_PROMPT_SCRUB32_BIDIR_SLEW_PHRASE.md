@@ -88,6 +88,24 @@ Red first, then green, then the full suite. Commit PART A on its own.
   one cached position across rhythm+melody+qmix is ~42 KB) or prune asymmetrically to ~131 entries
   (~5.5 MB). Your call; report the measured working set. A reverse-running Monsoon mirrors the
   window — the rule must cover both directions.
+- MOVING-AVERAGE PERIOD AS A USER CHOICE + THE BUDGET TRADE (Rodney 2026-11-23, NEW). It was always
+  intended that the user can choose the moving-average period (the copula K); not added yet. The cache
+  half-span is a FIXED allocation spent on TWO things — the window (K draws) and the jog range (SCRUB
+  each side): `K + scrub + margin <= kCacheHalfSpan`. So keeping the cache sized for the MAX K (64) and
+  letting the user pick a SHORTER period converts the freed entries into EXTRA JOG RANGE at no cache
+  cost. With the current 112 allocation and margin 16 the K+scrub budget is 96:
+      K = 64 -> scrub +/-32 (today)    K = 32 -> scrub +/-64    K = 16 -> scrub +/-80
+  A shorter average = less smoothing/correlation but a longer reach; a longer average = more correlated
+  but shorter reach. A real musical trade. LAW IS BUILT + TESTED: `ScrubOffsetCore` now has
+  `kCacheHalfSpan`, `maxScrubForK`, `maxKForScrub`, `budgetFits`, `clampOffsetForK` (re-clamp a live
+  offset when K changes) — test_scrub_offset §7, mutation-proven (forgetting the margin fails 204).
+  OPEN for Rodney: is K per-stream (R/M/Q, like slew) or global? And `MovingAverageCopula::K` is a
+  compile-time constant sizing the weight array — make it a runtime K_active <= 64 using the first K
+  taps (uniformity is preserved for ANY K since the weights are L2-normalised: Sum w^2 == 1).
+- PARAM REPRESENTATION — REVISIT GIVEN A VARIABLE RANGE: the k/32 normalised mapping above is exact
+  only because 32 is a power of two. With a VARIABLE jog range (32/64/80...) k/range is not always
+  exact (80 is not a power of two). Prefer storing the param as the OFFSET DIRECTLY (range
+  [-maxScrub,+maxScrub], integers exact) rather than normalised [-1,1]. Decide BEFORE wiring the param.
 - Per-stream mix knobs (R, M, Q) stay per stream. A canon needs all three at the same offset: add
   nothing unrequested, but REPORT a proposal for linking (e.g. a modifier or a master) as an open
   question for Rodney.
