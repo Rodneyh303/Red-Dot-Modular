@@ -140,5 +140,24 @@ and write a shared table), so a PER-VOICE "apply at this voice's rest" cadence w
 at DIFFERENT times and split the ensemble across TWO TUNING SYSTEMS mid-chord. A phrase boundary
 switches every voice at the same instant. "At a rest" would have to mean ALL voices silent, which a
 dense patch may never offer (unbounded deferral).
-DECISION: latch cents to the PHRASE BOUNDARY, globally. Same latched-at-boundary shape as slew / MA
-depth / the reverse toggle => ride the CA1 skeleton rather than adding a bespoke rule.
+DECISION — REVISED (Rodney 2026-11-23): latch cents to the **STEP BOUNDARY**, globally. NOT the
+phrase boundary — that is TOO SLOW for the common use. The dominant case is a user CREATING a custom
+tuning by editing Sikit / Colonnades faders, who needs to hear the change immediately; a phrase
+boundary can be 16-32 steps away, hopeless for tuning by ear. A STEP boundary is a fraction of a
+second at normal tempos while still being quantised enough to prevent a torn read within a step.
+(Phrase cadence would only suit a SETTLED tuning system, which is rarely changed anyway.)
+KEY CONSTRAINT THAT MAKES THIS SAFE (Rodney): cents are a USER SETTING ONLY — there is NO intention to
+modulate tuning cents mid-phrase. So the earlier worry that continuous cents modulation would make
+ties never occur (always slides) does NOT apply: a fader drag is a handful of DISCRETE changes, each
+producing a slide at the next step, which IS the desired feedback. Strict ties stay fine.
+POLYPHONY still consistent: the transport tick is global, so every voice evaluated within a tick sees
+the same table.
+Same latched-at-boundary shape as slew / MA depth / the reverse toggle (different boundary, same
+lifecycle) => ride the CA1 skeleton rather than adding a bespoke rule.
+
+### Ergonomic limit — the cadence is NOT the only latency
+Because the output is the STORED `currentPitchV`, a retuned degree is heard WHEN THAT DEGREE NEXT
+PLAYS. Editing a degree the pattern is not currently visiting produces silence however fast the latch
+is. If the goal is genuinely tuning BY EAR, the real answer is likely a PREVIEW ON FADER TOUCH
+(audition the degree directly) rather than waiting for the pattern to reach it. Step-boundary latching
+is right, but it is not sufficient on its own for the tuning-creation workflow.
