@@ -62,6 +62,26 @@ ONLY** — the window. Direction is NOT locked and NOT greyed.
 WHY: pre-UAS lanes already had their own direction control; what UAS ADDED was the independent L/O/R
 window (polymeter, rotation, offset). So by Rodney's pre-UAS reproduction test, direction belongs in
 Phrase and the WINDOW is what Phrase takes from the transport.
+VOICE-LANE REVERSE IN PHRASE — ALLOWED (Rodney 2026-11-23, the real question): YES. Direction is
+authorable at BOTH levels in Phrase mode. The consistent rule across the whole hierarchy is:
+**PHRASE LOCKS THE WINDOW (L/O/R) AT EVERY LEVEL; DIRECTION STAYS FREE AT EVERY LEVEL.**
+Musically this is the point: a Phrase VOICE can run its phrase in RETROGRADE against a forward
+transport — one voice playing the phrase backward against the others — while its WINDOW stays locked
+to the transport so it remains in step. Locking the window is what keeps it aligned; freeing direction
+is what makes it musical.
+THREE DIRECTION LEVELS EXIST, AND ALL THREE MULTIPLY (verified in code):
+  1. TRANSPORT — `advancePlayhead(dir)` / `setReverseActive` (walks the TICK SEQUENCE).
+  2. VOICE ROW — `effectiveVoiceLor`'s `vd` -> `walkFold(vd, ...)` (4 sites in SequencerEngine.cpp).
+  3. PROBABILITY LANE — `effectiveLaneLor(bank, LaneId{...}, vl, vo, vrr, vd)` (3 further sites).
+So the effective sense is the SIGN PRODUCT of the three: lane-Reverse under voice-Reverse under
+transport-Reverse = reverse (three flips), lane-Reverse under voice-Reverse under a forward transport
+= forward (two flips cancel), and so on.
+TEST THIS EXPLICITLY (add to the suite below): sweep the 2x2x2 forward/reverse combinations of
+{transport, voice row, probability lane} in PHRASE mode and assert the read equals the sign-product
+expectation — i.e. an even number of reversals reads forward, an odd number reads reverse. The
+multiplication is currently an emergent property of three independent folds; pin it so a change at any
+one level cannot silently break the composition.
+
 "DIRECTION ALWAYS MULTIPLIES" (Rodney): the lane's `LaneDir` COMPOSES with the transport's direction.
 The transport's reversal walks the TICK SEQUENCE backward (`dir -> advancePlayhead(-1)`, plus
 `setReverseActive` on the draw axis) and the lane's `walkFold(vd, ...)` applies its own fold ON TOP —
