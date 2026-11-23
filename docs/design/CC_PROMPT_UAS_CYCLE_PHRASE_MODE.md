@@ -27,6 +27,15 @@ polymeter, longer-than-pattern draw windows) and is opt-in. Add a test whose ora
 "voice at first step reads the cell at the global offset; wraps at the global length" (Phrase mode, offsets and
 lengths swept), and cross-check against a pre-UAS reference if the old 16-ring goldens still exist.
 
+> **STATUS (2026-11-23): the pure LAW is DONE — `src/dsp/CycleModeCore.hpp` (resolveCycle,
+> isIdentityCycle, readIndex, authoredOnModeSwitch), `test_cycle_mode` registered + green, mutation-
+> proven (bug-23 'Phrase uses the cap' fails 68; slide-instead-of-rotate fails 2505). The engine must
+> CALL this core, not re-derive the law: feed the CYCLE read the effective (L,O,R) from resolveCycle,
+> and rewrite the identity predicates to isIdentityCycle. The core encodes the INTENDED law from the
+> rulings — fact #2 below (what the engine reads TODAY at offset k) is still yours to establish; if the
+> current code disagrees with the oracle, REPORT it, do not silently bend either side. Still engine-side:
+> the wiring, the seeds, delegation, persistence/undo, the UI greying, the goldens, the slew boundary.**
+
 ## Facts to verify BEFORE coding (read the code, do not trust this text)
 1. `voiceFrameReadsFullPhrase` / `kRangeBaseReadsFullPhrase=false` (SequencerEngine.hpp ~936) is the retired
    ABS1 "full phrase" read (L = cachedLength, rho = R-O). Decide reuse vs build on the CYCLE branch
