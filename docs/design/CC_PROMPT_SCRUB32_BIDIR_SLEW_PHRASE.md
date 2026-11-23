@@ -73,6 +73,10 @@ Red first, then green, then the full suite. Commit PART A on its own.
   optional things become bands, fundamentals stay on the panel. MONSOON MAY NEED MORE HP. NOTE: this
   COMPOUNDS with the reverse work's GATE 4 input (output gates shift one column right) — plan the panel
   rethink for BOTH together, not piecemeal.
+  PLACEMENT IS PROVISIONAL (Rodney 2026-11-23): put the readouts/knobs in ANY FREE AREA for now and
+  tidy the layout later. BUT that applies to GEOMETRY ONLY — param/port IDs are written into saved
+  patches, so moving a control later is free while CHANGING ITS ID BREAKS PATCHES. Decide the depth-knob
+  and readout IDs DELIBERATELY in the frozen enum now, even though their positions are temporary.
 - DETENTS: the depth knob gets a few detent positions, like Monsoon's main note-length knob. K is an
   integer tap count anyway, and detents HELP CANON — matching K by hand across two Monsoons is far
   easier with a few discrete stops than a continuous sweep (same logic as snapping the offset to
@@ -87,9 +91,9 @@ Red first, then green, then the full suite. Commit PART A on its own.
 - RE-CLAMP ON K CHANGE (and an open feel call): the jog range depends on K, so consuming a K change at
   the boundary must ALSO re-clamp the live offset (`clampOffsetForK`, already built). INCREASING K
   SHRINKS the range: at offset +60 with K=32 (range +/-64), moving to K=64 (range +/-32) clamps the
-  offset to +32 — a 28-draw JUMP, audible. Either (a) accept it and make the readout show the clamp
-  (recommended — the user did ask for a shorter reach), or (b) constrain the depth knob so it cannot
-  shrink the range below the current offset. Rodney's feel-test call.
+  offset to +32 — a 28-draw JUMP, audible. RESOLVED (Rodney 2026-11-23): ACCEPT THE JUMP (option a) —
+  the user did ask for a shorter reach. Make the readout show the clamped value so the move is visible.
+  Do NOT constrain the depth knob to the current offset.
 
 ## PART B — scrub +/-32, bidirectional, snap on release
 
