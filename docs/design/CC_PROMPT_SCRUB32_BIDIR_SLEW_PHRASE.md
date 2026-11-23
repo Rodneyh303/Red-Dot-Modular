@@ -110,18 +110,42 @@ Red first, then green, then the full suite. Commit PART A on its own.
   the copula correlates across VOICES and across TIME within a stream, never between streams, so each
   K is independent and uniformity holds per stream.
   CONSEQUENCE — streams get DIFFERENT MAX JOG RANGES (rhythm K=64 -> +/-32 while melody K=32 -> +/-64).
-  Fine for independent scrubbing. It sharpens the open "link R/M/Q" question: a LINKED jog gesture must
-  either clamp all three to the COMMON MINIMUM range or let them diverge proportionally — recommend
-  clamp-to-minimum (a canon wants them genuinely aligned); Rodney's feel call.
+  That is FINE and needs no reconciliation: RULED (Rodney 2026-11-23) the scrub knobs are PER-STREAM and
+  stay that way — DO NOT create a linked jog. Each stream scrubs within its own budget; there is no
+  clamp-to-minimum logic to design and the earlier "link R/M/Q" open question is CLOSED (no link).
+  K AND r INTERACT (the other per-stream copula control is the temporal correlation r): the weights are
+  geometric (w_j ∝ r^j), so the USEFUL depth depends on r. At r=0.5 the tail is negligible past ~3 taps
+  — K=64 is waste, drop to K=16 and gain +/-80 jog with no audible loss. At r=0.97, 0.97^64 ≈ 0.14, so
+  the tail still matters at 64 taps and deep K genuinely earns its cache. I.e. the budget trade is nearly
+  FREE at low correlation and genuinely COSTLY at high correlation — worth a UI hint eventually.
   CANON: per-stream K adds no NEW class of problem — canon already requires matching slew per stream,
   so K joins that set; the mirror test compares per-stream as it already does.
   Implementation note: `MovingAverageCopula::K` is a compile-time constant sizing the weight array —
   make it a runtime K_active <= 64 per stream, using the first K taps (uniformity is preserved for ANY
   K since the weights are L2-normalised: Sum w^2 == 1, pinned by test_moving_average_copula).
-- PARAM REPRESENTATION — REVISIT GIVEN A VARIABLE RANGE: the k/32 normalised mapping above is exact
-  only because 32 is a power of two. With a VARIABLE jog range (32/64/80...) k/range is not always
-  exact (80 is not a power of two). Prefer storing the param as the OFFSET DIRECTLY (range
-  [-maxScrub,+maxScrub], integers exact) rather than normalised [-1,1]. Decide BEFORE wiring the param.
+- PARAM REPRESENTATION — USE OFFSET-DIRECT, NOT NORMALISED (decided here; wire it this way).
+  WHY IT MATTERS: the param is saved in the patch and drives snap + the canon mirror. Snap-on-release
+  must land EXACTLY on an integer draw offset; the canon mirror needs two Monsoons to agree BITWISE; and
+  once patches are saved with one encoding, changing it breaks them. Cheap now, expensive later.
+  OPTION A (normalised, what ScrubOffsetCore first used): param in [-1,1], offset = param * range. At a
+  FIXED range of 32 every integer k maps to k/32 — a dyadic rational, EXACT in binary float. Fine.
+  WHY THE VARIABLE RANGE BREAKS IT: with range varying by K, k/32 and k/64 stay exact (powers of two)
+  but k/80 does NOT — 80 = 2^4 * 5 and that factor of 5 has no finite binary representation. So at K=16
+  snap lands ALMOST on an integer, round-trips can drift, and two Monsoons can differ in the last bits —
+  exactly where canon needs them identical.
+  OPTION B (CHOSEN) — OFFSET-DIRECT: the param value IS the offset (16.0 = +16 draws; 16.25 = offset 16,
+  frac 0.25). Integers are exact in float for ANY range (float32 is exact for integers to 2^24), so
+  exactness no longer depends on the range being a power of two. Snap = round-to-nearest-integer,
+  trivially exact. The canon comparison becomes an INTEGER comparison. The value is also legible.
+  THE WRINKLE + FIX: Rack param ranges are fixed at config() but the usable limit moves with K.
+  Configure the param at the WIDEST range (+/-80, the K=16 case) for STORAGE, and have the WIDGET map
+  its rotation to the CURRENT maxScrubForK(K) — so full knob travel always covers the current range,
+  the param merely carries headroom, and clampOffsetForK (already built) enforces the limit. CV scaling
+  references the CURRENT range, not the configured max. (Naively configuring +/-80 and letting the knob
+  sweep it would leave 60% dead travel at K=64 — do not do that.)
+  NOTE: ScrubOffsetCore's positionToParam/paramToPositionInt still encode the k/32 normalisation; they
+  must be revised to offset-direct when the param is wired (the splitScrub/bridge/snap/budget functions
+  are unaffected).
 - Per-stream mix knobs (R, M, Q) stay per stream. A canon needs all three at the same offset: add
   nothing unrequested, but REPORT a proposal for linking (e.g. a modifier or a master) as an open
   question for Rodney.
