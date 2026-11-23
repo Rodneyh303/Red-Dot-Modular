@@ -2,7 +2,7 @@
 // One rule at every join: a tie = the same degree AND the same octave (the same
 // drawn pitch, within kPitchEps); anything else is a slide (Legato). The mono join
 // (~:2037) compared the DEGREE only, so a same-degree/different-octave draw was
-// classed Tie and the new octave was silently discarded (extendHold never touches
+// classed Tie and the new octave was silently discarded (the old extendHold never touched
 // currentPitchV). Poly S1 froze on MONO's tie (connect && isTie) and the S1/S2
 // slide arms never compared pitch at all — a held quantiser CV produced a
 // zero-interval "Legato". Sites under test (post-change):
@@ -49,7 +49,7 @@
 //   M4 LegatoMax: mono legatoProb 1.0 (every played step slideMaxes — the forced
 //      slide, UNTOUCHED by the change), tieAcrossRests off (real dead windows).
 //      The held mono edges land at S1: the voices' same-pitch connects must TIE
-//      (today they slideNote to the same pitch = the zero-interval Legato). The
+//      (before the tie rule they slid to the same pitch = the zero-interval Legato). The
 //      from-dead edges are the onset-arm precondition — counted; see below.
 //
 // THE STRUCTURAL ZEROS (counted, printed, NOT asserted > 0 — Rodney's ruling

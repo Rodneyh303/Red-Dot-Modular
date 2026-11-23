@@ -359,7 +359,7 @@ struct LanternRecordCore {
         // (gs.lastNoteType), not mono's decision — so a poly voice that opted out and
         // re-struck inside a slur reads Single (blue) while a connecting voice reads
         // Legato/Tie. This is what makes per-voice legato visible; mono (row 0) reads
-        // eng.gs.lastNoteType and is unchanged. (Set by triggerNote/slideNote/extendHold.)
+        // eng.gs.lastNoteType and is unchanged. (Set by triggerNote/continueNote/slideMax.)
         // A MidNote is the tail of an already-shown note — keep the old base colour for it
         // (isMidTail drives its rendering as a continuation), so tails are unchanged.
         if (dec == MonoDecision::MidNote && !wrapTail) {

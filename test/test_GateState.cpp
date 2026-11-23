@@ -73,36 +73,36 @@ int main(){
     });
 
     // ─────────────────────────────────────────────────────────────────────────
-    SUITE("slideNote — Legato");
+    SUITE("continueNote — the SLIDE leg (a new pitch → Legato)");
     // ─────────────────────────────────────────────────────────────────────────
 
-    TEST("slideNote: pitch changes", {
+    TEST("continueNote: pitch changes", {
         auto g=fresh(); g.triggerNote(1.f,5,7);
-        g.slideNote(2.f,7,7,true);
+        g.continueNote(2.f,7,7,true);
         EXPECT_NEAR(g.currentPitchV, 2.f, 1e-5f);
     });
-    TEST("slideNote while held: holdRemain extended", {
+    TEST("continueNote while held: holdRemain extended", {
         auto g=fresh(); g.triggerNote(1.f,5,4);  // 4 steps
         float before=g.holdRemain;
-        g.slideNote(2.f,7,7,true);  // extend by 2
+        g.continueNote(2.f,7,7,true);  // extend by 2
         EXPECT_NEAR(g.holdRemain, before+2.f, 1e-4f);
     });
-    TEST("slideNote while held: NO new gatePulse (no retrigger)", {
+    TEST("continueNote while held: NO new gatePulse (no retrigger)", {
         auto g=fresh(); g.triggerNote(1.f,5,7);
         g.gatePulse.reset();     // clear initial pulse
-        g.slideNote(2.f,7,7,true);
+        g.continueNote(2.f,7,7,true);
         // gatePulse should NOT have been triggered again
         EXPECT(!g.gatePulse.isHigh());
     });
-    TEST("slideNote from cold (gate not held): opens gate with pulse", {
+    TEST("continueNote from cold (gate not held): opens gate with pulse", {
         auto g=fresh();  // gate not held
-        g.slideNote(1.5f,3,7,false);
+        g.continueNote(1.5f,3,7,false);
         EXPECT(g.gateHeld);
         EXPECT(g.gatePulse.isHigh());  // first note of legato run
     });
-    TEST("slideNote from cold: holdRemain SET to dur", {
+    TEST("continueNote from cold: holdRemain SET to dur", {
         auto g=fresh();
-        g.slideNote(1.5f,3,7,false);
+        g.continueNote(1.5f,3,7,false);
         EXPECT_NEAR(g.holdRemain, 2.f, 1e-4f);
     });
 
@@ -129,30 +129,30 @@ int main(){
     });
 
     // ─────────────────────────────────────────────────────────────────────────
-    SUITE("extendHold — Tie");
+    SUITE("continueNote — the TIE leg (same degree AND octave → Tie)");
     // ─────────────────────────────────────────────────────────────────────────
 
-    TEST("extendHold: holdRemain increases by dur", {
+    TEST("tie: holdRemain increases by dur", {
         auto g=fresh(); g.triggerNote(1.f,5,7);
         float before=g.holdRemain;
-        g.extendHold(5,7);
+        g.continueNote(1.f,5,7,true);
         EXPECT_NEAR(g.holdRemain, before*2.f, 1e-4f);  // 2+2=4
     });
-    TEST("extendHold: pitch unchanged", {
+    TEST("tie: pitch unchanged (the drawn pitch IS the held pitch)", {
         auto g=fresh(); g.triggerNote(1.5f,5,7);
-        g.extendHold(5,7);
+        g.continueNote(1.5f,5,7,true);
         EXPECT_NEAR(g.currentPitchV, 1.5f, 1e-5f);
     });
-    TEST("extendHold: no retrigger", {
+    TEST("tie: no retrigger", {
         auto g=fresh(); g.triggerNote(1.f,5,7);
         g.gatePulse.reset();
-        g.extendHold(5,7);
+        g.continueNote(1.f,5,7,true);
         EXPECT(!g.gatePulse.isHigh());
     });
-    TEST("extendHold multiple times: accumulates correctly", {
+    TEST("tie multiple times: accumulates correctly", {
         auto g=fresh(); g.triggerNote(1.f,5,7);  // 2 steps
-        g.extendHold(5,7);  // +2 = 4
-        g.extendHold(5,7);  // +2 = 6
+        g.continueNote(1.f,5,7,true);  // +2 = 4
+        g.continueNote(1.f,5,7,true);  // +2 = 6
         EXPECT_NEAR(g.holdRemain, 6.f, 1e-3f);
     });
 
@@ -351,18 +351,18 @@ int main(){
         auto g=fresh(); g.triggerNote(1.f,5,7);
         EXPECT(g.lastNoteType == GateState::NoteType::Single);
     });
-    TEST("slideNote wasHeld -> Legato (slur, no retrigger)", {
+    TEST("continueNote wasHeld, new pitch -> Legato (slur, no retrigger)", {
         auto g=fresh(); g.triggerNote(1.f,5,7);
-        g.slideNote(2.f,7,7,true);
+        g.continueNote(2.f,7,7,true);
         EXPECT(g.lastNoteType == GateState::NoteType::Legato);
     });
-    TEST("slideNote cold -> Single (first note opens the gate)", {
-        auto g=fresh(); g.slideNote(1.5f,3,7,false);
+    TEST("continueNote cold -> Single (first note opens the gate)", {
+        auto g=fresh(); g.continueNote(1.5f,3,7,false);
         EXPECT(g.lastNoteType == GateState::NoteType::Single);
     });
-    TEST("extendHold -> Tie (held same pitch)", {
+    TEST("continueNote wasHeld, same pitch -> Tie", {
         auto g=fresh(); g.triggerNote(1.f,5,7);
-        g.extendHold(5,7);
+        g.continueNote(1.f,5,7,true);
         EXPECT(g.lastNoteType == GateState::NoteType::Tie);
     });
     TEST("slideMax (LegatoMax) -> Legato", {
@@ -372,7 +372,7 @@ int main(){
     });
     TEST("opt-out re-strike after a slur returns to Single", {
         auto g=fresh(); g.triggerNote(1.f,5,7);
-        g.slideNote(2.f,7,7,true);              // Legato
+        g.continueNote(2.f,7,7,true);           // Legato
         EXPECT(g.lastNoteType == GateState::NoteType::Legato);
         g.triggerNote(3.f,9,7);                 // opt-out re-strike inside the slur
         EXPECT(g.lastNoteType == GateState::NoteType::Single);

@@ -65,8 +65,8 @@
 //
 // THE INVARIANT THIS DISPLAY RESTS ON:
 //   lastNoteType describes the CURRENT NOTE, and a tail is the same note.
-// Every path that STARTS a note goes through GateState's five articulation methods
-// (triggerNote/slideNote x2/slideMax/extendHold), all of which set it. Four paths in
+// Every path that STARTS a note goes through GateState's articulation methods
+// (triggerNote/continueNote/slideMax), all of which set it. Four paths in
 // SequencerEngine re-assert gateHeld without setting it (~473, 706, 868) -- all are tails of
 // a note already sounding, so its type is still correct. Break that (re-open a gate for a
 // NEW note without going through those methods) and the Lantern will faithfully draw a stale

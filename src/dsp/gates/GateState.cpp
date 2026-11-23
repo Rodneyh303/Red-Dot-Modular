@@ -53,26 +53,50 @@ void GateState::triggerNote(float pitchV, int semitone, int nvIdx, bool isQuant)
     lastNoteType = NoteType::Single;        // a fresh attack (incl. an opt-out re-strike)
 }
 
-void GateState::slideNote(float pitchV, int semitone, int nvIdx, bool wasHeld, bool isQuant) {
+// THE ONE JOIN (the tie/legato collapse). Replaces the old slideNote/extendHold
+// pair, whose only differences were (a) extendHold did not write currentPitchV,
+// (b) it did not write lastSemitone, (c) it passed the SUMMED holdRemain to
+// markSemi instead of this note's dur, and (d) the label. (a) was a latent
+// octave-discard bug — benign ONLY because the caller's test happened to be the
+// strict one; (b) was a provable no-op (the tie test includes sem == heldSem);
+// (c) is a real LED rule and is kept, derived from the same predicate; (d) is now
+// derived. Writing the drawn pitch unconditionally makes the discard class
+// UNREPRESENTABLE: on a tie the drawn pitch is within kPitchEps of the held one
+// by construction, so the stored value moves by at most ~0.12 cents and moves
+// TOWARDS the value actually drawn.
+GateState::NoteType GateState::continueNote(float pitchV, int semitone, int nvIdx,
+                                            bool wasHeld, bool isQuant) {
     const int   pp  = (ppqn > 0) ? ppqn : 24;
     const int   p   = noteHoldPulses(nvIdx, pp);
     const float dur = noteHoldSteps(nvIdx, pp);   // STEP units
-    currentPitchV = pitchV;
-    lastSemitone  = semitone;
+    // The label, derived BEFORE the write (the compare needs the held values).
+    // `wasHeld &&` is deliberate but currently REDUNDANT: tie is read only inside
+    // the wasHeld branch below, so a cold open is Single by the branch, not by the
+    // predicate (test_continue_note's M2 survives structurally for that reason).
+    // It is kept because it is what would hold if this ever returned the bool.
+    const bool tie = wasHeld && isSameAsHeld(pitchV, semitone);
+    currentPitchV = pitchV;        // ALWAYS — never discard the drawn octave
+    lastSemitone  = semitone;      // ALWAYS — a no-op on a tie, by the predicate
     if (wasHeld) {
         holdRemain += dur;
         gateHeld = true;            // stays open if tick() just zeroed holdRemain
         armGatePulses((int)std::lround(holdRemain * (float)PULSES_PER_STEP));
                                     // re-arm gate to the summed length (exact pulses)
-        lastNoteType = NoteType::Legato;    // slid to a new pitch, no retrigger
+        lastNoteType = tie ? NoteType::Tie : NoteType::Legato;
+        // LED rule, same predicate: a TIE is ONE sustained note, so its fader stays
+        // lit for the whole remaining hold; a SLIDE lights the NEW degree's fader for
+        // that note's own length (feeding the summed hold there would smear every
+        // fader in a legato run).
+        markSemi(semitone, tie ? holdRemain : dur, isQuant);
     } else {
         gatePulse.trigger(1e-3f);   // first note of legato run opens the gate
         holdRemain = dur;
         gateHeld   = true;
         armGatePulses(p);
         lastNoteType = NoteType::Single;    // this note retriggers → a fresh attack
+        markSemi(semitone, dur, isQuant);
     }
-    markSemi(semitone, dur, isQuant);
+    return lastNoteType;
 }
 
 void GateState::slideMax(float pitchV, int semitone, int nvIdx, bool isQuant) {
@@ -86,17 +110,6 @@ void GateState::slideMax(float pitchV, int semitone, int nvIdx, bool isQuant) {
     armGatePulses(p);
     markSemi(semitone, dur, isQuant);
     lastNoteType = NoteType::Legato;        // LegatoMax = forced slide, no retrigger
-}
-
-void GateState::extendHold(int semitone, int nvIdx, bool isQuant) {
-    const int   pp  = (ppqn > 0) ? ppqn : 24;
-    const float add = noteHoldSteps(nvIdx, pp);   // STEP units
-    holdRemain += add;
-    gateHeld = true;
-    armGatePulses((int)std::lround(holdRemain * (float)PULSES_PER_STEP));
-                                    // re-arm to the summed length (exact pulses)
-    markSemi(semitone, holdRemain, isQuant);
-    lastNoteType = NoteType::Tie;           // held same pitch, no retrigger
 }
 
 void GateState::rest(bool tieExtend, int nvIdx) {
