@@ -1,0 +1,172 @@
+# Fold container architecture — reusable base for the group panels
+
+Goal (Rodney): one reusable class/template so a new fold container (Monsoon group, Sands Macro,
+Sands East, Straits, Change Alley) is cheap to create, with little or no rework of the existing
+panel/expander classes — both the plugin (Module) half and the widget (ModuleWidget) half.
+
+## Why this is feasible at all — the de-param store law (the enabling precondition)
+The existing panels' CONTROLS are already store-backed, not Rack params: a knob reads/writes the
+host Monsoon's `EditorState` via `placeStoreKnob<Monsoon,…>` + `lookupMonsoon(module)` (the
+topology-epoch lookup, `ui/StoreBound.hpp` / `ui/ModuleLookup.hpp`). SandsFold already re-hosts the
+98 Sends knobs this way. Because the DATA lives in Monsoon, a control can be drawn by ANY widget
+pointing at the same store — no persistence migration, no param-id juggling. **If these were Rack
+params on each panel's own Module, this whole scheme would be impossible** (you can't move a Rack
+param to another module without breaking patch restore). The de-param law is what makes the
+container a pure re-hosting of existing store-bound widgets.
+
+JACKS are the exception — a port is a real Rack port owned by exactly one Module. See "Ports".
+
+## The two reusable bases
+
+### Plugin side — `redDot::fold::ContainerModule : rack::Module`
+Holds only container state, NO band data (that stays in Monsoon's EditorState):
+- `FoldState`: the ORDERED enabled-band set + per-jack-panel edge/side + viewport scroll/visible
+  (serialized; the saved state is the band SET, width is recomputed — see FoldBandSetCore).
+- `config()` declares the FROZEN UNION PORT ENUM — every band's ports for every band, up front
+  (Rack runs config() once; a band popped out just reveals already-declared port widgets). Each band
+  contributes a `declarePorts(Module*, int baseId)` that the container calls with the band's slice of
+  the union enum.
+- `Monsoon* host()` via `lookupMonsoon` (the store reach), same as SandsFold.
+- No params, no stores of its own (the de-param law).
+Concrete containers (`MonsoonGroup`, `SandsMacroFold`, …) are thin: they list their band set and
+their port-enum slices; the base does the rest. A template `ContainerModule<BandList>` or a plain
+base + a `bands()` override both work; prefer the base + virtual `bands()` (Rack Models need a
+concrete type per slug anyway).
+
+### Widget side — `redDot::fold::ContainerWidget : rack::ModuleWidget`
+The generic composition engine — this is where the reuse pays off:
+- `rebuildLayout()`: width = `FoldBandSetCore::widthHpForBands(base, enabledBands)`; order =
+  `FoldBandSetCore::layoutOrder(...)` (jack panels edge-pinned); rects =
+  `FoldBandLayoutCore::layoutBands(totalPx, specs)`; then for each band call
+  `band.place(this, host, rect.x0Px)`.
+- `draw()`: ONE procedural background fill (SandsFold's pattern) + per-band `band.draw(args, rect)` +
+  `FoldBandLayoutCore::dividerX` rules + `StraitsSeamFiller` at the edges.
+- resize / neighbour-push (`setModulePosForce`) / exact-restore undo: the SandsFold spike's logic,
+  generalised into the base (already Rack-free-cored in FoldPanelWidthCore).
+- pop-in/out: toggles the band set → `rebuildLayout`; the cabled-jack guard is
+  `FoldBandSetCore::removalNeedsGuard(isJackPanel, hasCable)` before a pop-in.
+- `FoldViewportWidget : ContainerWidget` — the Straits variant; the knob bands become ONE viewport
+  band driven by `FoldViewportCore` (show N, scroll the rest). Only this subclass carries scroll.
+
+### The Band adapter — the one small per-panel surface
+```
+struct FoldBand {               // one existing panel, re-hostable at an x-origin
+    int       id;
+    const char* title;          // the subpanel name (titled bands)
+    float     contentExtentPx;  // feeds FoldBandSetCore (from the panel's gen_*.py geometry)
+    bool      isJackPanel;      // edge-pin + removal guard
+    BandEdge  edge;             // Left (jacks pop out left) / Interior / Right
+    int       portBase, inCount, outCount;                      // its slice of the union enum
+    void declarePorts(rack::Module* m) const;                   // config()-time
+    void place(rack::ModuleWidget* host, Monsoon* store, float x0) const;  // knobs + port widgets at mm+x0
+    void draw(const DrawArgs& args, float x0) const;            // captions / labels / lane art
+};
+```
+A virtual interface or a struct-of-fn-pointers both fit; a virtual `IFoldBand` is the Rack-idiomatic
+choice. Each existing panel provides ONE concrete band.
+
+## Polymorphism choice — VIRTUAL interface for composition, TEMPLATES at the leaves (Rodney 2026-11-22)
+Decided: a virtual `IFoldBand` + the Rack-virtual container bases, NOT an all-template (CRTP /
+`ContainerWidget<Bands...>`) design. Reasons specific to this problem:
+- Rack already forces runtime dispatch — `ModuleWidget`/`Module` draw()/step()/onButton() are virtual
+  overrides and children live in `std::vector<Widget*>`. Templates cannot remove the dispatch that
+  matters.
+- Pop-in/out makes the band collection RUNTIME-MUTABLE and heterogeneous: the container iterates a
+  `std::vector<IFoldBand*>` that changes as the user toggles bands. Different template instantiations
+  cannot share a vector without type erasure (= virtual dispatch anyway). This is the deciding factor.
+- None of it is a hot path (layout-time + once-per-frame over a few bands; the audio thread never
+  touches it), so the templates' inlining/compile-time edge buys nothing measurable here.
+- The band OPERATIONS are settled (place/draw/declarePorts/extent/edge) while implementations multiply
+  → stable interface, varying implementation, open to new panels with zero container changes: the
+  virtual-interface sweet spot. Adding a panel = a new `IFoldBand` subclass.
+TEMPLATES stay at the LEAF helpers where the concrete type IS known at the call site. In this repo
+that leaf layer is RICH: `src/ui/SvgPanelKit.hpp` uses VARIADIC templates — fold-expression bind
+helpers (`bindInputs<W>(prefix, ids...)` → `(bindInput<W>(prefix+i++, ids), ...)`, a whole row placed
+in one compile-time-expanded call) and a variadic mixin composer (`Compose<T, Features...>` opting a
+widget into a subset of kit features). Plus `placeStoreKnob<Store, KnobTag>` and the knob-face tags.
+Each band's virtual `place()` is a thin override that CALLS these variadic helpers — so the
+fold-expansion/mixin stays inside the band impl, dispatched virtually from `std::vector<IFoldBand*>`.
+Variadic-compile-time at the knobs, virtual at the collection — the seam holds.
+
+### Placement-path note (SVG anchor vs explicit mm) — a consequence of the above
+The variadic kit places by SVG ANCHOR NAME (`prefix+"0"` resolves the anchor in that panel's SVG).
+The fold container has a PROCEDURAL background and NO per-band composite SVG, so its bands cannot
+resolve anchors. SandsFold already sidesteps this: it places by explicit `centreMm` via
+`placeStoreKnob`, not by anchor. Therefore the extracted `placeXBand(host, store, x0)` for the
+CONTAINER uses the mm + x-origin path; the variadic ANCHOR helpers (`bindParams`/`bindInputs`) stay
+with the STANDALONE SVG widgets. Each band must expose its mm stations as DATA (already available from
+the gen_*.py geometry), not only as SVG anchors. The per-panel extraction recipe below produces
+exactly that mm-based `placeXBand`. This anchor-vs-mm split is NOT permanent — see "Forward direction: C++-generated panels" below, which unifies the two paths.
+AVOID: CRTP/type-list containers (fix the band list at compile time, fight pop-in/out, instantiate
+once per slug for no runtime gain, still can't escape Rack's virtual draw/step).
+
+## The per-panel refactor recipe (mechanical, golden-safe, little rework)
+Existing panel widgets embed placement + draw in their ModuleWidget constructor. To share them with
+a container WITHOUT a rewrite, extract (don't rewrite) three position-parameterised free functions
+per panel, then call them from BOTH sites:
+1. `placeXBand(host, Monsoon* store, float x0)` — the knob/port placement loop, `+ x0` on every mm
+   station (SandsFold already does this inline for Sends — lift it to a shared function).
+2. `drawXBand(const DrawArgs&, float x0)` — the captions/labels/lane art, `+ x0`.
+3. `declareXPorts(Module*, int base)` — the port declaration, parameterised by base id.
+Then: the STANDALONE panel widget calls them at `x0 = 0, base = its own enum`; the container's band
+adapter calls them at `x0 = band origin, base = the union slice`. Behaviour is identical at x0=0, so
+the standalone module's goldens/feel are unchanged — the extraction is a pure move. No existing class
+is rewritten; each gains a 2–3 function extraction and delegates to it.
+
+## Ports — the one real coupling (not solvable by re-hosting alone)
+A port is owned by one Module. Today the engine reads an expander's jacks through typed cached
+pointers in `MonsoonExpanderManager` (`cachedRafflesExpander`, `cachedCausewayPolyExpander`, …). When
+a band's jacks move onto the CONTAINER module, the engine's read path must find them there. Two options:
+- (A) the container implements the same port-read interface the manager expects, and the manager
+  caches the container (add a `cachedFoldContainer` + teach each reader to prefer it). Cleanest.
+- (B) a thin shim: the container exposes `getBandInput(bandId, localId)` and the readers call through
+  it. Less invasive but spreads the indirection.
+Recommend (A): one new cached pointer + each affected reader gains a "container present? read its port
+for this lane" branch — mirrors the existing expander-presence checks. This is the ONLY place the
+engine changes; everything else is widget/store composition. Freeze the union port enum before any
+of this (GROUP_PANEL_INVENTORY.md is the input).
+
+## How the existing cores slot in (all built + tested)
+- `FoldPanelWidthCore` — clamp/snap/min-content, neighbour shift, exact-restore undo (the resize base).
+- `FoldBandSetCore` — width from the enabled set, edge-pinned order, removal guard.
+- `FoldBandLayoutCore` — exact band tiling, integer dividers, title-fit (the draw/place layout).
+- `FoldViewportCore` — the Straits show-N-scroll viewport.
+- `FoldBandLayoutCore` + the band adapter are the two the ContainerWidget leans on every frame.
+
+## Build order (incremental, each shippable)
+1. Generalise SandsFold → `ContainerWidget`/`ContainerModule` base; re-express the Sends-only fold as
+   one band through the base (behaviour-identical — the regression pin).
+2. Add the band adapter + extract `placeSendsBand`/`drawSendsBand` (the first panel; proves the recipe).
+3. Freeze the union port enum (per group) → add the Distribution + Macro bands (ports: option A).
+4. `FoldViewportWidget` for the Straits group.
+5. Each further panel: the 3-function extraction + one band adapter.
+
+## Forward direction: C++-generated panels unify the placement path (Rodney 2026-11-22)
+The anchor-vs-mm split exists only because panel geometry currently lives as NAMED ANCHORS inside the
+SVG files (emitted by `gen_*.py`), so the variadic kit resolves by anchor lookup while the container
+falls back to explicit mm. Moving geometry to C++ DATA collapses the two paths into one. Target shape:
+- **Abstract the kit's placement over a GEOMETRY SOURCE.** `bindInputs<W>` / `placeStoreKnob` resolve
+  a position through a provider with two backends — SVG-anchor lookup (today) OR a C++ geometry-table
+  lookup (`geom.at(prefix+i) -> mm`). The variadic fold helpers are unchanged; they just call
+  `place(geom.at(...), widget)`. A band then places IDENTICALLY in a standalone SVG-backed widget or
+  the container's procedural background — the only difference left is the x-origin.
+- **The Band adapter's mm stations become the single source of truth.** Standalone panel, container
+  placement, AND procedural chrome all read the same C++ geometry table; the container background can
+  be DRAWN from it, so standalone and folded stay visually consistent by construction.
+- **SVG stays for ARTWORK, not layout.** "More C++-generated" means geometry/layout in C++; SVG (or
+  procedural draw) keeps logos and decorative shapes. A hybrid, not a rip-out.
+- **Migrate incrementally.** New fold bands are born C++-generated; existing panels move to the C++
+  geometry path opportunistically when touched. No big-bang refactor.
+- **Carry the safety over.** `test/audit_anchor_bind.py` pins every SVG anchor to a widget bind today;
+  the C++ path needs the analogue — a compile-time `static_assert` on counts + a C++ geometry audit —
+  so migrated panels keep the "every station is bound, counts match" guarantee. Bonus: geometry as
+  data is Rack-free testable, fitting the coverage discipline.
+This is the eventual unification; until a panel migrates, its standalone widget keeps the anchor kit
+and the container uses the mm path (both already work).
+
+## Non-goals / cautions
+- Rack cannot nest one Module's live ModuleWidget inside another's — hence the function-extraction
+  recipe rather than embedding existing widgets.
+- Keep each band's draw/place Rack-thin; the geometry numbers stay in the gen_*.py-derived constants.
+- The container owns no store; a band that needs new storage (e.g. the 56 Distribution depth knobs)
+  adds it to Monsoon's EditorState, not the container.
