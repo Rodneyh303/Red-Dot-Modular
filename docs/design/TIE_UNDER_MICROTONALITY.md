@@ -104,3 +104,41 @@ unified call must pick one. Testable against the goldens, not arguable.
 `GateState` is the audio path and the STEPS_32 goldens cover it. Do the unification byte-identical
 FIRST (pick the markSemi arg that reproduces current output, prove it against the full battery), and
 only then consider changing the marked span if it is wrong.
+
+
+## ANSWERED: what the markSemi duration delta REALLY means (2026-11-23)
+`markSemi(sem, dur, isQuant)` writes `semiPlayRemain[sem] = max(existing, dur)` (or
+`semiQuantPlayRemain` when quantised) — a per-DEGREE countdown in STEP units. Its ONLY consumer is the
+UI: `MonsoonWidget.cpp:27` states the tuning-fader handle FLASH light is play-driven,
+`semiLedBrightness <- semiPlayRemain`. **It is purely VISUAL — no audio path reads it.**
+THE DELTA: on a slide FROM A HELD NOTE, `slideNote` marks the new degree with `dur` (that note's
+nominal length) while the note actually sounds for the accumulated `holdRemain`. So the degree's LED
+can go DARK WHILE THE NOTE IS STILL SOUNDING — an under-report. `extendHold` passes `holdRemain` and
+is correct. Because `markSemi` takes `max()` it never shortens an existing mark, only extends; and in
+the common `!wasHeld` case `holdRemain == dur`, which is why this was never noticed.
+=> `holdRemain` is the CORRECT argument for the unified `continueNote`; `slideNote`'s `dur` is a
+latent VISUAL under-report, not a deliberate choice.
+=> **THE UNIFICATION IS AUDIO-BYTE-IDENTICAL EITHER WAY.** Nothing audible reads these arrays, so the
+STEPS_32 goldens CANNOT move. That makes the tie/legato collapse a far lower-risk refactor than the
+earlier "prove byte-identity first" framing implied — the only observable change is LED flash timing,
+and choosing `holdRemain` FIXES it.
+
+## CENTS CADENCE — RESOLVED (Rodney 2026-11-23: phrase boundary) + the finding that reframes it
+Rodney's inclination: PHRASE BOUNDARY for a cents change ("or even rest") — it changes a TUNING
+SYSTEM, not a live performance gesture.
+**FINDING: there is NO mid-note pitch drift to prevent.** The output CV is the STORED
+`currentPitchV` (`MonsoonOutputGenerator.cpp:159` `cvOut.setVoltage(..., currentPitchV, 0)`;
+`:119` `polyCV[i] = engine.voices[vs].gs.currentPitchV`) — it is NOT re-derived from the tuning table
+each frame. So a cents change does NOT affect a SOUNDING note at all; the held note keeps its stored
+pitch and the retune is heard naturally on the NEXT note event (where the new pitch is computed,
+compared, found different, and slid to).
+So latching is still worth doing, but for a SMALLER reason: preventing a TORN READ WITHIN A STEP
+(some voices computing pitches with the old cents, others with the new).
+**PHRASE BOUNDARY beats "at a rest", for a reason beyond the performance-gesture one:** the tuning
+table is GLOBAL (one tuning authority per Monsoon — Colonnades | Duo | Sikit are mutually exclusive
+and write a shared table), so a PER-VOICE "apply at this voice's rest" cadence would let voices switch
+at DIFFERENT times and split the ensemble across TWO TUNING SYSTEMS mid-chord. A phrase boundary
+switches every voice at the same instant. "At a rest" would have to mean ALL voices silent, which a
+dense patch may never offer (unbounded deferral).
+DECISION: latch cents to the PHRASE BOUNDARY, globally. Same latched-at-boundary shape as slew / MA
+depth / the reverse toggle => ride the CA1 skeleton rather than adding a bespoke rule.
