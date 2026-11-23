@@ -67,6 +67,30 @@ Mutation-check: read `*SlewLatched` again in one ForVoice -> test 1 fails; forge
 the boundary consumer -> test 2 fails; forget it in `forceRecomputeSlewed` -> a CA-remap case fails.
 Red first, then green, then the full suite. Commit PART A on its own.
 
+## MA DEPTH (K) — PANEL HOME, DETENTS, AND DRAW-CADENCE (Rodney 2026-11-23)
+- PANEL HOME: the 3 OFFSET READOUTS and the 3 MA DEPTH knobs (one each for R/M/Q) belong on MONSOON
+  itself — all of this is fundamental, not expander material. Consistent with the fold criterion:
+  optional things become bands, fundamentals stay on the panel. MONSOON MAY NEED MORE HP. NOTE: this
+  COMPOUNDS with the reverse work's GATE 4 input (output gates shift one column right) — plan the panel
+  rethink for BOTH together, not piecemeal.
+- DETENTS: the depth knob gets a few detent positions, like Monsoon's main note-length knob. K is an
+  integer tap count anyway, and detents HELP CANON — matching K by hand across two Monsoons is far
+  easier with a few discrete stops than a continuous sweep (same logic as snapping the offset to
+  integers: what a canon must match should be discretely settable). Natural stops fall out of the
+  budget: K = 64 (+/-32), 32 (+/-64), 16 (+/-80), optionally 1 (no averaging, the raw draw).
+- CADENCE: PER DRAW, LIKE SLEW. K changes are latched every control cycle and CONSUMED AT THE DRAW
+  BOUNDARY, never mid-draw. ARCHITECTURAL CONSEQUENCE: r (slew) and K (depth) are BOTH copula-window
+  parameters — both define the window a draw's value is computed from, so both must be constant across
+  a draw for the SAME reason. PART A SHOULD THEREFORE BE GENERALISED: not a slew-specific fix but a
+  "copula-window parameters are draw-fixed" mechanism carrying `*SlewPhrase` AND `*DepthPhrase` through
+  ONE boundary-consumption path, rather than two mechanisms that must be kept in sync.
+- RE-CLAMP ON K CHANGE (and an open feel call): the jog range depends on K, so consuming a K change at
+  the boundary must ALSO re-clamp the live offset (`clampOffsetForK`, already built). INCREASING K
+  SHRINKS the range: at offset +60 with K=32 (range +/-64), moving to K=64 (range +/-32) clamps the
+  offset to +32 — a 28-draw JUMP, audible. Either (a) accept it and make the readout show the clamp
+  (recommended — the user did ask for a shorter reach), or (b) constrain the depth knob so it cannot
+  shrink the range below the current offset. Rodney's feel-test call.
+
 ## PART B — scrub +/-32, bidirectional, snap on release
 
 ### Engine
