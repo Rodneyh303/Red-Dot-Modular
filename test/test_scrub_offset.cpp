@@ -40,30 +40,34 @@ int main() {
         CHECK(splitScrub(std::nanf("")).f == 0 && splitScrub(INFINITY).f == 0, "non-finite -> neutral");
     }
 
-    // 2. EXACT k/32 representability and round trip.
-    for (int k = -32; k <= 32; ++k) {
+    // 2. OFFSET-DIRECT param: the value IS the offset, exact at ANY range (no power-of-two need).
+    for (int k = -kMaxScrubEver; k <= kMaxScrubEver; ++k) {
         float p = positionToParam(k);
-        CHECK(std::fabs(p - (float)k / 32.f) < 1e-9f, "position -> k/32 exact");
-        CHECK(paramToPositionInt(p) == k, "param -> position round trips");
-        // exactness: k/32 * 32 is exactly k (power-of-two denominator)
-        CHECK((int)std::lround(p * 32.f) == k, "k/32 * 32 == k exactly");
+        CHECK(p == (float)k, "position -> param is the offset itself, exactly");
+        CHECK(paramToPositionInt(p) == k, "param -> position round trips exactly");
     }
-    CHECK(positionToParam(0) == 0.f, "neutral is zero");
-    CHECK(paramToPositionInt(99.f) == 32 && paramToPositionInt(-99.f) == -32, "param clamps");
+    CHECK(positionToParam(0) == 0.f, "neutral is zero (the live draw)");
+    CHECK(paramToPositionInt(1e9f) == kMaxScrubEver, "param clamps high to the configured bound");
+    CHECK(paramToPositionInt(-1e9f) == -kMaxScrubEver, "param clamps low");
+    // the exactness that the k/80 normalisation would have LOST: every integer in a non-power-of-two
+    // range (e.g. the K=16 range of 80) round-trips bit-exactly under offset-direct.
+    for (int k : {-80, -73, -17, 17, 73, 80}) {
+        CHECK(paramToPositionInt(positionToParam(k)) == k, "non-power-of-two range still exact");
+        CHECK(snapToIntegerPosition(positionToParam(k) + 0.3f) == (float)k, "snap exact in that range");
+    }
 
-    // 3. SNAP: nearest integer position, exact k/32, idempotent, ties away from zero.
-    for (int k = -32; k <= 31; ++k) {
-        float base = (float)k / 32.f;
-        float justAbove = base + 0.3f / 32.f;    // within the k cell, closer to k
-        CHECK(std::fabs(snapToIntegerPosition(justAbove) - base) < 1e-9f, "snaps to nearest k");
-        CHECK(snapToIntegerPosition(snapToIntegerPosition(justAbove)) == snapToIntegerPosition(justAbove), "snap idempotent");
+    // 3. SNAP (hand control + modifier only; CV is never snapped): nearest integer, exact, idempotent.
+    for (int k = -40; k <= 39; ++k) {
+        float base = (float)k;
+        float justAbove = base + 0.3f;
+        CHECK(snapToIntegerPosition(justAbove) == base, "snaps to the nearest integer offset");
+        CHECK(snapToIntegerPosition(snapToIntegerPosition(justAbove)) == snapToIntegerPosition(justAbove),
+              "snap idempotent");
     }
-    // the snapped output is always exactly some k/32
-    for (float v = -1.f; v <= 1.f; v += 0.017f) {
-        float s = snapToIntegerPosition(v);
-        int k = (int)std::lround(s * 32.f);
-        CHECK(std::fabs(s - (float)k / 32.f) < 1e-9f, "snap output exact k/32");
-        CHECK(k >= -32 && k <= 32, "snap output in range");
+    for (float v = -40.f; v <= 40.f; v += 0.37f) {
+        float sp = snapToIntegerPosition(v);
+        CHECK(sp == std::floor(sp), "snap output is an exact integer");
+        CHECK(std::fabs(sp - v) <= 0.5f + 1e-6f, "snap moves at most half a step");
     }
 
     // 4. BRIDGE-KEY indices: hi and lo differ by exactly 1 in BOTH directions; f<0 reads ahead.
@@ -78,11 +82,14 @@ int main() {
         }
     }
 
-    // 5. mix CV -> position clamps to the span.
-    CHECK(std::fabs(scrubPositionFromMix(1.f) - 32.f) < 1e-6f, "full +CV = +32");
-    CHECK(std::fabs(scrubPositionFromMix(-1.f) + 32.f) < 1e-6f, "full -CV = -32");
+    // 5. mix CV -> position: full CV = full CURRENT range (which moves with the stream's K).
+    CHECK(std::fabs(scrubPositionFromMix(1.f) - 32.f) < 1e-6f, "default range: full +CV = +32");
+    CHECK(std::fabs(scrubPositionFromMix(-1.f) + 32.f) < 1e-6f, "default range: full -CV = -32");
     CHECK(std::fabs(scrubPositionFromMix(0.f)) < 1e-6f, "zero CV = neutral");
     CHECK(std::fabs(scrubPositionFromMix(5.f) - 32.f) < 1e-6f, "over-range CV clamps");
+    // with a shorter moving average the SAME CV reaches further
+    CHECK(std::fabs(scrubPositionFromMix(1.f, maxScrubForK(32)) - 64.f) < 1e-6f, "K=32: full CV = +64");
+    CHECK(std::fabs(scrubPositionFromMix(1.f, maxScrubForK(16)) - 80.f) < 1e-6f, "K=16: full CV = +80");
 
     // 6. cache half-span covers the span + the copula window.
     CHECK(cacheHalfSpan(16) == 64 + 32 + 16, "half span = K + SCRUB_K + margin");

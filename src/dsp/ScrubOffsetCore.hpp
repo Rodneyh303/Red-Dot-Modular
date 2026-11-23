@@ -20,18 +20,27 @@ constexpr int SCRUB_POSITIONS  = 2 * SCRUB_K + 1;   // 65
 // cache-prune reasoning (K + SCRUB_K + margin) has one source. Mirror of the engine's K.
 constexpr int COPULA_K         = 64;
 
-// ── param <-> integer position ──
-// The knob param is normalized [-1, 1]; a position k maps to k/SCRUB_K, which is EXACT
-// in float for every k in [-32, 32] (k/32: a power-of-two denominator). f = 0 is neutral
-// (the live read, the most recent draw) and sits at the centre of the range.
+// ── param <-> integer position: OFFSET-DIRECT (Rodney 2026-11-23) ──
+// The param value IS the draw offset (16.0 = +16 draws; 16.25 = offset 16, frac 0.25) — NOT a
+// normalised [-1,1]. Integers are exact in float at any magnitude we use (float32 is exact for
+// integers to 2^24), so snap-on-integer and the canon's bitwise agreement no longer depend on the
+// jog range being a power of two. (The old k/SCRUB_K normalisation was exact only because 32 is a
+// power of two; with a K-dependent range, k/80 is NOT exact — 80 = 2^4*5.)
+// The Rack param is CONFIGURED at the widest range any K can afford (kMaxScrubEver) purely as
+// storage headroom, and clamped in software to maxScrubForK(K_active). That costs no knob travel
+// because the jog is an ENDLESS RELATIVE encoder: it accumulates deltas and stops at the boundary,
+// so there is no absolute rotation-to-position mapping to waste.
+constexpr int kMinCopulaK  = 1;   // K=1 == no averaging (the raw draw); the absolute floor
+constexpr int kMaxScrubEver = COPULA_K + SCRUB_K + 16 - kMinCopulaK - 16;  // = 95, the param bound
+
 inline float positionToParam(int pos) {
-    int p = std::min(std::max(pos, -SCRUB_K), SCRUB_K);
-    return (float)p / (float)SCRUB_K;
+    int p = std::min(std::max(pos, -kMaxScrubEver), kMaxScrubEver);
+    return (float)p;                       // the param IS the offset
 }
 inline int paramToPositionInt(float v) {
     if (!std::isfinite(v)) return 0;
-    int p = (int)std::lround(v * (float)SCRUB_K);
-    return std::min(std::max(p, -SCRUB_K), SCRUB_K);
+    int p = (int)std::lround(v);
+    return std::min(std::max(p, -kMaxScrubEver), kMaxScrubEver);
 }
 
 // Snap a normalized param to the nearest integer position, output EXACT k/32. Idempotent;
@@ -60,10 +69,13 @@ inline Split splitScrub(float s) {
     return out;
 }
 
-// Map a normalized mix/CV value [-1, 1] to a continuous scrub position, clamped to the span.
-inline float scrubPositionFromMix(float mixNorm) {
+// Map a normalized mix/CV value [-1, 1] to a continuous scrub position. `range` is the CURRENT
+// jog limit (maxScrubForK of the stream's K), NOT the configured param bound — full CV = full
+// CURRENT travel. CV modulation is NEVER snapped to an integer (Rodney 2026-11-23): only hand
+// control with the snap modifier quantises, so a canon is set by hand and CV is for morphing.
+inline float scrubPositionFromMix(float mixNorm, int range = SCRUB_K) {
     float m = std::isfinite(mixNorm) ? std::min(std::max(mixNorm, -1.f), 1.f) : 0.f;
-    return m * (float)SCRUB_K;
+    return m * (float)std::max(0, range);
 }
 
 // ── the two bracketing draw indices for counter N and integer offset f ──

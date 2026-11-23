@@ -165,6 +165,25 @@ Red first, then green, then the full suite. Commit PART A on its own.
   (slower, Rack's own modifier convention); CTRL/SUPER = discrete click-through, one integer
   position per small pixel step (120 px/step is far too slow for 65 positions; ~8-12 px — expose as
   a named constant, Rodney will tune by feel).
+- JOG INTERACTION MODEL — ENDLESS RELATIVE ENCODER (Rodney 2026-11-23, supersedes the absolute-knob
+  framing). The jog is an "infinite-like" rotary dial: spin LEFT always DECREASES the position, spin
+  RIGHT always INCREASES it, up to the boundaries. It accumulates DELTAS — there is NO absolute
+  rotation-to-position mapping. Consequences: (a) the param can be configured wide (kMaxScrubEver = 95)
+  and software-clamped to maxScrubForK(K_active) with NO wasted knob travel, because there is no
+  absolute travel to waste — this is what makes OFFSET-DIRECT storage free of downside; (b) at a
+  boundary the encoder simply stops accumulating.
+- SNAP IS MODIFIER-GATED, AND MODULATION NEVER SNAPS (Rodney 2026-11-23 — supersedes the earlier
+  "release behaviour is a persistent mode"): HAND control with a MODIFIER held snaps to an integer
+  offset; hand control WITHOUT the modifier is continuous/free; CV MODULATION IS NEVER SNAPPED. This
+  resolves the old open question "should canon-grade operation quantise the CV offset?" — NO. The two
+  uses separate cleanly: a bitwise-exact CANON is set BY HAND with the modifier (integer offsets), and
+  CV-driven offsets are for MORPHING, where continuous is the point. (Whether the default feel also has
+  gentle magnetism toward integers, with the modifier giving a hard snap, is Rodney's feel-test call.)
+- READOUT IS NOW NECESSARY, not optional: an endless encoder gives NO absolute position feedback —
+  rotation cannot tell you WHERE you are, only that you moved. So the current offset must be DISPLAYED
+  (a number, the Lantern, or an LED), otherwise +/-3 is indistinguishable from +/-30. (The ER-301 the
+  idea came from has a screen.) The "Lantern/UI that shows the scrub" item above is therefore a
+  requirement, not a nicety.
 - DOUBLE-CLICK -> NEUTRAL (Rodney's gesture): reset to f = 0 / frac = 0 = the LIVE read, reflecting the
   MOST RECENT draw (no offset). Neutral == the centre of the bidirectional range == live; one gesture
   gets back to "just the current draw" from anywhere.
