@@ -56,22 +56,29 @@ TWO CONSEQUENCES THAT SHRINK THE WORK:
 CAVEAT ON THE CORE: `CycleModeCore::readIndex` encodes the FORWARD fold only. Reverse / Pendulum /
 PingPong use different `walkFold` laws (Reverse also carries anchorBias=1), so the oracle covers
 forward rows. `resolveCycle` / `isIdentityCycle` / `authoredOnModeSwitch` are direction-agnostic.
-DIRECTION — RESOLVED (Rodney 2026-11-23): in PHRASE mode `LaneDir` is LOCKED TO FORWARD, alongside
-L/O/R. The deciding principle is Rodney's: "what restrictions on the voice lane reproduce the pre-UAS
-world, when we linked probability lanes with the transport directly."
-WHY FORWARD IS THE PRE-UAS ANSWER: there is NO transport LaneDir for a lane to follow — the two
-reversals are SEPARATE mechanisms. The TRANSPORT's reversal is `dir -> advancePlayhead(-1)` (plus
-`setReverseActive` on the draw axis), which walks the TICK SEQUENCE backward; a lane's `LaneDir` is an
-ADDITIONAL, INDEPENDENT fold on top (grep: no transport-direction notion exists in SequencerEngine).
-So transport reversal ALREADY reaches a lane through the tick — `effTick1based` decreases, `phrasePos`
-walks backward, the lane reads backward — WITHOUT the lane owning a direction. Pre-UAS lanes had no
-independent fold; they simply followed the transport. Hence Phrase = Forward (no own fold), and when
-the transport reverses (phase, or the new clock/gate GATE 4 reverse) the Phrase lane reverses WITH it
-automatically. Independent lane direction is the UAS extension -> CUSTOM only.
-CONSEQUENCES: (a) `isIdentityCycle`'s `forward` requirement is CORRECT and principled, not inherited;
-(b) the UI greys the DIRECTION control in Phrase mode too, alongside L/O/R; (c) the core's forward-only
-`readIndex` oracle is therefore SUFFICIENT for Phrase mode — reverse/pendulum/pingpong folds only arise
-in Custom, where the existing cycle path already handles them.
+DIRECTION — RESOLVED (Rodney 2026-11-23, CORRECTING an earlier wrong entry in this doc): probability
+lanes CAN switch direction in PHRASE mode, exactly as they could PRE-UAS. Phrase locks **L / O / R
+ONLY** — the window. Direction is NOT locked and NOT greyed.
+WHY: pre-UAS lanes already had their own direction control; what UAS ADDED was the independent L/O/R
+window (polymeter, rotation, offset). So by Rodney's pre-UAS reproduction test, direction belongs in
+Phrase and the WINDOW is what Phrase takes from the transport.
+"DIRECTION ALWAYS MULTIPLIES" (Rodney): the lane's `LaneDir` COMPOSES with the transport's direction.
+The transport's reversal walks the TICK SEQUENCE backward (`dir -> advancePlayhead(-1)`, plus
+`setReverseActive` on the draw axis) and the lane's `walkFold(vd, ...)` applies its own fold ON TOP —
+so lane-Reverse under transport-Reverse CANCELS to forward in absolute terms. Two sign flips compose.
+This holds in BOTH modes; it is the existing composition, not new behaviour.
+CONSEQUENCES:
+(a) `isIdentityCycle`'s `forward` requirement STAYS — but it is the PASS-THROUGH FAST-PATH test, NOT a
+    mode restriction. A Phrase row set to Reverse is perfectly valid; it simply is not identity,
+    because a non-Forward fold DOES transform the read. (Identity = Phrase && R==0 && Forward.)
+(b) The UI greys **L, O and R** in Phrase mode. It does NOT grey direction.
+(c) CORE LIMITATION, STATED PLAINLY: `CycleModeCore::readIndex` encodes the FORWARD fold only, and
+    that limitation applies in BOTH modes (not just Custom, as an earlier version of this note wrongly
+    implied). Do NOT use `readIndex` as the oracle for non-Forward rows. The engine's `walkFold` /
+    `PositionResolver::WalkResolver` remain the ONE authority for the Reverse / Pendulum / PingPong
+    folds — the core deliberately does NOT duplicate them (duplicating a fold law here is exactly the
+    concept-ODR the CA audit indicts). `resolveCycle` / `isIdentityCycle` / `authoredOnModeSwitch` are
+    direction-agnostic and apply to every row.
 
 ## Facts to verify BEFORE coding (read the code, do not trust this text)
 1. `voiceFrameReadsFullPhrase` / `kRangeBaseReadsFullPhrase=false` (SequencerEngine.hpp ~936) is the retired

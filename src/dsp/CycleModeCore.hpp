@@ -79,6 +79,13 @@ inline bool isIdentityCycle(CycleMode mode, const Cycle& resolved, bool forward)
 // the global offset; it wraps at the global length." So the cell read at step s is
 // (s + R) mod L — the offset SLIPS THE PATTERN AROUND THE SAME PROBABILITIES (a rotation of
 // the same L cells), it does NOT slide the window over a larger ring.
+//
+// SCOPE — FORWARD FOLD ONLY. This models the ROTATION law, not the direction fold. Lanes may
+// run Reverse / Pendulum / PingPong in BOTH Phrase and Custom modes (pre-UAS lanes already had
+// direction; UAS added the independent WINDOW, not direction), and the lane's direction also
+// MULTIPLIES with the transport's. The engine's `walkFold` / `PositionResolver::WalkResolver`
+// are the ONE authority for those folds — deliberately NOT duplicated here (duplicating a fold
+// law is the concept-ODR the CA audit indicts). Do not use this as an oracle for non-Forward rows.
 inline int readIndex(int step, int L, int R) {
     const int len = clampLen(L);
     int s = step % len;
