@@ -99,9 +99,25 @@ Red first, then green, then the full suite. Commit PART A on its own.
   but shorter reach. A real musical trade. LAW IS BUILT + TESTED: `ScrubOffsetCore` now has
   `kCacheHalfSpan`, `maxScrubForK`, `maxKForScrub`, `budgetFits`, `clampOffsetForK` (re-clamp a live
   offset when K changes) — test_scrub_offset §7, mutation-proven (forgetting the margin fails 204).
-  OPEN for Rodney: is K per-stream (R/M/Q, like slew) or global? And `MovingAverageCopula::K` is a
-  compile-time constant sizing the weight array — make it a runtime K_active <= 64 using the first K
-  taps (uniformity is preserved for ANY K since the weights are L2-normalised: Sum w^2 == 1).
+  RESOLVED (Rodney 2026-11-23): K is PER-STREAM (R/M/Q), like slew/mix/the draw counters. Reasons:
+  (1) the CACHES ARE ALREADY PER-STREAM (rhythmDrawCache_/melodyDrawCache_/qmixDrawCache_, ~24/12/6 KB
+  an entry) — the budget trade is about cache entries, so it is naturally per-stream; a GLOBAL K would
+  impose a coupling the storage does not require (the melody stream's reach limited by the rhythm
+  stream's memory depth, for no structural reason). (2) It matches its layer — slew, mix/scrub and the
+  draw counters are all per-stream; a global K would be the lone exception. (3) Musically it is a real
+  axis: a long rhythm average (slowly-evolving groove) under a short melody average (pitch free to
+  move), or inverted. No technical obstacle: streams are independent draws with separate Philox keys,
+  the copula correlates across VOICES and across TIME within a stream, never between streams, so each
+  K is independent and uniformity holds per stream.
+  CONSEQUENCE — streams get DIFFERENT MAX JOG RANGES (rhythm K=64 -> +/-32 while melody K=32 -> +/-64).
+  Fine for independent scrubbing. It sharpens the open "link R/M/Q" question: a LINKED jog gesture must
+  either clamp all three to the COMMON MINIMUM range or let them diverge proportionally — recommend
+  clamp-to-minimum (a canon wants them genuinely aligned); Rodney's feel call.
+  CANON: per-stream K adds no NEW class of problem — canon already requires matching slew per stream,
+  so K joins that set; the mirror test compares per-stream as it already does.
+  Implementation note: `MovingAverageCopula::K` is a compile-time constant sizing the weight array —
+  make it a runtime K_active <= 64 per stream, using the first K taps (uniformity is preserved for ANY
+  K since the weights are L2-normalised: Sum w^2 == 1, pinned by test_moving_average_copula).
 - PARAM REPRESENTATION — REVISIT GIVEN A VARIABLE RANGE: the k/32 normalised mapping above is exact
   only because 32 is a power of two. With a VARIABLE jog range (32/64/80...) k/range is not always
   exact (80 is not a power of two). Prefer storing the param as the OFFSET DIRECTLY (range
