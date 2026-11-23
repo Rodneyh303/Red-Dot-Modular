@@ -36,6 +36,31 @@ lengths swept), and cross-check against a pre-UAS reference if the old 16-ring g
 > current code disagrees with the oracle, REPORT it, do not silently bend either side. Still engine-side:
 > the wiring, the seeds, delegation, persistence/undo, the UI greying, the goldens, the slew boundary.**
 
+## FACT 2 — SETTLED BY CODE READING (2026-11-23), THE ORACLE IS CONFIRMED
+Traced `voiceFrameTickAt`'s CYCLE branch (SequencerEngine.cpp ~:916-920):
+    phrasePos = wrapMod(effTick1based - 1, lenG)          // 0-based position WITHIN the global phrase
+    wnow      = (walkFold(vd, phrasePos + 1, L) + R) mod L
+and `walkFold(Forward, t, L) = laneTickFor(Forward,t,L) + anchorBias(Fwd=0) = t - 1`, so for forward
+    **wnow = (phrasePos + R) mod L**
+which is EXACTLY CycleModeCore::readIndex(step, L, R) = (step + R) mod L. NO DIVERGENCE — the engine
+already rotates WITHIN the phrase by R. The code comment states Rodney's rationale verbatim: "R is the
+voice's position when the transport hits step 1 ... the read RETURNS TO R at every global step 1."
+TWO CONSEQUENCES THAT SHRINK THE WORK:
+1. **O is UNUSED in the cycle read.** The cycle branch sets `rho = R` — NOT `R - O` (only the
+   abs1/full-phrase branch uses `R - O`). So the "O locked at 0" ruling has NO read-path consequence;
+   O only feeds the window/mask `setWindow` builds ([offset, offset+length), i.e. MASK_DYNAMIC).
+2. **Phrase mode needs NO NEW READ PATH.** `voiceFrameTickAt` already calls
+   `effectiveVoiceLor(v, L, O, R, vd)` and the cycle branch does the rest. Phrase mode reduces to:
+   make `effectiveVoiceLor` (and its macro twin) return `resolveCycle(mode, lenG, offG, authored)`.
+   The core engine change is FEEDING IT DIFFERENT VALUES, not rewriting the read.
+CAVEAT ON THE CORE: `CycleModeCore::readIndex` encodes the FORWARD fold only. Reverse / Pendulum /
+PingPong use different `walkFold` laws (Reverse also carries anchorBias=1), so the oracle covers
+forward rows. `resolveCycle` / `isIdentityCycle` / `authoredOnModeSwitch` are direction-agnostic.
+OPEN FOR RODNEY: is DIRECTION still authorable in Phrase mode? The rulings lock L/O/R but say nothing
+about dir, and `isIdentityCycle` includes Forward — implying dir stays settable. If dir IS settable in
+Phrase, a Phrase row can be Reverse and the read uses the reverse fold (still correct — it is the same
+existing cycle path; only the core's forward-only readIndex oracle does not model it).
+
 ## Facts to verify BEFORE coding (read the code, do not trust this text)
 1. `voiceFrameReadsFullPhrase` / `kRangeBaseReadsFullPhrase=false` (SequencerEngine.hpp ~936) is the retired
    ABS1 "full phrase" read (L = cachedLength, rho = R-O). Decide reuse vs build on the CYCLE branch
