@@ -32,14 +32,22 @@ required below. CA4 (LOW) is explicitly logged to be decided "when CA1 is tackle
 scope here too.
 
 ## PART A — slew consumed at the DRAW boundary only
-AMENDMENT (2026-11-22): the boundary is the wrap of the EFFECTIVE DRAW WINDOW (the span of random cells one
-slewed buffer represents), NOT necessarily the pattern-length wrap. Today `result.wrapped` is
-`pos_.phrasePos()==0` at the global pattern length (SequencerEngine.cpp:506). Under a 16-step pattern over a
-32-step voice window that fires every 16 steps, i.e. half-way through the draw. With CC_PROMPT_UAS_CYCLE_PHRASE_MODE
-(Cycle: Phrase default) the draw window equals the global phrase so the existing boundary is right; in Cycle: Custom
-with L != global length, consume slew only when the effective draw window completes a lap. Add a test: 16 pattern,
-Custom L=32: slew unchanged across both 16-laps, applied once at the 32 wrap. Establish first (test, not assumption)
-whether the draw COUNTER/roll also ticks at the 16 wrap or the 32 wrap and report.
+RULING (Rodney 2026-11-24, SUPERSEDES the 2026-11-22 amendment below): the RE-DRAW — the roll, the
+draw-counter advance, the new random numbers, AND the slew-consume boundary — is driven by GLOBAL
+TRANSPORT in ALL cases. There is NO "effective draw-window lap" boundary; Cycle:Custom with L != global
+does NOT get its own slew/draw boundary. The slew boundary is `result.wrapped` (the global phrase wrap)
+in every mode, which is exactly what Part A implements (consume at the roll / the boundary slew-consumer).
+VERIFIED (2026-11-24, by code + `test_redraw_global_transport`): the transport wrap keys on `cachedLength`,
+set only by `setWindow` <- `updateWindow` from the GLOBAL length control; the draw counter advances +/-1 per
+roll with NO window-length term; a re-draw happens only in `redraw*` inside `applyPendingSeedsAndRedraw`,
+which runs only at the phrase boundary. So the draw counter/roll ticks at the GLOBAL wrap (the 16 in a
+16-over-32 case), once per global lap, independent of any per-voice/lane window length — the question the old
+amendment asked is answered: GLOBAL, always. The guard test pins this so the future Cycle:Custom wiring
+cannot introduce a per-draw-window-lap re-draw.
+--- superseded 2026-11-22 amendment (kept for the record) ---
+~~the boundary is the wrap of the EFFECTIVE DRAW WINDOW ... in Cycle: Custom with L != global length, consume
+slew only when the effective draw window completes a lap ... a test: 16 pattern, Custom L=32: slew unchanged
+across both 16-laps, applied once at the 32 wrap.~~ (RETIRED — re-draw is global transport in all cases.)
 LEAK (reproduced with a standalone probe): `refreshVisualCache`'s mix branch calls
 `recomputeEffective*ForVoice`, which reads the LIVE `*SlewLatched`; a changed r misses the z-cache
 and falls through to a FULL all-voice `recomputeEffective*`. So any MIX/scrub movement (knob, CV,
