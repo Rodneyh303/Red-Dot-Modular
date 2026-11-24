@@ -166,7 +166,7 @@ struct PositionResolver {
     int64_t readCoord() const {
         if (phraseOverridden_) return (dir_ > 0) ? (int64_t)phraseOverride_ : -(int64_t)phraseOverride_;
         if (col_ < 0) return 0;
-        const int e = (entryDir_ != 0) ? entryDir_ : dir_;
+        const int e = dir_;   // SPIKE: single current-direction measure (drop the entry-anchored retrace) for Rack A/B
         return (e > 0) ? (int64_t)wrapRing(col_ - startStep_) : -(int64_t)wrapRing(endStep_ - col_);
     }
     // (SLICE 5 — CC_PROMPT_POSITION_RESOLVER_SLICE5_PHASECLOCK, option (a)) The abs-mode

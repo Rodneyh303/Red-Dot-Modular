@@ -1422,7 +1422,21 @@ void SequencerEngine::deriveHolders(int signMotion, const int8_t* voiceMotion) {
             ft0       = vCoord;                  // the transport-signed phrase coordinate (the resolver's, + the voice's offset)
             frameBack = vCoord - (int64_t)wrapMod(vCoord - motionV, lenG);
         }
-        const int64_t wnow = ((((walkFold(vd, ft0 + 1, L) + rho) % L) + L) % L);
+        // SPIKE (global reverse-rotation anchor, one-coordinate model). Recompile with -DREV_ROT_ANCHOR=
+        //   0 per-direction (raw: fwd anchors at the start edge, reverse at endStep — a one-cell jump at a flip)
+        // default is 1 (start edge) — closest to master, so a plain build is not misleading
+        //   1 start edge   (reverse mirrors forward — the retrace feel, with a single coordinate)
+        //   2 end edge     (forward matches the backward/endStep convention — for cold-reverse-first use)
+#ifndef REV_ROT_ANCHOR
+#define REV_ROT_ANCHOR 1
+#endif
+        int64_t rhoAdj = rho;
+#if REV_ROT_ANCHOR == 1
+        if (pos_.direction() < 0) rhoAdj -= 1;   // reverse -> start edge (mirror forward)
+#elif REV_ROT_ANCHOR == 2
+        if (pos_.direction() > 0) rhoAdj += 1;   // forward -> end edge (match the backward convention)
+#endif
+        const int64_t wnow = ((((walkFold(vd, ft0 + 1, L) + rhoAdj) % L) + L) % L);
         voiceDriver_[v] = wnow + 1;
         voiceRead_[v]   = frameReadCell(wnow, O, kMaskRing);   // ONE law: the frame value folded into the window (no offG — see frameReadCell)
         if (voiceBaseIsRange(v)) {
@@ -1439,7 +1453,7 @@ void SequencerEngine::deriveHolders(int signMotion, const int8_t* voiceMotion) {
             if (!maskWindowContains(Ow, Lw, col, std::max(1, cachedLength)))
                 voiceRead_[v] = frameReadCell(col, 0, kMaskRing);
         }
-        const int64_t wprev = ((((walkFold(vd, wrapMod(ft0 - frameBack, walkPeriod(vd, L)) + 1, L) + rho) % L) + L) % L);
+        const int64_t wprev = ((((walkFold(vd, wrapMod(ft0 - frameBack, walkPeriod(vd, L)) + 1, L) + rhoAdj) % L) + L) % L);
         const int64_t dd    = voiceDriver_[v] - (wprev + 1);
         // A wrap (the voice's own window, or the global window beneath it) is a BEAT,
         // not a bounce: the musical predecessor is one step along the current motion.
