@@ -77,6 +77,28 @@ Because forward-linear satisfies `col_ == startStep + phaseClock`, the edge-on-t
 **byte-identical** to the edge-on-column everywhere **except** the `setWindow` re-park path — i.e.
 the change bites only on the bug.
 
+## Edge case — directionlessness / stall (Rodney 2026-11-24)
+
+A step can have **no motion and no direction**: gate mode with Variation at the centre (neither
+forward nor back) is a HOLD, and a phase snap can stall at the same position. The view needs **no
+special directionless branch**, because the tick is the unit of absoluteness: a *position* exists
+even when a *direction* does not. Verified routing:
+
+- **Gate centre** → `scanHoldFor_` runs, `advancePlayhead` is NOT called, and the refresh goes through
+  `recomputeLaneTicks` → `tickHolders(0, lastPlayDir, …)`. `transportTick_ += 0` (:1018, *"the
+  offsets-only refresh (motion 0) leaves it verbatim"*): the tick **freezes**, and `lastPlayDir` /
+  the resolver's `dir_` retain the last real direction. So the forward/reverse edge classification and
+  the `phaseClock` origin are both still well-defined — the held step reads the same edge it read
+  before, byte-identical on the aligned path.
+- **Stalled phase snap** → the phase-override path (`phraseOverridden_`) keeps `phraseOverride_`; the
+  forward/reverse `phaseClock` split does not touch it (the edge predicate returns `phraseOverride_ == 0`
+  first when overridden). Unchanged.
+
+So the rule the resolver already enforces — `advance()` touches `entryDir_`/`dir_` only when
+`motion != 0` — is exactly right: a hold is "tick held, last direction retained," never a new entry
+or a flip. The tick-as-unit design inherits this for free; that direction can be absent while position
+cannot is itself a small confirmation that the tick is the right unit.
+
 ## Scope / non-scope
 
 - The phase-override / scrub path (`snapTo`, `phraseOverride_`) is unchanged — it keeps its own raw
@@ -90,7 +112,9 @@ the change bites only on the bug.
 1. **Reproduce-first forward test** — drive the engine forward, perturb the global offset mid-phrase
    and revert it; assert the forward phrase edge coincides with `phaseClock(transportTick_) == 0` at
    every started step (equivalently: the boundary's absolute position is deterministic and snaps back
-   on revert). FAILS before (stuck at the drifted phase), PASSES after.
+   on revert). FAILS before (stuck at the drifted phase), PASSES after. Include a **hold-at-boundary**
+   case: a directionless/held step (tick frozen) must not spuriously fire or flip the edge — it reads
+   the same edge as the step before it.
 2. **Reverse byte-identity** — `test_reverse_rotation_anchor`, `test_phase_rotation_anchor` green and
    unchanged (the reverse view reproduces `col_`'s retrace).
 3. **March goldens** (GOLDEN_A/B/BS, UA_NONDIV) BYTE-IDENTICAL — the forward change is a no-op off the
