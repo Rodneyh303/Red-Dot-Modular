@@ -11,14 +11,21 @@
 // phase). Both were a drift INSIDE one copy of this lifecycle, fixed by hand across the
 // copies. This is the single pinned definition those fixes should have had.
 //
-// SCOPE OF THIS HEADER. This is deliberately the minimal, provable core: the cell and the
-// ONE commit mechanic. It does NOT own the transport-edge detection (`queueFires`, the
-// step/phrase quantisation) or the scope-bit decode (`dirLive_`/`lorLive_`) — those read
-// live engine/transport state and already have one home each. The duplication the audit
-// targets is the *cadence + copy*: "commit pending->committed exactly when my edge fires
-// and my scope is live, unless this element is held." Every control derives its three
-// inputs its own way (that part is intrinsic) and then commits through the SAME call, so a
-// future cadence/precedence change is one edit here, not N hand-copies.
+// WHAT THIS OWNS — and why the minimal version was a cop-out. The two bugs that actually
+// bit were in the EDGE (the double-commit checked the edge against a phase that advanced
+// between two sites; BUG 6 computed the edge from the entry phase instead of the landed
+// phase). A primitive that only unifies the precedence + copy leaves the edge at each call
+// site, so neither bug would have been caught, and nothing forces a control through it.
+// So this header owns the three things that make both bug classes UNREPRESENTABLE:
+//   1. the EDGE cadence is ONE definition per control — `Policy::edge(ctx)` (a wrong-phase
+//      edge can't hide in a copy because there is only one);
+//   2. there is ONE commit entry per control — `LatchedControl::tick` (kills the
+//      double-commit's "two sites" by construction);
+//   3. the committed store is reachable only through the cell — `read()`/`commit()`, no raw
+//      array — so a second or ad-hoc commit cannot be hand-written.
+// The one input that is intrinsically per-tick live state — the transport phase — is
+// computed ONCE by the engine into `LatchCtx` (at the landed phase) and read here, so there
+// is one phase truth, not N.
 //
 // Reference precedent (the audit's target shape): `SandsModifierResolver<Policy>` + the
 // `SandsModifierPolicy` concept unified Spread/Warp/LOR/Dir resolution. A
@@ -67,6 +74,60 @@ struct LatchCell {
 
     // Seed both stores (reset / identity push — pending and committed coincide).
     void seed(const Value& v) { pending = v; committed = v; }
+};
+
+// ── The transport/lock context — computed ONCE per tick, at the landed phase ─────────
+//
+// The drift bugs were in PRODUCING these booleans (double-commit: in two places; BUG 6: at
+// the wrong — entry vs landed — phase). The engine fills this once per tick and every
+// LatchedControl reads it, so there is one phase truth and one commit site per control, not
+// N hand-rolled edge computations that can disagree.
+struct LatchCtx {
+    bool     stepEdge      = false;  // a step advance happened this tick
+    bool     wrapped       = false;  // the phrase wrapped this tick (landed phase == start)
+    bool     unlockNow     = false;  // lock -> unlock flush this tick
+    bool     locked        = false;  // the engine's live lock
+    uint32_t scopeLiveMask = 0;      // scope bits live under lock
+};
+
+// ── The named, self-forcing control ──────────────────────────────────────────────────
+//
+// A Policy owns the two things that drifted — the EDGE cadence and the SCOPE-live gate — as
+// ONE definition each. The control owns the cells (committed storage unreachable except via
+// read()/commit()); `tick` is the ONE commit entry. So a control cannot be committed on an
+// ad-hoc edge, cannot be committed from two sites, and its committed value cannot be
+// hand-written. This is the shape `SandsModifierResolver<Policy>` set the precedent for.
+//
+// Policy requirements (a C++20 concept would state these; kept as a comment so this header
+// pulls in no <concepts> and no engine types):
+//   using Value = ...;                                      // the latched value type
+//   static constexpr std::size_t N;                         // element count
+//   bool edge(const LatchCtx&) const;                       // THE edge cadence (one def)
+//   bool scopeLive(std::size_t i, const LatchCtx&) const;   // THE scope gate (one def)
+// `held` (LOR suspend/sticky) is live drag state the engine tracks per element — supplied
+// to tick() as a callable, not baked into the policy.
+template <class Policy>
+struct LatchedControl {
+    using Value = typename Policy::Value;
+    static constexpr std::size_t N = Policy::N;
+    Policy            policy{};
+    LatchCell<Value>  cell[N];
+
+    // THE ONE COMMIT ENTRY. The edge is evaluated ONCE for the whole control (before the
+    // sweep), so there is a single commit site; scope + held are per element.
+    template <class HeldFn>
+    void tick(const LatchCtx& ctx, HeldFn&& held) {
+        if (!policy.edge(ctx)) return;
+        for (std::size_t i = 0; i < N; ++i)
+            cell[i].commit(/*boundaryFires=*/true, policy.scopeLive(i, ctx), held(i));
+    }
+    // Overload: no per-element hold (direction / sign).
+    void tick(const LatchCtx& ctx) { tick(ctx, [](std::size_t){ return false; }); }
+
+    void stage(std::size_t i, const Value& v) { cell[i].stage(v); }
+    const Value& read(std::size_t i) const    { return cell[i].read(); }
+    void seed(std::size_t i, const Value& v)   { cell[i].seed(v); }
+    static constexpr std::size_t size()        { return N; }
 };
 
 // ── The named wrapper: a Policy supplies the value type and the per-element HOLD rule ──

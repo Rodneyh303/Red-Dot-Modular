@@ -44,23 +44,33 @@ struct Rng {
     int range(int n){ return (int)(next() % (uint32_t)n); }
 };
 
+// Engine constants the policies MUST mirror (single source: LaneMapping.hpp /
+// MonsoonLockManager.hpp — transcribed here so the bridge is independent of them).
+static constexpr std::size_t NUM_STRANDS = 7;   // MELODY0 OCT1 QMIX2 RHY3 ACC4 VAR5 LEG6
+static constexpr uint32_t    SB_SANDS_R  = 1u << 2;
+static constexpr uint32_t    SB_SANDS_M  = 1u << 3;
+static inline bool melodyAxis(std::size_t strand){ return strand==0 || strand==1; }  // dirLive_'s test
+
 // ─────────────────────────────────────────────────────────────────────────────
 // ORACLE A — lane DIRECTION, a VERBATIM transcription of SequencerEngine's inline
 // commit (advancePlayhead, the StepEdge and Phrase-on-wrap sites):
 //   edge  = (quant==StepEdge && stepEdgeNow) || (quant==Phrase && wrapped)
 //   live  = dirLive_ = !locked || strandScopeBit            [SequencerEngine.hpp:460]
 //   commit: if (edge && live) committed = pending;          [no per-element hold]
-// This is written out independently so matching it is a real bridge, not a tautology.
+// Written out independently so matching it is a real bridge, not a tautology.
 // ─────────────────────────────────────────────────────────────────────────────
 enum class Quant { StepEdge, Phrase };
+static bool dirLiveInline(std::size_t strand, bool locked, uint32_t mask) {
+    if (!locked) return true;
+    return (mask & (melodyAxis(strand) ? SB_SANDS_M : SB_SANDS_R)) != 0;
+}
 struct DirOracle {
-    int committed = +1;   // laneDir_ as a sign for the test (+1 fwd / -1 rev)
+    int committed = +1;
     int pending   = +1;
     void stage(int v){ pending = v; }
-    void tick(Quant quant, bool stepEdgeNow, bool wrapped, bool locked, bool strandScopeBit) {
+    void tick(Quant quant, bool stepEdgeNow, bool wrapped, bool locked, std::size_t strand, uint32_t mask) {
         const bool edge = (quant==Quant::StepEdge && stepEdgeNow) || (quant==Quant::Phrase && wrapped);
-        const bool live = !locked || strandScopeBit;           // dirLive_
-        if (edge && live) committed = pending;
+        if (edge && dirLiveInline(strand, locked, mask)) committed = pending;
     }
 };
 
@@ -84,60 +94,122 @@ struct LorOracle {
     }
 };
 
+// ─────────────────────────────────────────────────────────────────────────────
+// The POLICIES — what the engine would carry at wiring time. Each owns the EDGE and the
+// SCOPE gate as ONE definition. They encode the SAME logic as the oracles above, but the
+// bridge drives them through LatchedControl's single commit entry, so it proves the
+// forcing-function design, not just the boolean algebra.
+// ─────────────────────────────────────────────────────────────────────────────
+struct LaneDirPolicy {
+    using Value = int;
+    static constexpr std::size_t N = NUM_STRANDS;
+    Quant quant = Quant::Phrase;
+    bool edge(const redDot::LatchCtx& c) const {
+        return quant==Quant::StepEdge ? c.stepEdge : (quant==Quant::Phrase && c.wrapped);
+    }
+    bool scopeLive(std::size_t strand, const redDot::LatchCtx& c) const {
+        return dirLiveInline(strand, c.locked, c.scopeLiveMask);
+    }
+};
+struct LorLanePolicy {
+    using Value = float;
+    static constexpr std::size_t N = NUM_STRANDS;
+    bool edge(const redDot::LatchCtx& c) const { return c.wrapped || c.unlockNow; }
+    bool scopeLive(std::size_t strand, const redDot::LatchCtx& c) const {
+        if (!c.locked) return true;
+        return (c.scopeLiveMask & (melodyAxis(strand) ? SB_SANDS_M : SB_SANDS_R)) != 0;
+    }
+};
+
 int main(){
     std::cout<<"\033[1mCA1 — LatchCell: the one latched-at-boundary mechanic\033[0m\n";
     std::cout<<std::string(62,'=')<<"\n";
 
     // ─────────────────────────────────────────────────────────────────────────
-    SUITE("G1 — DIRECTION bridge: LatchCell reproduces the inline commit, byte-exact");
+    SUITE("G1 — DIRECTION bridge: LatchedControl (single entry) == inline oracle, byte-exact");
     // ─────────────────────────────────────────────────────────────────────────
-    TEST("G1a fuzz: LatchCell.committed == DirOracle.committed at every step (200k)", {
+    TEST("G1a fuzz: all 7 strands, every (edit,quant,stepEdge,wrap,lock,scope) (100k ticks)", {
         Rng rng(0xD12ECC01u);
-        DirOracle oracle;
-        redDot::LatchCell<int> cell; cell.seed(+1);
-        for (int n = 0; n < 200000; ++n) {
-            // random edit to pending (sometimes)
-            if (rng.bit()) { int v = rng.bit() ? +1 : -1; oracle.stage(v); cell.stage(v); }
-            // random transport/lock/scope context
+        DirOracle oracle[NUM_STRANDS];
+        redDot::LatchedControl<LaneDirPolicy> ctrl;
+        for (std::size_t st=0;st<NUM_STRANDS;++st) ctrl.seed(st, +1);
+        for (int n = 0; n < 100000; ++n) {
+            // random per-strand edits
+            for (std::size_t st=0;st<NUM_STRANDS;++st) if (rng.bit()) {
+                int v = rng.bit() ? +1 : -1; oracle[st].stage(v); ctrl.stage(st, v);
+            }
             Quant quant   = rng.bit() ? Quant::StepEdge : Quant::Phrase;
-            bool stepEdge = rng.bit();
-            bool wrapped  = rng.bit();
-            bool locked   = rng.bit();
-            bool scopeBit = rng.bit();
-            // oracle
-            oracle.tick(quant, stepEdge, wrapped, locked, scopeBit);
-            // skeleton: the caller derives edge+live exactly as the engine does, then
-            // commits through the ONE mechanic.
-            const bool edge = (quant==Quant::StepEdge && stepEdge) || (quant==Quant::Phrase && wrapped);
-            const bool live = !locked || scopeBit;
-            cell.commit(edge, live);
-            EXPECT_EQ(cell.read(), oracle.committed);
+            redDot::LatchCtx c;
+            c.stepEdge = rng.bit(); c.wrapped = rng.bit();
+            c.locked = rng.bit(); c.scopeLiveMask = rng.next();
+            ctrl.policy.quant = quant;
+            // ONE commit entry drives all strands:
+            ctrl.tick(c);
+            for (std::size_t st=0;st<NUM_STRANDS;++st) {
+                oracle[st].tick(quant, c.stepEdge, c.wrapped, c.locked, st, c.scopeLiveMask);
+                EXPECT_EQ(ctrl.read(st), oracle[st].committed);
+            }
         }
     });
 
     // ─────────────────────────────────────────────────────────────────────────
-    SUITE("G2 — LOR bridge: LatchCell reproduces the inline commit WITH the hold");
+    SUITE("G2 — LOR bridge: LatchedControl reproduces the inline commit WITH the hold");
     // ─────────────────────────────────────────────────────────────────────────
-    TEST("G2a fuzz: LatchCell.committed == LorOracle.committed at every step (200k)", {
+    TEST("G2a fuzz: all 7 strands, (edit,phraseEdge,unlock,lock,scope,suspend,sticky) (100k)", {
         Rng rng(0x10ECC02u);
-        LorOracle oracle;
-        redDot::LatchCell<float> cell; cell.seed(0.f);
-        for (int n = 0; n < 200000; ++n) {
-            if (rng.bit()) { float v = (float)(rng.range(2001) - 1000) / 1000.f; oracle.stage(v); cell.stage(v); }
-            bool atPhraseEdge = rng.bit();
-            bool unlockNow    = rng.bit();
-            bool locked       = rng.bit();
-            bool axisBit      = rng.bit();
-            bool suspend      = rng.bit();
-            bool sticky       = rng.bit();
-            oracle.tick(atPhraseEdge, unlockNow, locked, axisBit, suspend, sticky);
-            const bool edge = atPhraseEdge || unlockNow;
-            const bool live = !locked || axisBit;
-            const bool held = suspend || sticky;
-            cell.commit(edge, live, held);
-            // bit-exact float compare (it is a copy, never arithmetic)
-            EXPECT(cell.read() == oracle.committed);
+        LorOracle oracle[NUM_STRANDS];
+        redDot::LatchedControl<LorLanePolicy> ctrl;
+        for (std::size_t s=0;s<NUM_STRANDS;++s) ctrl.seed(s, 0.f);
+        for (int n = 0; n < 100000; ++n) {
+            for (std::size_t s=0;s<NUM_STRANDS;++s) if (rng.bit()) {
+                float v = (float)(rng.range(2001)-1000)/1000.f; oracle[s].stage(v); ctrl.stage(s, v);
+            }
+            redDot::LatchCtx c;
+            c.wrapped = rng.bit(); c.unlockNow = rng.bit();
+            c.locked = rng.bit(); c.scopeLiveMask = rng.next();
+            uint32_t suspendMask = rng.next(), stickyMask = rng.next();
+            auto held = [&](std::size_t s){ return ((suspendMask>>s)&1u) || ((stickyMask>>s)&1u); };
+            ctrl.tick(c, held);
+            for (std::size_t s=0;s<NUM_STRANDS;++s) {
+                const bool axisBit = (c.scopeLiveMask & (melodyAxis(s)?SB_SANDS_M:SB_SANDS_R)) != 0;
+                oracle[s].tick(c.wrapped, c.unlockNow, c.locked, axisBit,
+                               ((suspendMask>>s)&1u)!=0, ((stickyMask>>s)&1u)!=0);
+                EXPECT(ctrl.read(s) == oracle[s].committed);
+            }
         }
+    });
+
+    // ─────────────────────────────────────────────────────────────────────────
+    SUITE("G1E — the EDGE cadence pinned DIRECTLY (the thing that drifted twice)");
+    // ─────────────────────────────────────────────────────────────────────────
+    TEST("G1Ea direction edge truth table (StepEdge fires on step; Phrase only on wrap)", {
+        LaneDirPolicy p;
+        auto E=[&](Quant q,bool se,bool wr){ p.quant=q; redDot::LatchCtx c; c.stepEdge=se; c.wrapped=wr; return p.edge(c); };
+        // StepEdge: fires iff a step advance happened, regardless of wrap
+        EXPECT(E(Quant::StepEdge, true,  false) == true);
+        EXPECT(E(Quant::StepEdge, true,  true ) == true);
+        EXPECT(E(Quant::StepEdge, false, true ) == false);
+        EXPECT(E(Quant::StepEdge, false, false) == false);
+        // Phrase: fires iff the phrase wrapped (the LANDED phase), regardless of stepEdge
+        EXPECT(E(Quant::Phrase,   false, true ) == true);
+        EXPECT(E(Quant::Phrase,   true,  true ) == true);
+        EXPECT(E(Quant::Phrase,   true,  false) == false);   // BUG-6 guard: a step that did
+        EXPECT(E(Quant::Phrase,   false, false) == false);   // NOT wrap must not commit
+    });
+    TEST("G1Eb LOR edge = phraseEdge OR unlockNow (flush fires without a phrase edge)", {
+        LorLanePolicy p;
+        auto E=[&](bool wr,bool un){ redDot::LatchCtx c; c.wrapped=wr; c.unlockNow=un; return p.edge(c); };
+        EXPECT(E(false,false) == false);
+        EXPECT(E(true, false) == true);
+        EXPECT(E(false,true ) == true);    // the unlock flush
+        EXPECT(E(true, true ) == true);
+    });
+    TEST("G1Ec a control with NO edge never commits, whatever the scope/pending", {
+        redDot::LatchedControl<LaneDirPolicy> ctrl; ctrl.policy.quant = Quant::Phrase;
+        for (std::size_t st=0;st<NUM_STRANDS;++st){ ctrl.seed(st,+1); ctrl.stage(st,-1); }
+        redDot::LatchCtx c; c.wrapped=false; c.stepEdge=true; c.locked=false; // Phrase: no wrap => no edge
+        ctrl.tick(c);
+        for (std::size_t st=0;st<NUM_STRANDS;++st) EXPECT_EQ(ctrl.read(st), +1);
     });
 
     // ─────────────────────────────────────────────────────────────────────────
