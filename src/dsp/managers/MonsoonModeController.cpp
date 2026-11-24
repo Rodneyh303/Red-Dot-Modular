@@ -63,7 +63,13 @@ void ModeController::updatePolyVoiceRest_() {
         // the degree decision, today's behaviour). Same BigFive latch class as the main
         // probs (the early-return above gates the whole loop). The qmixOctLive flip is the
         // Stage 1 gate opening: from here the engine's second read consumes THIS value.
-        engine.voices[vs].qmixOctLevel = mainModule->qmixOctaveThreshold(i);
+        // QUANTISER_WEIGHTED_PARTITION §"unpatched = pure generated": force the octave axis to
+        // GENERATE when this voice's quantiser source is unpatched, the SAME per-channel port
+        // check the degree uses — so an octave-subpanel own/global claim (which bypasses the
+        // follow-degree inheritance) can't pin a generated degree to octave 0 on an unplugged
+        // input. Unpatched ⇒ both thresholds 0 ⇒ voicePitch falls through to genPitchLive.
+        engine.voices[vs].qmixOctLevel = mainModule->qmixSourcePatched(i)
+                                             ? mainModule->qmixOctaveThreshold(i) : 0.f;
         engine.voices[vs].qmixOctLive  = true;
         // VAR/LEG per-voice knobs — mirror rest/accent/q-mix. The engine reads these in
         // executePolyVoice to threshold the per-voice VAR/LEG draws (which already exist
@@ -172,7 +178,9 @@ void ModeController::updatePatternInput() {
         // written (exactly what the resolver would return with nothing authored — the Stage 1
         // gate stays closed, Monsoon alone plays exactly as before).
         if (mainModule) {
-            monoVoice.qmixOctLevel = mainModule->qmixOctaveThreshold(0);
+            // unpatched mono source ⇒ octave generates too (see the poly note above).
+            monoVoice.qmixOctLevel = mainModule->qmixSourcePatched(0)
+                                         ? mainModule->qmixOctaveThreshold(0) : 0.f;
             monoVoice.qmixOctLive  = true;
         }
         // STEP-ADVANCE VALUE (CC_PROMPT_STEP_ADVANCE_CONSUMPTION Stage 2; the rectified

@@ -1770,15 +1770,15 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
             // exact legacy quantiserCV[vi]); byte-identical when caMelodySrc is identity.
             const int srcVi = pe.caInputCvSrcRow(vi);
             const int rvi = (srcVi < 0) ? 0 : (srcVi >= kVoiceSlots ? kVoiceSlots - 1 : srcVi);
-            float v = quantize(quantiserCV[rvi]);
-            float frac = v - std::floor(v);
+            // Structured quantise: the chosen degree comes back directly (no round(frac*12)
+            // round-trip — the latent micro-tuning mismatch), and stays consistent with volts.
+            const QuantPick q = quantizeResolve(quantiserCV[rvi]);
             // markSemi correctness (QMIX_LANE_PARITY §"one correctness rule"): the QUANTISED branch
             // names its degree in outSem, and the generated branch does so via genPitchLive — so the
             // caller's triggerNote/continueNote marks lastSemitone from WHICHEVER value the mux
             // picked. "What we picked" and "what CA/Lantern see" never drift.
-            outSem = pe.tuning.isDefault12TET ? (int(std::round(frac * 12.f)) % 12)
-                                              : pe.tuning.nearestDegree(frac);
-            return v;
+            outSem = q.semitone;
+            return q.volts;
         }
         if (quantiserPitchSource && (forceGenerated != octForceGenerated)) {
             // THE QMIX_OCTAVE MIXED ROWS — one axis generated, one external (see the truth
@@ -1787,20 +1787,20 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
             const int vi = (voiceIdx.v < 0) ? 0 : (voiceIdx.v >= kVoiceSlots ? kVoiceSlots - 1 : voiceIdx.v);
             const int srcVi = pe.caInputCvSrcRow(vi);
             const int rvi = (srcVi < 0) ? 0 : (srcVi >= kVoiceSlots ? kVoiceSlots - 1 : srcVi);
-            const float vExt = quantize(quantiserCV[rvi]);
+            const QuantPick q = quantizeResolve(quantiserCV[rvi]);
             const PatternEngine::PitchSplit split = pe.genPitchSplit(input, r_semi, r_oct);
             if (forceGenerated) {
-                // Generated DEGREE rides the external CV's octave (floor = the whole-volt
-                // position the external pitch sits in). Failed pick -> genPitchLive's 0.f.
+                // Generated DEGREE rides the external note's OCTAVE (where the external pitch
+                // quantised to — wrap folded in by the partition). Failed pick -> 0.f.
                 if (!split.picked) { outSem = 0; return 0.f; }
                 outSem = split.sem;
-                return pe_clamp(std::floor(vExt) + split.degTerm, -5.f, 5.f);
+                return pe_clamp((float)q.octave + split.degTerm, -5.f, 5.f);
             }
-            // External DEGREE rides the generated OCTAVE — the musical case. outSem from the
-            // external fraction (the both-external row's expression verbatim).
-            const float frac = vExt - std::floor(vExt);
-            outSem = pe.tuning.isDefault12TET ? (int(std::round(frac * 12.f)) % 12)
-                                              : pe.tuning.nearestDegree(frac);
+            // External DEGREE rides the generated OCTAVE — the musical case. The external
+            // degree's within-octave position is volts - octave (= degreeVolts(q.semitone)),
+            // and its degree is q.semitone directly (no round-trip).
+            const float frac = q.volts - (float)q.octave;
+            outSem = q.semitone;
             return pe_clamp((split.octTerm + split.shiftTerm) + frac, -5.f, 5.f);
         }
         return pe.genPitchLive(outSem, input, r_semi, r_oct);
@@ -2191,6 +2191,13 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
     // (executeModeC/D removed — MODE_COLLAPSE_6_TO_3: dead code; the controller routes C→A, D→B,
     //  and the quantiser is now the q-mix axis engaged per-step in the dispatch, not an engine mode.)
     float quantize(float vIn);
+    // The structured quantiser result (QUANTISER_WEIGHTED_PARTITION.md): the chosen degree,
+    // the octave the note landed in (wrap folded in), and the full voltage. The three qmix
+    // voicePitch rows read the component they need from this instead of re-deriving the
+    // degree via round(frac*12) and the octave via floor() — which removes the latent
+    // micro-tuning rounding mismatch and keeps the degree/octave/volts mutually consistent.
+    struct QuantPick { int semitone = 0; int octave = 0; float volts = 0.f; };
+    QuantPick quantizeResolve(float vIn);
 
     // (CC_PROMPT_POLY_LEGATO_QUANTISER) THE ONE POLY PITCH-DRAW LAW: the onset
     // path AND the slide / re-articulate / mid-hold sites all draw through this,

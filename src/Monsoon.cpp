@@ -448,6 +448,26 @@ float Monsoon::getEffectivePolyQmix(int voiceIdx) {
 }
 // Voice-1 / MONO q-mix — apply the Causeway MONO_QMIX_ATT (+ global) to CV channel 0 of the q-mix
 // CV input, added onto the mono base (QMIX_LEVEL_PARAM). Mirrors getEffectiveMonoRest/Accent.
+// Is this voice's quantiser pitch SOURCE patched (port presence, per channel — never the
+// value; 0 V is a valid pitch)? Mirrors the degree's patched-detection exactly so the octave
+// axis generates when unpatched, the SAME way the degree already does. storageSlot 0 = mono
+// (ch0, always within a patched source); i>=1 = poly channel i (ch = voiceIdx+1 = i).
+bool Monsoon::qmixSourcePatched(int storageSlot) {
+    auto* straits = expanderManager.cachedPolyVoiceExpander;
+    const bool straitsOn = straits && straits->inputs[StraitsIds::QUANT_CV_INPUT].isConnected();
+    if (storageSlot <= 0) {
+        // mono: mirror getEffectiveMonoQmix's pitchPatched (Straits ch0, or CV2 only in mode 5)
+        return straitsOn || (cv2Mode == 5 && cachedCv2Connected);
+    }
+    // poly: mirror getEffectivePolyQmix — channel storageSlot < channel count, else CV2 broadcast
+    if (straitsOn) {
+        int n = std::max(1, straits->inputs[StraitsIds::QUANT_CV_INPUT].getChannels());
+        return storageSlot < n;
+    }
+    if (cachedCv2Connected) return true;   // CV2 is mono → broadcasts to every voice
+    return false;                          // nothing patched → generate
+}
+
 float Monsoon::getEffectiveMonoQmix(float base) {
     auto* cway = expanderManager.cachedCausewayPolyExpander;
     if (cway) {
