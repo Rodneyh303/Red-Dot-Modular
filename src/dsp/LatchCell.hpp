@@ -72,6 +72,11 @@ struct LatchCell {
     // Read the committed value (what the engine consumes).
     const Value& read() const { return committed; }
 
+    // Peek the pending (staged) value — what the control is currently holding to commit at the
+    // next boundary. The engine never reads this to decide output; it is here for the few sites
+    // that legitimately need the LIVE value (persistence save, a mid-life "did it change?" guard).
+    const Value& peek() const { return pending; }
+
     // Seed both stores (reset / identity push — pending and committed coincide).
     void seed(const Value& v) { pending = v; committed = v; }
 };

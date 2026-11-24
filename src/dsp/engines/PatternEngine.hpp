@@ -33,6 +33,7 @@
 #include "../LaneMapping.hpp"   // dotModular::STRAND_* for finalRandomByStrand
 #include "../VoiceLaneTypes.hpp"   // VoiceSlot/LaneId — strong per-voice/lane indices (typed overloads below)
 #include "../MovingAverageCopula.hpp"   // Phase 1: slew as normal-space moving-average copula (replaces L1 linear-uniform window)
+#include "../LatchCell.hpp"   // CC_PROMPT_SCRUB32 Part A: the draw-boundary latch lifecycle (CA1 skeleton)
 #include "../../tuning/TuningTable.hpp"   // dotModular::TuningTable — shared per-degree tuning (Sikit)
 #include "RingView.hpp"   // CA5 lane addressing: the wrapping-window storage read (the ring-mask row reads' ONE law)
 
@@ -654,9 +655,25 @@ struct PatternEngine {
     // public arrays unchanged.
     // Rhythm group: rhythm / variation / legato / accent (+ poly rhythm)
     // Melody group: melody / octave (+ poly melody / poly octave)
-    // Latched slew (sampled at step 0), and the last value we recomputed at.
-    float rhythmSlewLatched = 0.f, melodySlewLatched = 0.f, qmixSlewLatched = 0.f;
-    float rhythmSlewApplied =-1.f, melodySlewApplied =-1.f, qmixSlewApplied =-1.f;  // force first recompute
+    // CC_PROMPT_SCRUB32 Part A — the per-stream COPULA-WINDOW parameters are DRAW-FIXED. Slew r
+    // (and, in Part B, depth K) both define the copula window a draw's value is computed from, so
+    // both must be CONSTANT across a draw. The latch (CA1 skeleton) owns pending (the live knob,
+    // staged every control cycle by latchSlew) + committed (the draw-fixed value the recompute
+    // reads); consumed pending->committed ONLY at a draw boundary (the roll / the boundary slew-
+    // consumer). This is what stops a mid-phrase mix/scrub move from pulling the live slew into the
+    // buffers (the leak). ONE consume() path per stream — depth K joins it in Part B, not a second
+    // mechanism.
+    struct CopulaWindowLatch {
+        redDot::LatchCell<float> slew{};
+        // Part B: redDot::LatchCell<int> depth{};  // K, runtime per stream — consume() commits both
+        void  stageSlew(float v)  { slew.stage(v); }            // latch the live knob (every cycle)
+        float pendingSlew() const { return slew.peek(); }       // the live latched value (persistence, guard)
+        float phraseSlew() const  { return slew.read(); }       // the DRAW-FIXED value (recompute reads this)
+        void  consume()           { slew.commit(true, true, false); }  // boundary: pending -> committed
+        void  seed(float v)       { slew.seed(v); }             // pending AND committed together (reset/load)
+    };
+    CopulaWindowLatch rhythmWin_, melodyWin_, qmixWin_;   // was rhythm/melody/qmixSlewLatched
+    float rhythmSlewApplied =-1.f, melodySlewApplied =-1.f, qmixSlewApplied =-1.f;  // force first recompute (record of the slew the buffers were last built at)
     // Weight-cache: L2-normalised geometric weights w[K] per stream, keyed on r (= slewKnobToR(slew)).
     // Slew r is phrase-fixed, so weights() was recomputed every sumZ call with the same r — pure
     // waste.  Cache w[] per stream; invalidate when r changes (phrase boundary).  Bit-identical.
