@@ -157,8 +157,8 @@ static void matrixMarch() {
         eng.updateWindow(16.f, 0.f, false, 0.f, 0.f, false);
         eng.numPolyVoices = 2;
         eng.macroVoiceLorDir_ = m.voice;                                   // the voice-frame level
-        eng.laneDir_[0] = m.lane; eng.laneDirPending_[0] = m.lane;         // the mono lane level
-        for (int vv = 1; vv < eng.kVoiceSlots; ++vv) eng.laneDirV_[vv][0] = m.lane;   // (retire) the macro lane level rides the per-voice lane dir — the view's LOR source
+        eng.macroDirLatch_.seed(0, m.lane);                                // the mono lane level
+        for (int vv = 1; vv < eng.kVoiceSlots; ++vv) eng.voiceDirLatch_.seed(vv, 0, m.lane);   // (retire) the macro lane level rides the per-voice lane dir — the view's LOR source
         char msg[120];
         bool colOK = true, pcOK = true;
         int  firstDelta = 0; bool deltaSignConsistent = true;

@@ -129,11 +129,9 @@ static void authorNonDivLor(SequencerEngine& eng) {
     eng.lorRef(dotModular::STRAND_RHYTHM, SequencerEngine::LOR_OFF) = 2;
     eng.lorRef(dotModular::STRAND_RHYTHM, SequencerEngine::LOR_ROT) = 3;
     eng.lorRef(dotModular::STRAND_MELODY, SequencerEngine::LOR_LEN) = 7;
-    eng.laneDir_[dotModular::STRAND_MELODY] = SequencerEngine::LaneDir::Pendulum;
-    eng.laneDirPending_[dotModular::STRAND_MELODY] = SequencerEngine::LaneDir::Pendulum;
+    eng.macroDirLatch_.seed(dotModular::STRAND_MELODY, SequencerEngine::LaneDir::Pendulum);
     eng.lorRef(dotModular::STRAND_OCTAVE, SequencerEngine::LOR_LEN) = 5;
-    eng.laneDir_[dotModular::STRAND_OCTAVE] = SequencerEngine::LaneDir::PingPong;
-    eng.laneDirPending_[dotModular::STRAND_OCTAVE] = SequencerEngine::LaneDir::PingPong;
+    eng.macroDirLatch_.seed(dotModular::STRAND_OCTAVE, SequencerEngine::LaneDir::PingPong);
     const auto v3 = dotModular::VoiceResolver::slot(3);
     eng.polyLenERef(v3, dotModular::LaneId{SequencerEngine::PL_MELODY}) = 5;
     eng.polyOffERef(v3, dotModular::LaneId{SequencerEngine::PL_MELODY}) = 1;
@@ -607,8 +605,7 @@ int main() {
         // Lane A: the mono REST lane FORWARD len 4; Lane B: the mono MELODY lane REVERSE len 4.
         eng.lorRef(dotModular::STRAND_RHYTHM, SequencerEngine::LOR_LEN) = 4;
         eng.lorRef(dotModular::STRAND_MELODY, SequencerEngine::LOR_LEN) = 4;
-        eng.laneDir_[dotModular::STRAND_MELODY] = SequencerEngine::LaneDir::Reverse;
-        eng.laneDirPending_[dotModular::STRAND_MELODY] = SequencerEngine::LaneDir::Reverse;
+        eng.macroDirLatch_.seed(dotModular::STRAND_MELODY, SequencerEngine::LaneDir::Reverse);
         int prevA = -1, prevB = -1; bool aBackward = true, bForward = true;
         for (int k = 0; k < 12; ++k) {
             eng.advancePlayhead(+1);

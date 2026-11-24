@@ -19,13 +19,19 @@
 // So this header owns the three things that make both bug classes UNREPRESENTABLE:
 //   1. the EDGE cadence is ONE definition per control — `Policy::edge(ctx)` (a wrong-phase
 //      edge can't hide in a copy because there is only one);
-//   2. there is ONE commit entry per control — `LatchedControl::tick` (kills the
-//      double-commit's "two sites" by construction);
+//   2. there is ONE commit MECHANIC per control — `tick` — and it evaluates the edge ONCE per
+//      call against the single `LatchCtx` passed in. That is what kills the double-commit: the
+//      bug was two sites each re-deriving the edge against a phase that moved between them;
+//      here the phase is one value in the ctx and the edge is read from it, so two sites cannot
+//      disagree about the phase. A control that legitimately commits at TWO transport phases
+//      (lane direction: StepEdge pre-advance — tickHolders reads the committed dir THIS tick;
+//      Phrase post-advance — gated on the wrap) calls `tick` at both points with ctx flags that
+//      make the two calls MUTUALLY EXCLUSIVE per quant, so no control is ever committed twice in
+//      one tick. One mechanic, one edge-per-call, not necessarily one call site.
 //   3. the committed store is reachable only through the cell — `read()`/`commit()`, no raw
 //      array — so a second or ad-hoc commit cannot be hand-written.
 // The one input that is intrinsically per-tick live state — the transport phase — is
-// computed ONCE by the engine into `LatchCtx` (at the landed phase) and read here, so there
-// is one phase truth, not N.
+// computed ONCE by the engine into `LatchCtx` and read here, so there is one phase truth, not N.
 //
 // Reference precedent (the audit's target shape): `SandsModifierResolver<Policy>` + the
 // `SandsModifierPolicy` concept unified Spread/Warp/LOR/Dir resolution. A
@@ -71,6 +77,12 @@ struct LatchCell {
 
     // Read the committed value (what the engine consumes).
     const Value& read() const { return committed; }
+
+    // Peek the pending (staged) value — what the UI is currently editing/displaying. The
+    // engine never reads this to decide position; it is here only so a control whose editor
+    // does a read-modify-write of its own pending (the East dir cell cycles 0->1->2->3->0)
+    // can express that without a raw pending array escaping the cell.
+    const Value& peek() const { return pending; }
 
     // Seed both stores (reset / identity push — pending and committed coincide).
     void seed(const Value& v) { pending = v; committed = v; }
@@ -126,8 +138,43 @@ struct LatchedControl {
 
     void stage(std::size_t i, const Value& v) { cell[i].stage(v); }
     const Value& read(std::size_t i) const    { return cell[i].read(); }
+    const Value& peek(std::size_t i) const     { return cell[i].peek(); }
     void seed(std::size_t i, const Value& v)   { cell[i].seed(v); }
     static constexpr std::size_t size()        { return N; }
+};
+
+// ── The 2D form: a per-ROW plane of the same control ──────────────────────────────────
+// For a latched control that exists per (voice, column) — the per-voice direction plane
+// (voiceDir), the per-voice LOR plane. The Policy's edge and scope gate are PER COLUMN (the
+// strand/axis), exactly as the 1D form: every row commits under the same per-column gate, so
+// the mono/macro control (1D) and this plane (2D) share one edge definition and one tick.
+// `tick` commits rows [0, rowCount) only — the engine commits its LIVE voices (0..numPoly),
+// never the dormant rows, so the commit stays byte-identical to the open-coded loop.
+template <class Policy, std::size_t Rows, std::size_t Cols>
+struct LatchedBank2D {
+    using Value = typename Policy::Value;
+    Policy            policy{};
+    LatchCell<Value>  cell[Rows][Cols];
+
+    template <class HeldFn>
+    void tick(const LatchCtx& ctx, std::size_t rowCount, HeldFn&& held) {
+        if (!policy.edge(ctx)) return;
+        const std::size_t rs = rowCount < Rows ? rowCount : Rows;
+        for (std::size_t r = 0; r < rs; ++r)
+            for (std::size_t c = 0; c < Cols; ++c)
+                cell[r][c].commit(/*boundaryFires=*/true, policy.scopeLive(c, ctx), held(r, c));
+    }
+    // No per-element hold (direction / sign): commit rows [0, rowCount).
+    void tick(const LatchCtx& ctx, std::size_t rowCount) {
+        tick(ctx, rowCount, [](std::size_t, std::size_t){ return false; });
+    }
+
+    void stage(std::size_t r, std::size_t c, const Value& v) { cell[r][c].stage(v); }
+    const Value& read(std::size_t r, std::size_t c) const    { return cell[r][c].read(); }
+    const Value& peek(std::size_t r, std::size_t c) const     { return cell[r][c].peek(); }
+    void seed(std::size_t r, std::size_t c, const Value& v)   { cell[r][c].seed(v); }
+    static constexpr std::size_t rows() { return Rows; }
+    static constexpr std::size_t cols() { return Cols; }
 };
 
 // ── The named wrapper: a Policy supplies the value type and the per-element HOLD rule ──

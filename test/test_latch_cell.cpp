@@ -49,13 +49,14 @@ struct Rng {
 static constexpr std::size_t NUM_STRANDS = 7;   // MELODY0 OCT1 QMIX2 RHY3 ACC4 VAR5 LEG6
 static constexpr uint32_t    SB_SANDS_R  = 1u << 2;
 static constexpr uint32_t    SB_SANDS_M  = 1u << 3;
-static inline bool melodyAxis(std::size_t strand){ return strand==0 || strand==1; }  // dirLive_'s test
+static inline bool melodyAxis(std::size_t strand){ return strand==0 || strand==1; }  // LaneDirPolicy::scopeLive's melody-axis test
 
 // ─────────────────────────────────────────────────────────────────────────────
-// ORACLE A — lane DIRECTION, a VERBATIM transcription of SequencerEngine's inline
-// commit (advancePlayhead, the StepEdge and Phrase-on-wrap sites):
+// ORACLE A — lane DIRECTION, a VERBATIM transcription of SequencerEngine's commit
+// (advancePlayhead's StepEdge pre-advance + Phrase-on-wrap post-advance tick sites,
+// both now routed through LaneDirPolicy):
 //   edge  = (quant==StepEdge && stepEdgeNow) || (quant==Phrase && wrapped)
-//   live  = dirLive_ = !locked || strandScopeBit            [SequencerEngine.hpp:460]
+//   live  = LaneDirPolicy::scopeLive = !locked || strandScopeBit
 //   commit: if (edge && live) committed = pending;          [no per-element hold]
 // Written out independently so matching it is a real bridge, not a tautology.
 // ─────────────────────────────────────────────────────────────────────────────

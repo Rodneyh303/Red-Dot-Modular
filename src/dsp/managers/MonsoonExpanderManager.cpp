@@ -141,10 +141,10 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
     // applied forever. Now no East => Forward, same as no East => no delegation.
     for (int dv = 0; dv < 16; ++dv)
         for (int l = 0; l < dotModular::NUM_STRANDS; ++l)
-            engine.laneDirVPending_[dv][l] = SequencerEngine::LaneDir::Forward;
+            engine.voiceDirLatch_.stage(dv, l, SequencerEngine::LaneDir::Forward);
     // Step 4: mono direction reset — same pattern. No expander => Forward.
     for (int l = 0; l < dotModular::NUM_STRANDS; ++l)
-        engine.laneDirPending_[l] = SequencerEngine::LaneDir::Forward;
+        engine.macroDirLatch_.stage(l, SequencerEngine::LaneDir::Forward);
     // Push mono direction from the owning expander — ALL 7 lanes through the ONE
     // authority (monoDirAuthority) + the ONE resolver selection (resolveDirItem /
     // DirPolicy). Macro present → Macro's GLOBAL cell on every lane (VAR/LEG follow
@@ -170,14 +170,14 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
                 // the delegated flag (monoDirAuthority sets it only on the Macro-owns arm), so
                 // this is byte-identical to the old local ternary.
                 if (auto* mm = owner) {
-                    engine.laneDirPending_[l] = (SequencerEngine::LaneDir)
+                    engine.macroDirLatch_.stage(l, (SequencerEngine::LaneDir)
                         redDot::resolveDirItem(src.macroGlobal,
                                                mm->getLaneDir(Monsoon::kMonoLaneDirRow, src.eastMonoLane),
-                                               mm->getGlobalDir(src.eastMonoLane));
+                                               mm->getGlobalDir(src.eastMonoLane)));
                 }
             } else if (src.paramId >= 0) {
-                engine.laneDirPending_[l] = (SequencerEngine::LaneDir)(int)std::lround(
-                    math::clamp(src.mod->params[src.paramId].getValue(), 0.f, 3.f));
+                engine.macroDirLatch_.stage(l, (SequencerEngine::LaneDir)(int)std::lround(
+                    math::clamp(src.mod->params[src.paramId].getValue(), 0.f, 3.f)));
             }
         }
     }
@@ -467,8 +467,8 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
                         // getMacroOwn/getGlobalDir take the unified lane order — same as l
                         // (editor == engine == strand) — so l passes through directly.
                         const bool delegated = (topo.owner(v, l) == dotModular::SandsTopology::Role::MACRO);
-                        engine.laneDirVPending_[v][l] = (SequencerEngine::LaneDir)
-                            redDot::resolveDirItem(delegated, mmOwn->getLaneDir(v, l), mmOwn->getGlobalDir(l));
+                        engine.voiceDirLatch_.stage(v, l, (SequencerEngine::LaneDir)
+                            redDot::resolveDirItem(delegated, mmOwn->getLaneDir(v, l), mmOwn->getGlobalDir(l)));
                     }
                 }
 #if RULE2_DEBUG

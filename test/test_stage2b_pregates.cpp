@@ -225,24 +225,20 @@ static void authorLaneLors(SequencerEngine& eng, bool wrapping) {
         eng.lorRef(dotModular::STRAND_RHYTHM, SequencerEngine::LOR_ROT) = 3;
         eng.lorRef(dotModular::STRAND_MELODY, SequencerEngine::LOR_LEN) = 7;    // 12+7 crosses 15→0
         eng.lorRef(dotModular::STRAND_MELODY, SequencerEngine::LOR_OFF) = 12;
-        eng.laneDir_[dotModular::STRAND_MELODY] = SequencerEngine::LaneDir::Pendulum;
-        eng.laneDirPending_[dotModular::STRAND_MELODY] = SequencerEngine::LaneDir::Pendulum;
+        eng.macroDirLatch_.seed(dotModular::STRAND_MELODY, SequencerEngine::LaneDir::Pendulum);
         eng.lorRef(dotModular::STRAND_OCTAVE, SequencerEngine::LOR_LEN) = 5;    // 3+5 wraps
         eng.lorRef(dotModular::STRAND_OCTAVE, SequencerEngine::LOR_OFF) = 3;
-        eng.laneDir_[dotModular::STRAND_OCTAVE] = SequencerEngine::LaneDir::PingPong;
-        eng.laneDirPending_[dotModular::STRAND_OCTAVE] = SequencerEngine::LaneDir::PingPong;
+        eng.macroDirLatch_.seed(dotModular::STRAND_OCTAVE, SequencerEngine::LaneDir::PingPong);
     } else {
         eng.lorRef(dotModular::STRAND_RHYTHM, SequencerEngine::LOR_LEN) = 7;    // 2+7 ≤ 16
         eng.lorRef(dotModular::STRAND_RHYTHM, SequencerEngine::LOR_OFF) = 2;
         eng.lorRef(dotModular::STRAND_RHYTHM, SequencerEngine::LOR_ROT) = 3;
         eng.lorRef(dotModular::STRAND_MELODY, SequencerEngine::LOR_LEN) = 9;    // 4+9 ≤ 16
         eng.lorRef(dotModular::STRAND_MELODY, SequencerEngine::LOR_OFF) = 4;
-        eng.laneDir_[dotModular::STRAND_MELODY] = SequencerEngine::LaneDir::Pendulum;
-        eng.laneDirPending_[dotModular::STRAND_MELODY] = SequencerEngine::LaneDir::Pendulum;
+        eng.macroDirLatch_.seed(dotModular::STRAND_MELODY, SequencerEngine::LaneDir::Pendulum);
         eng.lorRef(dotModular::STRAND_OCTAVE, SequencerEngine::LOR_LEN) = 5;    // 3+5 ≤ 16
         eng.lorRef(dotModular::STRAND_OCTAVE, SequencerEngine::LOR_OFF) = 3;
-        eng.laneDir_[dotModular::STRAND_OCTAVE] = SequencerEngine::LaneDir::PingPong;
-        eng.laneDirPending_[dotModular::STRAND_OCTAVE] = SequencerEngine::LaneDir::PingPong;
+        eng.macroDirLatch_.seed(dotModular::STRAND_OCTAVE, SequencerEngine::LaneDir::PingPong);
     }
     const auto v3 = dotModular::VoiceResolver::slot(3);
     eng.polyLenERef(v3, dotModular::LaneId{SequencerEngine::PL_MELODY}) = wrapping ? 9 : 6;
