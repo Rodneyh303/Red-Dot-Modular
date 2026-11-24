@@ -123,6 +123,33 @@ cannot is itself a small confirmation that the tick is the right unit.
 5. **Rack feel-test (Rodney)** — the dice/slew redraw visibly lands at the window start and tracks the
    offset, reverting cleanly to zero.
 
+## Implementation outcome (2026-11-24, PR #365)
+
+Shipped the forward **draw edge** on the tick; the battery corrected the plan's "point the 5 edge
+sites at the predicate" to **one site**:
+
+- `PositionResolver::atPhraseEdge(tick)` added (forward `phaseClock(tick)==0`, reverse `phrasePos()==0`,
+  phase-snap raw, pre-start true). Only `advancePlayhead`'s `wrapped` (the draw edge — the reported
+  dice/slew bug) moved onto it.
+- The other four edge sites — `voiceFrameEdgeLive_`'s identity row and the LOR latch gates in
+  `anchorTransport` / `tickHolders` — were moved too, then **reverted**: they failed
+  `test_global_dip_differential`. Those are per-voice **commit** edges that fold the voice frame and
+  `advanceOffset`; the bare global `phaseClock` can't express that anchor, so they stay on
+  `phrasePos()==0`. Unifying them is the holder-model migration, not this fix.
+- Reverse `entryTick` question, settled against the code: a fresh reverse entry (`entryDir:=−1`) CAN
+  land mid-run at an arbitrary tick (a window re-author then a reverse step parks `col_` to `endStep`),
+  so a full "col as a pure view off (tick, entryDir)" — with `col_` deleted — can't be byte-identical
+  for reverse without a 4th piece of state (the entry tick) OR keeping the column accumulator for
+  reverse. Since the decision already keeps the column for reverse, `col_` is **not** deleted; it
+  survives as reverse's coordinate. So the minimal state stands as tick + current dir + entryDir, with
+  `col_` retained for reverse rather than a separate entry tick.
+- Proof: `test_phrase_boundary_absolute` (reproduce-first) red→green; reverse/position goldens
+  byte-identical; full battery 163/163. Rack feel-test outstanding (dice/slew redraw at the window
+  start, reverts to zero).
+
+Open: the per-voice commit edges + the full column-as-view (entry-tick or retained column) remain for
+the holder-model migration — a separate arc, not required by the dice/slew fix.
+
 ## Deliverable
 
 The PositionResolver change (column as a tick-based view with an entry-frame anchor; the forward edge
