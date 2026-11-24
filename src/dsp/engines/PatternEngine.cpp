@@ -777,7 +777,7 @@ void PatternEngine::recomputeEffectiveRhythmForVoice(VoiceSlot voice) {
     pruneDrawCache_(rhythmDrawCache_, N);   // bound the draw cache to the live window (before any cache ref)
     const float slew = rack::math::clamp(rhythmWin_.phraseSlew(), -1.f, 1.f);  // DRAW-FIXED (Part A)
     const float r = slewKnobToR(slew);
-    if (r == 0.f) return;
+    if (r == 0.f) { recomputeEffectiveRhythm(); return; }   // slew=0: the scrub (mix) still moves the draw — the full path does the r==0 linear blend + sets mixApplied (the for-voice early-return left the scrub dead at slew=0)
     if (!rhythmZCache_.hit(N, f, r)) { recomputeEffectiveRhythm(); return; }
 
     const int stride = 4 + 4 * numPolyVoicesHint;
@@ -832,7 +832,7 @@ void PatternEngine::recomputeEffectiveMelodyForVoice(VoiceSlot voice) {
     pruneDrawCache_(melodyDrawCache_, N);   // bound the draw cache to the live window (before any cache ref)
     const float slew = rack::math::clamp(melodyWin_.phraseSlew(), -1.f, 1.f);  // DRAW-FIXED (Part A)
     const float r = slewKnobToR(slew);
-    if (r == 0.f) return;
+    if (r == 0.f) { recomputeEffectiveMelody(); return; }   // slew=0: scrub still moves the draw (see rhythm)
     if (!melodyZCache_.hit(N, f, r)) { recomputeEffectiveMelody(); return; }
     const int stride = 2 + 2 * numPolyVoicesHint;
     OUBridgeCoeffs ouBC; ouBC.compute(r, frac, bridgeMelodyPhilox, N - f - 1);
@@ -877,7 +877,7 @@ void PatternEngine::recomputeEffectiveQmixForVoice(VoiceSlot voice) {
     pruneDrawCache_(qmixDrawCache_, N);   // bound the draw cache to the live window (before any cache ref)
     const float slew = rack::math::clamp(qmixWin_.phraseSlew(), -1.f, 1.f);  // DRAW-FIXED (Part A)
     const float r = slewKnobToR(slew);
-    if (r == 0.f) return;
+    if (r == 0.f) { recomputeEffectiveQmix(); return; }   // slew=0: scrub still moves the draw (see rhythm)
     if (!qmixZCache_.hit(N, f, r)) { recomputeEffectiveQmix(); return; }
     const int stride = 1 + numPolyVoicesHint;
     OUBridgeCoeffs ouBC; ouBC.compute(r, frac, bridgeQmixPhilox, N - f - 1);
