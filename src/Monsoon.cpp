@@ -250,6 +250,13 @@ void Monsoon::updateExpanderPointers() {
         }
 
         engine.reset();
+        // CC_PROMPT_UAS_CYCLE_PHRASE_MODE: Phrase is the product DEFAULT (the voice window follows
+        // the global phrase, O=0, R=transport offset). The engine itself defaults to Custom so the
+        // bare-engine tests/goldens are unchanged; the module opts every row in here. At the default
+        // transport (cap) this resolves to the old (cap,0,0) — sound-identical until a global length
+        // is authored. dataFromJson overrides per the saved patch (absent field -> stays Phrase).
+        engine.setMacroCyclePhrase(true);
+        for (int v = 0; v < SequencerEngine::kVoiceSlots; ++v) engine.setVoiceCyclePhrase(v, true);
 
         bpm = 120.f;
         clock.reset();
