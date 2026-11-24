@@ -321,6 +321,13 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
     // and playedColumn() IS the played column (-1 = not started).
     int  playedColumn() const { return pos_.playedColumn(); }
     bool started()      const { return pos_.playedColumn() >= 0; }
+    // CYCLE_PHRASE_DEBUG (temporary — phrase-boundary stickiness diagnosis): window/transport state.
+    int     dbgStartStep()  const { return startStep; }
+    int     dbgOffset()     const { return cachedOffset; }
+    int     dbgLength()     const { return cachedLength; }
+    int     dbgPhrasePos()  const { return pos_.phrasePos(); }
+    int     dbgPhaseClock() const { return pos_.phaseClock(transportTick_); }
+    long long dbgTick()     const { return (long long)transportTick_; }
     // (SLICE 2b — the phase-sweep history) the previous snap's UNWRAPPED absStep: the
     // phase direction is known only between two consecutive PPQN quantisations (per
     // snap, as the sign of the change). Cleared in reset(); NOT touched by gate/clock.

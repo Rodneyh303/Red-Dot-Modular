@@ -1887,6 +1887,30 @@ void Monsoon::process(const ProcessArgs& args) {
             params[PATTERN_OFFSET_PARAM].getValue(), inputs[OFFSET_INPUT].getVoltage(), inputs[OFFSET_INPUT].isConnected()
         );
 
+        // ── CYCLE_PHRASE_DEBUG (temporary): the phrase-boundary stickiness diagnosis ──────────
+        // Logs (a) every time the OFFSET knob value changes — so we see whether the knob reverts
+        // and whether startStep/cachedOffset follow it; and (b) every phrase WRAP (throttled to one
+        // line per transport tick) — so we see which column/tick the boundary actually fires on and
+        // whether it returns to the offset after a revert. Grep the Rack log for "[cyc]". REMOVE
+        // before merge (this whole block + the dbg* getters in SequencerEngine.hpp).
+        {
+            static int   lastOff        = -99999;
+            static long long lastWrapTk = -1;
+            const int offNow = (int)std::round(params[PATTERN_OFFSET_PARAM].getValue());
+            if (offNow != lastOff) {
+                INFO("[cyc] offKnob %d -> %d | startStep=%d cachedOffset=%d len=%d col=%d tick=%lld phrasePos=%d phaseClock=%d",
+                     lastOff, offNow, engine.dbgStartStep(), engine.dbgOffset(), engine.dbgLength(),
+                     engine.playedColumn(), engine.dbgTick(), engine.dbgPhrasePos(), engine.dbgPhaseClock());
+                lastOff = offNow;
+            }
+            if (engine.lastStepResult.wrapped && engine.dbgTick() != lastWrapTk) {
+                INFO("[cyc] WRAP col=%d tick=%lld startStep=%d cachedOffset=%d len=%d phrasePos=%d phaseClock=%d",
+                     engine.playedColumn(), engine.dbgTick(), engine.dbgStartStep(), engine.dbgOffset(),
+                     engine.dbgLength(), engine.dbgPhrasePos(), engine.dbgPhaseClock());
+                lastWrapTk = engine.dbgTick();
+            }
+        }
+
         // UNIFIED ADDRESSING Stage 2b: the voice-range authoring rows (editor stores,
         // the Macro/East surfaces author them) -> the engine's voice LOR store, ONE
         // push per control block — the same one-block cadence every authored LOR uses.
