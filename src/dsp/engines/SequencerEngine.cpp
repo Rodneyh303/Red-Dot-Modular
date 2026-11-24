@@ -503,7 +503,18 @@ bool SequencerEngine::advancePlayhead(int dir, const int8_t* voiceMotion) {
     pos_.advance(dir);
     tickHolders(dir, dir, voiceMotion);
 
-    const bool wrapped = (wasStarted && pos_.phrasePos() == 0);
+    // (C3 — CC_PROMPT_POSITION_RESOLVER_C3_UNIT_OF_ABSOLUTENESS) THE DRAW EDGE is the ONE edge
+    // moved onto the tick: atPhraseEdge is phaseClock(transportTick_)==0 in forward (the window-
+    // start crossing on the clock the reads already fold — drift-free across a mid-phrase window
+    // re-author, so the dice/slew redraw lands at the window start and snaps back when the offset
+    // reverts) and phrasePos()==0 in reverse (the retrace edge, unchanged). Byte-identical to the
+    // old phrasePos()==0 whenever forward is not re-authored mid-phrase (col == startStep +
+    // phaseClock there); the delta bites only on the re-park drift — the bug.
+    // The per-voice LOR / voice-frame COMMIT edges (voiceFrameEdgeLive_, the tickHolders /
+    // anchorTransport latch gates) deliberately STAY on phrasePos()==0: they fold the voice frame
+    // and advanceOffset, anchor semantics the bare global phaseClock does not express
+    // (test_global_dip_differential pins them). Unifying those rides the holder-model migration.
+    const bool wrapped = (wasStarted && pos_.atPhraseEdge(transportTick_));
 
     writeLedger.noteWrite(WriteRole::ENGINE, WriteField::Wrapped); // STEP1 WriteLedger: wrapped (W1/W2) — confirms single ENGINE writer
 

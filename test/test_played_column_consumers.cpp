@@ -190,7 +190,8 @@ int main() {
 
     // ── GATE 5 (STEP 4-final — the retirement): the ENGINE sources carry NO stepIndex
     // token at all — the field, the mirror writes and the prevStep capture are gone;
-    // wrapped reads wasStarted && pos_.phrasePos() == 0; the snap's landing is a local ──
+    // wrapped reads wasStarted && pos_.atPhraseEdge(transportTick_) (C3 — the draw edge moved onto
+    // the tick; see CC_PROMPT_POSITION_RESOLVER_C3_UNIT_OF_ABSOLUTENESS); the snap's landing is a local ──
     {
         std::string ap, sw, sp;
         const bool got = extractFn(cpp, "SequencerEngine::advancePlayhead(", ap)
@@ -199,8 +200,8 @@ int main() {
         check(got, "the three authority bodies extract");
         if (got) {
             check(ap.find("const bool wasStarted = (pos_.playedColumn() != -1);") != std::string::npos
-                   && ap.find("const bool wrapped = (wasStarted && pos_.phrasePos() == 0);") != std::string::npos,
-                  "advancePlayhead: wasStarted captured before the advance + wrapped from wasStarted && pos_.phrasePos() == 0");
+                   && ap.find("const bool wrapped = (wasStarted && pos_.atPhraseEdge(transportTick_));") != std::string::npos,
+                  "advancePlayhead: wasStarted captured before the advance + wrapped from wasStarted && pos_.atPhraseEdge(transportTick_)");
             check(countToken(ap, "stepIndex") == 0 && countToken(sw, "stepIndex") == 0
                    && countToken(sp, "stepIndex") == 0,
                   "the three authority bodies: ZERO stepIndex tokens (the field retired)");

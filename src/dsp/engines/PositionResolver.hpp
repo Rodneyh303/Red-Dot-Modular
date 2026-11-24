@@ -181,6 +181,28 @@ struct PositionResolver {
     // abs on playedColumn() is a behaviour change gated on the C3 holder model.
     int phaseClock(int64_t transportTick) const { return wrapModTick_(transportTick - 1, len_); }
 
+    // ── THE PHRASE EDGE predicate (C3 — CC_PROMPT_POSITION_RESOLVER_C3_UNIT_OF_ABSOLUTENESS;
+    // ── finishing slice 5). The unit of absoluteness is the signed transport tick.
+    // ── FORWARD: the edge is the window-start crossing on that ONE clock — phaseClock(tick)==0 —
+    // ──   drift-free and surviving a mid-phrase window re-author (the reads already fold
+    // ──   phaseClock; this is the last edge still reading the played column). Offset is placement,
+    // ──   not a phase re-origin, so the boundary snaps back when the offset reverts.
+    // ── REVERSE: keeps the played-column retrace edge (phrasePos()==0 == col==endStep). Reverse's
+    // ──   unit stays the column — its ±1 anchors to the reverse ENTRY, which the bare tick phase
+    // ──   lacks (PositionResolver header :22–27) — so this is UNCHANGED.
+    // ── Phase-snap override keeps its own raw phrase. The pre-start park returns true to match the
+    // ── old phrasePos()==0 anchor EXACTLY. Directionless HOLD: dir_ and the tick are both retained,
+    // ── so the held step reads the same edge (no new entry, no flip).
+    // ── BYTE-IDENTICAL to phrasePos()==0 whenever, in forward, the window is not re-authored
+    // ── mid-phrase (col_ == startStep + phaseClock there); the change bites only on the re-park
+    // ── drift — the bug.
+    bool atPhraseEdge(int64_t transportTick) const {
+        if (phraseOverridden_) return phraseOverride_ == 0;            // the phase snap's own raw phrase
+        if (col_ < 0)          return true;                           // pre-start park (== phrasePos()==0)
+        if (dir_ > 0)          return phaseClock(transportTick) == 0; // FORWARD: the clock-zero crossing
+        return phrasePos() == 0;                                      // REVERSE: the retrace edge, unchanged
+    }
+
     // ── POSITION RESOLVER CONSOLIDATION (POSITION_RESOLVER_CONSOLIDATION.md) ─────
 
     // The PRIMITIVES face of the slot law (the runtime callers — the strip feeds
