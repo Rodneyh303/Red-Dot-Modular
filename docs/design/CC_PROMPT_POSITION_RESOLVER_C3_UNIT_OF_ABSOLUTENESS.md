@@ -156,3 +156,54 @@ The PositionResolver change (column as a tick-based view with an entry-frame anc
 on `phaseClock`; the `setWindow` forward re-origin dropped) + the reproduce-first forward test, with
 the reverse goldens as the byte-identity proof and the forward drift-fix as the single intended
 behavioural delta. Branch off `master`, PR into `master`.
+
+## Follow-up — the net-steps model and resolver ownership (Rodney 2026-11-25)
+
+A few minutes in Excel produced the whole model: a single SIGNED counter (+1 forward, −1 back, 0 hold;
+first motion enters; reset re-inits; never re-parks). The read is `read = O + ((netSteps + R +
+advanceOffset) mod L)`. Pinned against the live engine in `test_netsteps_model`: it reproduces the
+engine for forward, mid-phrase flip (retrace), holds, rotation (static + mid-run), static voice/global
+offset, per-voice advanceOffset, and cold reverse from zero — diverging ONLY on a re-anchor (reverse
+right after a window change; a mid-run OFFSET change), which is the same re-park #365 removed on the
+forward edge, and the deliberate C3 choice.
+
+The offset law, verified: **R** and **advanceOffset** are window-relative PHASE (added INSIDE mod L);
+the voice LOR **O** is window PLACEMENT (OUTSIDE mod L); the GLOBAL transport offset is NOT in the read
+value at all — it places the played COLUMN. `advanceOffset_[v]` is per-VOICE (`netSteps +
+advanceOffset_[v]` = voice v's own net steps), so net steps is tracked POLYPHONICALLY; the per-lane
+walk (`laneTickV_[v][strand]`, per-lane direction) is finer still.
+
+Key architectural finding: **`getStrandIdx(tick, L, O, R) = O + ((tick + R) mod L)` IS the net-steps
+read law** (SequencerEngine.cpp :3222), and every probability lane already reads through it. So the
+probability side already runs the model. The ONE hold-out is the voice FRAME (`voiceRead_`, the strip
+playhead), which still goes through `readCoord()`/`col_`/`entryDir` + `walkFold`. The lanes are NOT
+independently drift-free — `laneRecomp` recomputes `laneTickV_` each derive from the frame's seed
+(`frameT0`, from `wnow`, from `readCoord`, from `col_`), so the ONE upstream coordinate (`col_`) feeds
+the frame and all seven lanes per voice. That is the real DRY/ODR issue: one position truth, many
+representations.
+
+### Target shape
+
+The resolver should OWN the position state and the ONE read law; the engine keeps POLICY (LOR latching,
+commit gates, draw timing) and asks the resolver where things are. Today the resolver owns only the
+transport column, while the engine holds `transportTick_` (the real unit of absoluteness),
+`advanceOffset_`/`advOffSeen_`/`scanOfsV_` (per-voice divergence), `laneTick_`/`laneTickV_`/`laneSign_`/
+`laneSignV_` (per-lane positions + directions), `lanePhase_`/`macroFramePhase_` (holder phases),
+`voiceDriver_`/`voiceRead_`/`macroFrameRead_` (the reads), and `startStep`/`cachedLength`/`cachedOffset`/
+`lastPlayDir` (duplicates of resolver state). Consolidating these into the resolver makes the next
+disagreement visible as two methods in one file instead of two counters in two files.
+
+### Slicing order (each slice byte-identical except where noted)
+
+1. **Widen the net-steps pins** — non-Forward lane directions, poly advance, sub-windows (lane L <
+   global L). If the counter still matches except the re-anchor cases, proceed.
+2. **Move `transportTick_` + the per-voice offsets into the resolver** as-is, no behaviour change.
+3. **Move the lane + frame derivation behind resolver methods**, still byte-identical.
+4. **Swap the coordinate source to net steps**; retire `col_` + `entryDir`. The ONE deliberate
+   behavioural delta, on the re-anchor cases (feel-tested; the re-author march in
+   `test_position_resolver_identity` and the reverse-rotation anchor goldens get a conscious update).
+
+Not a no-brainer to execute: phase mode (`snapToPhaseStep` sets position directly, counter not wired);
+the cold-reverse played COLUMN (engine seeds at `endStep`, the counter at 0 then wraps — a visible
+display/mask choice); and the call-site/test count touching these members directly (slices 2–3 may be
+wider than they look). Resolver owns STATE + the read law, never policy — else it becomes a second engine.
