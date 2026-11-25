@@ -503,7 +503,7 @@ bool SequencerEngine::advancePlayhead(int dir, const int8_t* voiceMotion) {
     pos_.advance(dir);
     tickHolders(dir, dir, voiceMotion);
 
-    const bool wrapped = (wasStarted && pos_.phrasePos() == 0);
+    const bool wrapped = (wasStarted && pos_.atPhraseEdge());
 
     writeLedger.noteWrite(WriteRole::ENGINE, WriteField::Wrapped); // STEP1 WriteLedger: wrapped (W1/W2) — confirms single ENGINE writer
 
@@ -834,7 +834,7 @@ bool SequencerEngine::voiceFrameEdgeLive_(int v) const {
     int L, O, R; LaneDir d;
     effectiveVoiceLor(v, L, O, R, d);
     if (L == kPatternLengthCap && O == 0 && R == 0 && d == LaneDir::Forward)
-        return pos_.phrasePos() == 0;   // the identity row: the global phrase edge (its pass-through cycle IS the phrase)
+        return pos_.atPhraseEdge();   // the identity row: the global phrase edge (its pass-through cycle IS the phrase)
     if (L < 1) L = 1;
     const int lenG = std::max(1, cachedLength);
     if (voiceFrameReadsFullPhrase(v))
@@ -936,7 +936,7 @@ void SequencerEngine::anchorTransport(int64_t tick1based) {
     // re-check in the next derive's edge loop.
     // (C1b Stage A) the re-entry commit is scope-gated too (no unlock flush here —
     // that belongs to the step event's advance head).
-    if (pos_.phrasePos() == 0 && lorLive_(false)) refreshVoiceLorLatches();
+    if (pos_.atPhraseEdge() && lorLive_(false)) refreshVoiceLorLatches();
     // (SLICE 5) the globalWalk_ seed line is DELETED — pos_.phaseClock(transportTick_)
     // yields wrapMod(tick−1, len_) on every read: the same value this seeded.
     const int64_t t0 = tick1based - 1;
@@ -1027,7 +1027,7 @@ void SequencerEngine::tickHolders(int transportMotion, int signMotion, const int
     // twin). Under lock the latch pends; at the unlock edge it flushes.
     const bool lorUnlockNowC1b = (lorPrevLocked_ && !locked);
     lorPrevLocked_ = locked;
-    if (lorCommitGate_(false, pos_.phrasePos() == 0, lorUnlockNowC1b)) refreshVoiceLorLatches();
+    if (lorCommitGate_(false, pos_.atPhraseEdge(), lorUnlockNowC1b)) refreshVoiceLorLatches();
     // (SLICE 5) the globalWalk_ increment line is DELETED — the congruence it maintained
     // (≡ (t−1) mod len) is pos_.phaseClock's closed form, read on demand.
     // ── the raw-clock congruences (config-independent; the RE-ANCHOR LAW on a walk-key
@@ -1224,7 +1224,7 @@ void SequencerEngine::deriveHolders(int signMotion, const int8_t* voiceMotion) {
     // phrase, so its lanes latch with the phrase edge. The refinement's negative
     // holds: a mapped voice's lanes do NOT latch at the phrase edge unless its
     // own frame is at its entry.
-    const bool atPhraseEdgeC1 = (pos_.phrasePos() == 0);
+    const bool atPhraseEdgeC1 = pos_.atPhraseEdge();
     // (C1b Stage A) idempotent re-check under the same gate — the unlock edge was
     // already consumed at the advance head this step event, so no flush here.
     if (atPhraseEdgeC1 && lorLive_(false)) refreshVoiceLorLatches();

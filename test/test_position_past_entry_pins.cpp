@@ -153,6 +153,63 @@ static void pinPureRun(const Cfg& c, int dir, const char* tag) {
     }
 }
 
+// ── GATE 4 (step 3): THE PHRASE EDGE on the same coordinate as the reads ──────────────
+// atPhraseEdge() replaced the column-derived phrasePos()==0 at the five edge sites (draw
+// edge, identity row, LOR latch, the lane-offset COMMIT gate, atPhraseEdgeC1). Pinned here
+// at the resolver, because the engine goldens turned out not to cover edge timing after a
+// mid-run flip at all — the same kind of coverage gap gates 1-2 closed for the read.
+static void pinEdgeLaw() {
+    char msg[224];
+    // (a) EQUIVALENCE on pure runs: bit-identical to phrasePos()==0, both directions.
+    for (int dir : {+1, -1}) {
+        PositionResolver p; p.reset(); p.setWindow(8, 0);
+        for (int k = 0; k < 17; ++k) {
+            p.advance(dir);
+            std::snprintf(msg, sizeof(msg),
+                "edge law: pure %s step %d — atPhraseEdge()=%d but phrasePos()==0 is %d "
+                "(a pure run must be bit-identical under both laws)",
+                dir > 0 ? "forward" : "cold reverse", k, (int)p.atPhraseEdge(), (int)(p.phrasePos() == 0));
+            CHECK(p.atPhraseEdge() == (p.phrasePos() == 0), msg);
+        }
+    }
+    // (b) THE BOUNDARY STAYS LIVE (C1 live-boundary + C2 keep-counting): global 8->4 at
+    //     step 8 must put the next boundaries at 12 AND 16, not only 16.
+    {
+        PositionResolver p; p.reset(); p.setWindow(8, 0);
+        for (int k = 0; k < 8; ++k) p.advance(+1);
+        p.setWindow(4, 0);
+        bool at12 = false, at16 = false;
+        for (int k = 8; k < 17; ++k) {
+            p.advance(+1);
+            if (k == 12) at12 = p.atPhraseEdge();
+            if (k == 16) at16 = p.atPhraseEdge();
+        }
+        CHECK(at12, "edge law: global 8->4 at step 8 — no boundary at 12 (C2 keep-counting: the live wrap moved earlier)");
+        CHECK(at16, "edge law: global 8->4 at step 8 — no boundary at 16");
+    }
+    // (c) HISTORY INDEPENDENCE after a mid-run flip: the edge follows the NET position, so
+    //     it fires where the counter is a whole number of laps from the entry — NOT at the
+    //     new direction's own entry the way phrasePos()==0 re-anchors it. This is the
+    //     audible cadence change (dice/slew redraw, LOR latch, commit) — needs a feel-test.
+    {
+        PositionResolver p; p.reset(); p.setWindow(8, 0);
+        for (int k = 0; k < 5; ++k) p.advance(+1);     // net 4
+        int sawEdgeAtNetZero = 0, divergences = 0;
+        for (int k = 0; k < 12; ++k) {
+            p.advance(-1);
+            const bool netEdge = ((p.netSteps() % 8) == 0);
+            std::snprintf(msg, sizeof(msg),
+                "edge law: after a flip, atPhraseEdge() must track the NET position (netSteps=%lld)",
+                (long long)p.netSteps());
+            CHECK(p.atPhraseEdge() == netEdge, msg);
+            if (netEdge) ++sawEdgeAtNetZero;
+            if (p.atPhraseEdge() != (p.phrasePos() == 0)) ++divergences;
+        }
+        CHECK(sawEdgeAtNetZero >= 1, "edge law: the flip run never reached a net boundary — the pin proved nothing");
+        CHECK(divergences >= 1, "edge law: the flip run never diverged from phrasePos()==0 — expected, since the edge is now history-independent");
+    }
+}
+
 int main() {
     std::printf("== test_position_past_entry_pins ==\n");
 
@@ -165,6 +222,9 @@ int main() {
     std::printf("gate 3: pure runs across laps — containment + rotation at every phrase entry (unchanged by the swap)\n");
     for (const Cfg& c : kCfgs) pinPureRun(c, +1, "FWD-pure");
     for (const Cfg& c : kCfgs) pinPureRun(c, -1, "REV-pure");
+
+    std::printf("gate 4: the phrase EDGE on the counter — pure-run equivalence, live boundary, flip independence\n");
+    pinEdgeLaw();
 
     if (g_fail) { std::printf("FAILED: %d check(s)\n", g_fail); return 1; }
     std::printf("OK\n");

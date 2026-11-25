@@ -139,11 +139,24 @@ struct PositionResolver {
         // Retiring entryDir_ is UNAFFECTED by this: that bit governed the retrace SIGN past the entry, which
         // is a different concern from where a window re-author re-seeds. History-independence past the entry
         // — the point of the net-steps swap — is intact.
-        // The PARKED case is re-ARMED, not seeded. When the window shrinks, the line above parks an
-        // out-of-window column just BEFORE the new start — a position no phase describes. Seeding the
-        // counter from it would capture that nonsense phase (e.g. 31) and then accumulate from it, while
-        // the old column-derived law simply re-derived each step and landed at 0 on the next motion. So a
-        // parked column clears the counter and un-enters it: the next motion enters at the start, read 0.
+        // A REAL window change RE-SEEDS the counter to the column's phase in the NEW window — the signed
+        // phrasePos, which is what readCoord returned here under the old entryDir_ law.
+        //
+        // WHY THIS IS STILL HERE, after the edges moved onto the counter. C2 rules that the walk should
+        // KEEP COUNTING through a re-author and fold mod the new len_ ("global 8->4 at step 8 puts the next
+        // boundaries at 12 AND 16"), which is what a free-running counter does — so this re-seed is the
+        // thing standing between us and that ruling. It cannot go yet: position is read through a THIRD
+        // face this swap has not touched. The per-voice voiceFramePhase_[v] holders — the probability-lane
+        // latch level (parent = the voice, CC_PROMPT_CADENCE_C1_LOR_PHRASE_LATCH) — are still window-
+        // anchored, so letting the global counter run free desyncs the lane commits from them: measured,
+        // test_global_dip_differential's 16->4->16 dip fails 173 checks with this re-seed removed, all of
+        // the form "no commit off the live anchor". Moving those holders onto the counter is the remaining
+        // step; until then the re-seed keeps the three faces in step.
+        //
+        // The PARKED case re-ARMS rather than seeds. When the window shrinks, the line above parks an
+        // out-of-window column just BEFORE the new start — a position no phase describes. Seeding from it
+        // would capture that nonsense phase (e.g. 31) and accumulate from it, where the old column-derived
+        // law re-derived each step and landed at 0 on the next motion.
         if (realChange) {
             if (col_ < 0 || !inWindow(col_)) { netSteps_ = 0; netEntered_ = false; }
             else {
@@ -205,6 +218,31 @@ struct PositionResolver {
     int direction() const { return dir_; }
     // (NET-STEPS) the raw count, for tests/diagnostics — readCoord() is the folded view consumers read.
     int64_t netSteps() const { return netSteps_; }
+
+    // (NET-STEPS, step 3) THE PHRASE EDGE on the SAME coordinate the reads fold. Mirrors phrasePos()==0's
+    // guards exactly; the body is the counter instead of the column.
+    //
+    // WHY THIS EXISTS. The engine read position through two faces: the READS fold readCoord (the counter)
+    // and the EDGES — draw edge, LOR latches, the lane-offset COMMIT gate — tested phrasePos()==0 (the
+    // column). Two faces means they can disagree, which is the edge-vs-read desync class this engine has
+    // chased for weeks (a commit firing where the reads no longer call a wrap).
+    //
+    // The boundary stays LIVE: len_ is read HERE, every call, so a mid-phrase length change moves the next
+    // boundary immediately — the C1 live-boundary rule, and C2's keep-counting (global 8->4 at step 8 puts
+    // boundaries at 12 AND 16, measured). Nothing is precomputed and nothing goes stale, so the emergent
+    // cadence property survives: each level still asks its parent "are you at your wrap THIS step?".
+    //
+    // MEASURED vs phrasePos()==0: bit-identical on every pure run, forward and cold reverse, and through a
+    // mid-phrase window change. They diverge only after a mid-run DIRECTION FLIP, where phrasePos re-anchors
+    // the edge onto the new direction's entry while this stays anchored to the net-zero position — the same
+    // history-independence the read law now has. That flip divergence is an audible cadence change (dice and
+    // slew redraw, LOR latch, commit) and NEEDS A RACK FEEL-TEST.
+    bool atPhraseEdge() const {
+        if (phraseOverridden_) return phraseOverride_ == 0;
+        if (col_ < 0) return true;   // the pre-start park: phrasePos() reads 0 there
+        const int64_t lg = (len_ < 1) ? 1 : (int64_t)len_;
+        return (netSteps_ % lg) == 0;
+    }
     int phrasePos() const {
         if (phraseOverridden_) return phraseOverride_;   // the phase snap's raw phrase
         if (col_ < 0) return 0;   // the pre-start park: no phrase yet
