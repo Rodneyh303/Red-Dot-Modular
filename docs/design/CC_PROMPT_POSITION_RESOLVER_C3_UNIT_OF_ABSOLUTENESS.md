@@ -203,6 +203,32 @@ disagreement visible as two methods in one file instead of two counters in two f
    behavioural delta, on the re-anchor cases (feel-tested; the re-author march in
    `test_position_resolver_identity` and the reverse-rotation anchor goldens get a conscious update).
 
+### Slice-4 attempt finding (2026-11-25) — `readCoord` is the bounded VIEW, not raw `netSteps`
+
+First swap attempt (`readCoord() { return netSteps_; }`) broke 6 goldens, and the battery pinned why.
+At a full global lap with a sub-window (`lenG=16`, `L=7`, `offG=4`): master's `readCoord` wraps to 0 so
+the macro read lands on the anchor; raw `netSteps_` is 16, and the macro/frame path (SequencerEngine.cpp
+:1301) folds `readCoord` **mod L directly, without first reducing mod lenG** — so `(16+R)%7` ≠ `(0+R)%7`.
+It diverges EVERY global lap when `lenG ≠ L`, not just on the re-anchor.
+
+So `col_` is **not pure redundancy**: `readCoord` is the `lenG`-bounded, direction-signed VIEW of the
+counter, and that wrapping is load-bearing because a consumer folds it mod L without re-reducing mod
+lenG. Raw `netSteps_` lacks the wrap. The net-steps read law `O + ((n+R) mod L)` holds for the LANE path
+(`getStrandIdx`, which reduces correctly) but NOT for the frame path as written. Slice-1's T8 pin missed
+this: it used `lenG == L` and didn't cross a full global lap with a sub-window. The goldens caught it;
+the swap was reverted (no commit).
+
+Two corrected paths for the approved delta (reverse-after-window → net-steps):
+- **(a) Bounded view**: `readCoord()` returns `netSteps_` reduced to the old range (wrap mod `lenG`,
+  signed by direction) — i.e. re-derive what `col_` gave, from the counter. Removes `col_` but must
+  reproduce the wrap + sign exactly.
+- **(b) Keep `col_`, fix only the re-park**: leave `col_` as the bounded coordinate, but stop it
+  re-parking / stop `entryDir` re-arming on a window change — the targeted source of the re-anchor.
+  Lower-risk (col_ stays, display/gating untouched), but does not retire `col_`.
+
+Pin lesson for whichever path: widen the slice-1 pins to `lenG ≠ L` across a full global lap BEFORE the
+next swap attempt.
+
 Not a no-brainer to execute: phase mode (`snapToPhaseStep` sets position directly, counter not wired);
 the cold-reverse played COLUMN (engine seeds at `endStep`, the counter at 0 then wraps — a visible
 display/mask choice); and the call-site/test count touching these members directly (slices 2–3 may be
