@@ -1,13 +1,18 @@
 // test_netsteps_model — the NET-STEPS model (Rodney 2026-11-25) reproduces the engine's CYCLE
-// read with a SINGLE signed counter: read == (pos_.netSteps() + R) mod L.
+// read with a SINGLE signed counter. The full read law, verified below:
 //
-// netSteps_ is +1 per forward step, -1 per back, 0 per hold, the first motion only "enters"
-// (read lands at netSteps_==0), reset re-initialises it, and it NEVER re-parks / re-arms on a
-// window change. The claim (pinned here against the live engine): it equals the engine's read
-// across forward, a mid-phrase FLIP (retrace), HOLDs, and rotation / offset / length changes —
-// and diverges ONLY for a reverse that begins immediately after a window change (the re-park the
-// engine still does, the same drift PR #365 removed on the forward edge). That one case is the
-// deliberate C3 decision; this test locks the equivalence everywhere else and documents the gap.
+//     read = O + ((netSteps + R + advanceOffset) mod L)
+//
+//   - netSteps : +1 per forward step, -1 per back, 0 per hold; first motion enters (netSteps==0);
+//                reset re-initialises it; it NEVER re-parks / re-arms on a window change.
+//   - R, advanceOffset : window-relative PHASE — added INSIDE mod L (rotation; per-voice phase).
+//   - O (voice LOR offset) : window PLACEMENT — added OUTSIDE mod L.
+//   - the GLOBAL transport offset is NOT in the read value — it places the played COLUMN only.
+//
+// The claim, pinned against the live engine: the counter equals the engine read for forward, a
+// mid-phrase FLIP (retrace), HOLDs, rotation, static voice/global offset, and per-voice
+// advanceOffset. It diverges ONLY on a re-anchor: a reverse that begins right after a window
+// change, and (same family) a mid-run OFFSET change. Those are the deliberate C3 cases.
 // Compile: see test/run_all.sh.
 #include <cstdio>
 #include "engines/SequencerEngine.hpp"
@@ -21,7 +26,7 @@ static const int kLanes[7] = { SequencerEngine::PL_MELODY, SequencerEngine::PL_O
 
 static SequencerEngine eng;
 static dotModular::VoiceSlot V = VoiceResolver::slot(1);
-static int L = 8, O = 0, R = 2;
+static int L = 8, O = 0, R = 2, AOFF = 0, GOFF = 0;
 
 static void setup() {
     eng.reset(); eng.numPolyVoices = 1;
@@ -30,64 +35,55 @@ static void setup() {
     for (int l=0;l<7;l++) for (int i=0;i<16;i++) eng.pe.polyRandom(V, LaneId{kLanes[l]})[i]=.5f;
     eng.setVoiceLorLocalEast(V, true);
     eng.voiceLorDir_[V.v] = SequencerEngine::LaneDir::Forward;
-    L=8; O=0; R=2;
+    L=8; O=0; R=2; AOFF=0; GOFF=0;
 }
 static void win() { eng.voiceLorRef(V,SequencerEngine::LOR_LEN)=L; eng.voiceLorRef(V,SequencerEngine::LOR_OFF)=O;
-    eng.voiceLorRef(V,SequencerEngine::LOR_ROT)=R; eng.updateWindow((float)L,0.f,false,(float)O,0.f,false); }
+    eng.voiceLorRef(V,SequencerEngine::LOR_ROT)=R; eng.updateWindow((float)L,0.f,false,(float)GOFF,0.f,false);
+    eng.advanceOffset_[V.v]=AOFF; }
 
-static int model() { long long n = eng.pos_.netSteps(); return (int)(((n + R) % L + L) % L); }
+static int model() { long long n = eng.pos_.netSteps(); long long w = (((n + R + AOFF) % L) + L) % L; return (int)((O + (int)w) % 16); }
 static int step(int motion) { eng.advancePlayhead(motion, nullptr); return eng.voiceRead_[V.v]; }
 
 int main() {
-    std::printf("test_netsteps_model: one signed counter reproduces the engine CYCLE read\n");
-    char msg[200];
+    std::printf("test_netsteps_model: read == O + ((netSteps + R + advanceOffset) mod L)\n");
+    char m[160];
 
-    // ── T1: the model tracks the engine across every dynamic change EXCEPT reverse-after-window.
-    {
-        setup(); win();
-        int bad = 0, checked = 0;
-        auto tick = [&](int motion){ int e = step(motion); int m = model(); if (e != m) ++bad; ++checked; };
-        for (int i=0;i<6;i++) tick(+1);                 // forward
-        for (int i=0;i<4;i++) tick(-1);                 // mid-phrase FLIP -> reverse (retrace)
-        tick(0); tick(0);                               // holds (directionless)
-        for (int i=0;i<2;i++) tick(+1);                 // forward
-        R=5; win(); for (int i=0;i<3;i++) tick(+1);     // rotation change
-        O=3; win(); for (int i=0;i<3;i++) tick(+1);     // offset change (placement)
-        L=4; O=0; win(); for (int i=0;i<4;i++) tick(+1);// shrink length mid-forward
-        std::snprintf(msg,sizeof msg,"T1: %d/%d steps where (netSteps+R)%%L != engine read (expect 0)", bad, checked);
-        CHECK(bad == 0, msg);
-    }
+    // T1: direction + hold at a FIXED window — forward, a mid-phrase FLIP (retrace), HOLDs, forward.
+    { setup(); win(); int bad=0,c=0; auto t=[&](int mo){ if (step(mo)!=model()) ++bad; ++c; };
+      for(int i=0;i<6;i++) t(+1); for(int i=0;i<4;i++) t(-1); t(0); t(0); for(int i=0;i<2;i++) t(+1);
+      std::snprintf(m,sizeof m,"T1 forward/flip/hold (fixed window): %d/%d differ (expect 0)",bad,c); CHECK(bad==0,m); }
 
-    // ── T2: the model is deterministic & drift-free on a cold/flip reverse from zero — and equals
-    //    the engine there too (the from-zero reverse is NOT a re-park case). Fresh run.
-    {
-        setup(); win();
-        int bad = 0;
-        for (int i=0;i<8;i++){ int e = step(-1); if (e != model()) ++bad; }   // cold reverse from transport zero
-        std::snprintf(msg,sizeof msg,"T2 cold reverse from zero: %d/8 steps differ (expect 0)", bad);
-        CHECK(bad == 0, msg);
-    }
+    // T2: cold reverse from transport zero (aligns at R, steps back).
+    { setup(); win(); int bad=0; for(int i=0;i<8;i++) if (step(-1)!=model()) ++bad;
+      std::snprintf(m,sizeof m,"T2 cold reverse from zero: %d/8 differ (expect 0)",bad); CHECK(bad==0,m); }
 
-    // ── T3: the ONE documented divergence — reverse that begins right after a mid-run window
-    //    change. The engine re-parks; the net-steps model keeps running (drift-free). We assert
-    //    the model stays deterministic (strictly stepping) AND record that the engine differs, so
-    //    any future change to this behaviour trips the test and gets a deliberate review.
-    {
-        setup(); L=4; O=0; win();                       // start in a length-4 window
-        for (int i=0;i<6;i++) step(+1);                 // run forward a while (arbitrary history)
-        L=8; O=0; win();                                // a REAL window re-author mid-run (clears entryDir)
-        int diverged = 0; long long prevN = eng.pos_.netSteps();
-        bool firstRev = true;
-        for (int i=0;i<4;i++){
-            int e = step(-1);
-            long long n = eng.pos_.netSteps();
-            if (!firstRev) { if (n != prevN - 1) { std::printf("  FAIL: netSteps not strictly decrementing on reverse\n"); ++g_fail; } }
-            prevN = n; firstRev = false;
-            if (e != model()) ++diverged;               // engine re-parks -> expected to differ from the model here
-        }
-        std::snprintf(msg,sizeof msg,"T3 reverse-after-window-change: engine diverges from model on %d/4 steps (the re-park; drift-free model is the C3 choice)", diverged);
-        CHECK(diverged > 0, msg);                        // lock in that this IS the divergence case
-    }
+    // T3: THE divergence — reverse right after a REAL window change (engine re-parks; model stays drift-free).
+    { setup(); L=4; win(); for(int i=0;i<6;i++) step(+1); L=8; win();
+      int diverged=0; long long prevN=eng.pos_.netSteps(); bool first=true;
+      for(int i=0;i<4;i++){ int e=step(-1); long long n=eng.pos_.netSteps();
+        if(!first && n!=prevN-1){ std::printf("  FAIL: netSteps not strictly decrementing\n"); ++g_fail; } prevN=n; first=false;
+        if(e!=model()) ++diverged; }
+      std::snprintf(m,sizeof m,"T3 reverse-after-window-change: engine diverges on %d/4 (the re-park = C3 choice)",diverged);
+      CHECK(diverged>0,m); }
+
+    // T4: static voice LOR offset — O places the read OUTSIDE mod L.
+    { setup(); O=3; R=0; win(); int bad=0; for(int i=0;i<8;i++) if (step(+1)!=model()) ++bad;
+      std::snprintf(m,sizeof m,"T4 static voice offset O=3 (outside mod L): %d/8 differ (expect 0)",bad); CHECK(bad==0,m); }
+
+    // T5: per-voice advanceOffset — PHASE shift INSIDE mod L.
+    { setup(); R=0; AOFF=2; win(); int bad=0; for(int i=0;i<8;i++) if (step(+1)!=model()) ++bad;
+      std::snprintf(m,sizeof m,"T5 advanceOffset=2 (inside mod L): %d/8 differ (expect 0)",bad); CHECK(bad==0,m); }
+
+    // T6: the GLOBAL transport offset is NOT in the read — it moves the played column only.
+    { setup(); O=0; R=0; GOFF=3; win(); int bad=0, colShift=0;
+      for(int i=0;i<8;i++){ int e=step(+1); if(e!=model()) ++bad; if(eng.pos_.playedColumn()!=(int)eng.pos_.netSteps()) ++colShift; }
+      std::snprintf(m,sizeof m,"T6 global offset: read diffs %d/8 (expect 0), column shifted %d/8 (expect >0)",bad,colShift);
+      CHECK(bad==0 && colShift>0,m); }
+
+    // T7: a mid-run ROTATION change is window-relative — clean (no re-anchor), unlike an offset change.
+    { setup(); win(); int bad=0; for(int i=0;i<4;i++) if(step(+1)!=model()) ++bad;
+      R=5; win(); for(int i=0;i<4;i++) if(step(+1)!=model()) ++bad;
+      std::snprintf(m,sizeof m,"T7 mid-run rotation R 2->5: %d/8 differ (expect 0)",bad); CHECK(bad==0,m); }
 
     std::printf(g_fail ? "\nFAILED (%d)\n" : "\nOK\n", g_fail);
     return g_fail ? 1 : 0;
