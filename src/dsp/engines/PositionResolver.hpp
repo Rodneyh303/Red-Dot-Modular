@@ -1,6 +1,7 @@
 #pragma once
 #include <concepts>
 #include <cstdint>
+#include <array>
 #include "PatternEngine.hpp"   // dotModular::kMaskRing / kPatternLengthCap + the global using block
 
 // PositionResolver — the ONE position authority (DESIGN_POSITION_UNIFICATION.md). SLICE 1 (CC_PROMPT_POSITION_RESOLVER.md):
@@ -76,6 +77,25 @@ struct PositionResolver {
     // FLOORED mod would force the remainder positive and destroy cold reverse — see readCoord().
     int64_t netSteps_   = 0;
     bool    netEntered_ = false;
+    // RESEED LOGGING (TEMP — the drain accessors + full rationale sit with the other pure
+    // views below; REMOVE before merge).
+    struct ReseedEvent {
+        long    seq = 0;
+        int     kind = 0;                                  // 1=reset 2=window re-ARM 3=window re-SEED 4=snapTo
+        int     lenOld = 0, lenNew = 0, offOld = 0, offNew = 0;
+        int     col = 0, dir = 0;
+        int64_t before = 0, after = 0;
+    };
+    static constexpr int kReseedRing = 8;
+    std::array<ReseedEvent, kReseedRing> reseedRing_{};
+    long        reseedSeq_ = 0;
+    void logReseed_(int kind, int lenOld, int offOld, int64_t before) {
+        ReseedEvent& e = reseedRing_[reseedSeq_ % kReseedRing];
+        ++reseedSeq_;
+        e.seq = reseedSeq_; e.kind = kind;
+        e.lenOld = lenOld; e.lenNew = len_; e.offOld = offOld; e.offNew = startStep_;
+        e.col = col_; e.dir = dir_; e.before = before; e.after = netSteps_;
+    }
 
     // ── THE ONE STATE: the played column (today's stepIndex; -1 = the pre-start park) ──
     int col_ = -1;
@@ -109,11 +129,14 @@ struct PositionResolver {
         len_ = kPatternLengthCap;
         dir_ = +1;
         col_ = -1;   // the pre-start park (mirrors stepIndex)
-        netSteps_ = 0; netEntered_ = false;   // (NET-STEPS) reset is the coordinate's only boundary
+        { const int64_t b_ = netSteps_; const int lO_ = len_, oO_ = startStep_;   // RESEED LOGGING (TEMP)
+          netSteps_ = 0; netEntered_ = false;   // (NET-STEPS) reset is the coordinate's only boundary
+          logReseed_(1, lO_, oO_, b_); }
         phraseOverridden_ = false;   // the traversal owns the phrase from here
     }
     void setWindow(int length, int offset) {
         const bool realChange = (offset != startStep_) || (((length < 1) ? 1 : length) != len_);
+        const int lenOldLog_ = len_; const int offOldLog_ = startStep_; const int64_t netBeforeLog_ = netSteps_;   // RESEED LOGGING (TEMP)
         startStep_ = offset;
         endStep_ = (offset + length - 1) & (kMaskRing - 1);
         len_ = (length < 1) ? 1 : length;
@@ -158,11 +181,14 @@ struct PositionResolver {
         // would capture that nonsense phase (e.g. 31) and accumulate from it, where the old column-derived
         // law re-derived each step and landed at 0 on the next motion.
         if (realChange) {
-            if (col_ < 0 || !inWindow(col_)) { netSteps_ = 0; netEntered_ = false; }
-            else {
+            if (col_ < 0 || !inWindow(col_)) {
+                netSteps_ = 0; netEntered_ = false;
+                logReseed_(2, lenOldLog_, offOldLog_, netBeforeLog_);   // RESEED LOGGING (TEMP): re-ARM (parked)
+            } else {
                 netSteps_   = (dir_ > 0) ? (int64_t)wrapRing(col_ - startStep_)
                                          : -(int64_t)wrapRing(endStep_ - col_);
                 netEntered_ = true;
+                logReseed_(3, lenOldLog_, offOldLog_, netBeforeLog_);   // RESEED LOGGING (TEMP): re-SEED
             }
         }
     }
@@ -209,8 +235,10 @@ struct PositionResolver {
         // counter never learns about the snap, and the first clocked advance() (which clears the override)
         // would silently resume from the pre-snap count: the phase-drive -> clock handover would jump.
         // Under the old col_-derived law the snap persisted for free, because the snap set col_.
-        netSteps_   = (dir_ > 0) ? (int64_t)phrasePos : -(int64_t)phrasePos;
-        netEntered_ = true;   // the snap IS the entry: the next motion accumulates from here
+        { const int64_t b_ = netSteps_;   // RESEED LOGGING (TEMP)
+          netSteps_   = (dir_ > 0) ? (int64_t)phrasePos : -(int64_t)phrasePos;
+          netEntered_ = true;   // the snap IS the entry: the next motion accumulates from here
+          logReseed_(4, len_, startStep_, b_); }
     }
 
     // ── the PURE views ──
@@ -218,6 +246,17 @@ struct PositionResolver {
     int direction() const { return dir_; }
     // (NET-STEPS) the raw count, for tests/diagnostics — readCoord() is the folded view consumers read.
     int64_t netSteps() const { return netSteps_; }
+
+    // ── RESEED LOGGING (TEMP — debug/reseed-logging branch, REMOVE before merge) ──────────────
+    // Records every event that WRITES the net-steps counter outside plain counting — a window
+    // re-arm/re-seed, a snap, a reset — so the Rack log can show what the setWindow re-seed does
+    // in a live patch. The payload is before -> after: the BEFORE value IS the free-running
+    // counter a C2 keep-counting law would have kept, so (after - before) is exactly the
+    // divergence the re-seed introduces — the quantity the 3b diagnosis needs to see per event.
+    // Rack-free by design: this only RECORDS; Monsoon.cpp drains the ring into INFO "[reseed]"
+    // lines once per control block (the prior debug/phrase-boundary-logging pattern).
+    long reseedSeq() const { return reseedSeq_; }
+    const ReseedEvent& reseedEvent(long seq) const { return reseedRing_[(seq - 1) % kReseedRing]; }
 
     // (NET-STEPS, step 3) THE PHRASE EDGE on the SAME coordinate the reads fold. Mirrors phrasePos()==0's
     // guards exactly; the body is the counter instead of the column.

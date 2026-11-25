@@ -1887,6 +1887,33 @@ void Monsoon::process(const ProcessArgs& args) {
             params[PATTERN_OFFSET_PARAM].getValue(), inputs[OFFSET_INPUT].getVoltage(), inputs[OFFSET_INPUT].isConnected()
         );
 
+        // ── RESEED LOGGING (TEMP — debug/reseed-logging): grep the Rack log for "[reseed]" ─────
+        // One INFO line per net-steps counter re-seed: every event that WRITES the counter outside
+        // plain counting (reset / window re-ARM / window re-SEED / snapTo), with before -> after.
+        // The BEFORE value is the free-running counter a C2 keep-counting law would have kept, so
+        // delta = after - before IS the divergence the setWindow re-seed introduces per event — the
+        // quantity the 3b diagnosis needs. Drains the resolver's ring once per control block (the
+        // debug/phrase-boundary-logging pattern). REMOVE before merge (this block + the TEMP ring
+        // in PositionResolver.hpp + the TEMP getters in SequencerEngine.hpp).
+        {
+            static long lastSeenReseed = 0;
+            const long nowSeq = engine.reseedSeq();
+            if (nowSeq - lastSeenReseed > (long)PositionResolver::kReseedRing) {
+                INFO("[reseed] (%ld events dropped — ring overrun, likely snap flood in phase drive)",
+                     (nowSeq - lastSeenReseed) - (long)PositionResolver::kReseedRing);
+                lastSeenReseed = nowSeq - (long)PositionResolver::kReseedRing;
+            }
+            for (; lastSeenReseed < nowSeq; ++lastSeenReseed) {
+                const auto& e = engine.reseedEvent(lastSeenReseed + 1);
+                static const char* kReseedKinds[] = {"?", "reset", "window re-ARM (parked)", "window re-SEED", "snapTo"};
+                INFO("[reseed] #%ld %s | win %d@%d -> %d@%d | col=%d dir=%+d | netSteps %lld -> %lld (delta %+lld) | tick=%lld",
+                     e.seq, kReseedKinds[(e.kind >= 1 && e.kind <= 4) ? e.kind : 0],
+                     e.lenOld, e.offOld, e.lenNew, e.offNew, e.col, e.dir,
+                     (long long)e.before, (long long)e.after, (long long)(e.after - e.before),
+                     (long long)engine.dbgTick());
+            }
+        }
+
         // UNIFIED ADDRESSING Stage 2b: the voice-range authoring rows (editor stores,
         // the Macro/East surfaces author them) -> the engine's voice LOR store, ONE
         // push per control block — the same one-block cadence every authored LOR uses.

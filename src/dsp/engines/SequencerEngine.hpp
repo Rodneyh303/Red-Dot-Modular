@@ -321,6 +321,11 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
     // and playedColumn() IS the played column (-1 = not started).
     int  playedColumn() const { return pos_.playedColumn(); }
     bool started()      const { return pos_.playedColumn() >= 0; }
+    // RESEED LOGGING (TEMP — debug/reseed-logging branch, REMOVE before merge): the resolver's
+    // re-seed event ring + the transport tick, drained by Monsoon.cpp into INFO "[reseed]" lines.
+    long reseedSeq() const { return pos_.reseedSeq(); }
+    const PositionResolver::ReseedEvent& reseedEvent(long seq) const { return pos_.reseedEvent(seq); }
+    int64_t dbgTick() const { return transportTick_; }
     // (SLICE 2b — the phase-sweep history) the previous snap's UNWRAPPED absStep: the
     // phase direction is known only between two consecutive PPQN quantisations (per
     // snap, as the sign of the change). Cleared in reset(); NOT touched by gate/clock.
