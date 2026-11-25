@@ -85,6 +85,49 @@ int main() {
       R=5; win(); for(int i=0;i<4;i++) if(step(+1)!=model()) ++bad;
       std::snprintf(m,sizeof m,"T7 mid-run rotation R 2->5: %d/8 differ (expect 0)",bad); CHECK(bad==0,m); }
 
+    // ── T8: THE SWAP-EQUIVALENCE PIN (slice 1). The eventual swap replaces readCoord() (the col_
+    //    coordinate) with netSteps() as the input to the read fold. The engine reduces the
+    //    coordinate mod lenG BEFORE any fold (vCoord = wrapMod(coord + advanceOffset, lenG)), so if
+    //    netSteps ≡ readCoord (mod lenG) the swap is byte-identical — for EVERY downstream fold
+    //    (per-voice advanceOffset, per-lane walkFold incl. pendulum/ping-pong, getStrandIdx,
+    //    sub-windows), because the fold is unchanged and sees the same reduced value. Pin that
+    //    congruence across forward, a mid-phrase FLIP (incl. wrapping past the window start), HOLD,
+    //    and cold reverse. lenG == L here. ──
+    auto congr = [&](){ long long n=eng.pos_.netSteps(), r=eng.pos_.readCoord();
+        return (int)(((n%L)+L)%L) == (int)(((r%L)+L)%L); };
+    {
+        setup(); win(); int bad=0,c=0; auto t=[&](int mo){ step(mo); if(!congr()) ++bad; ++c; };
+        for(int i=0;i<6;i++) t(+1); for(int i=0;i<6;i++) t(-1); t(0); for(int i=0;i<3;i++) t(+1);
+        std::snprintf(m,sizeof m,"T8 netSteps ≡ readCoord (mod lenG) [swap-equivalence]: %d/%d violate (expect 0)",bad,c);
+        CHECK(bad==0,m);
+    }
+
+    // ── T9: and it must DIVERGE on the one re-anchor case — reverse after a real window change —
+    //    so the swap is NOT a silent no-op there (that is the deliberate drift-free C3 delta). ──
+    {
+        setup(); L=4; win(); for(int i=0;i<6;i++) step(+1); L=8; win();
+        int diverged=0; for(int i=0;i<4;i++){ step(-1); if(!congr()) ++diverged; }
+        std::snprintf(m,sizeof m,"T9 reverse-after-window: netSteps/readCoord diverge on %d/4 (the re-anchor; expect >0)",diverged);
+        CHECK(diverged>0,m);
+    }
+
+    // ── T10: the swap only changes the TRANSPORT coordinate (pos_). Lane LOR (L/O/R), lane
+    //    direction (pendulum/ping-pong), and poly advanceOffset are all DOWNSTREAM folds, unchanged
+    //    by the swap, and the engine reduces the coordinate mod lenG before each — so T8's congruence
+    //    covers them by construction. The one way that could break is if POLY advance fed back into
+    //    the shared pos_. Pin that it does not: two voices, the transport congruence still holds. ──
+    {
+        eng.reset(); eng.numPolyVoices = 2;
+        for (int i=0;i<16;i++){ eng.pe.melodyRandom[i]=.3f; eng.pe.octaveRandom[i]=.4f; eng.pe.qmixRandom[i]=.5f;
+            eng.pe.rhythmRandom[i]=.6f; eng.pe.accentRandom[i]=.2f; eng.pe.variationRandom[i]=.7f; eng.pe.legatoRandom[i]=.1f; }
+        for (int vv=1; vv<=2; ++vv){ auto S=VoiceResolver::slot(vv); for(int l=0;l<7;l++) for(int i=0;i<16;i++) eng.pe.polyRandom(S,LaneId{kLanes[l]})[i]=.5f; }
+        L=8; O=0; R=0; GOFF=0; eng.updateWindow(8.f,0.f,false,0.f,0.f,false);
+        int bad=0; auto t=[&](int mo){ eng.advancePlayhead(mo,nullptr); if(!congr()) ++bad; };
+        for(int i=0;i<6;i++) t(+1); for(int i=0;i<4;i++) t(-1);
+        std::snprintf(m,sizeof m,"T10 poly (2 voices) leaves transport congruence intact: %d violate (expect 0)",bad);
+        CHECK(bad==0,m);
+    }
+
     std::printf(g_fail ? "\nFAILED (%d)\n" : "\nOK\n", g_fail);
     return g_fail ? 1 : 0;
 }
