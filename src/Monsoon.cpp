@@ -1826,7 +1826,7 @@ void Monsoon::process(const ProcessArgs& args) {
         // (the ONE position authority; == stepIndex by the identity harness -- SLICE 3's
         // consumer migration) -- replaces the old caV2PrevStep_/caV2PrevLocked_ shadow state.
         MONSOON_PROF_BEGIN(ctrl_sync);  // sync: lock boundary detect + expander sync
-        lockManager.tick(engine.pos_.playedColumn());
+        lockManager.tick(engine.pos_.playedColumn(), engine.lastStepResult.wrapped);
         // RATE::PHRASE tier feed: the boundary edge (stepIndex wrap — the TickCount source per the
         // per-mode chains in ui/RateManager.hpp) advances the first-class Phrase tier. Containment's
         // pending machinery commits on THIS edge (fired from expanderManager.sync below — the CA
