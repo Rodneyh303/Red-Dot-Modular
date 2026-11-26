@@ -66,6 +66,57 @@ instrument). Scoreboard, full suite each (2026-11-26):
 - Current-direction origins fail at the FLIP itself (first reversed step moves the coordinate
   FORWARD: tick −1 but −dir +2), not merely past the entry.
 
+## WHY NET-STEPS IS BETTER IN A DYNAMIC SETTING — the path-independence payoff
+
+The swap looks like it only TRADES one thing (the old entryDir retrace past the entry) for
+history-independence. Measured, it is a strict UPGRADE for dynamic play, and here is the reason
+stated plainly (Rodney + Claude, 2026-11-26).
+
+WITHIN A FIXED WINDOW (no re-author, no snap) THE READ IS A PURE, TOTAL FUNCTION OF netSteps:
+
+    read = netSteps mod lenG        (every netSteps value -> the same cell, ALWAYS)
+
+There is NO path dependence. How you arrived at a given netSteps — forward, reverse, after any
+number of entry crossings — does not change the read. The entry is simply the point where
+netSteps == 0; from it you can run retraceable journeys forward AND back (or back then forward),
+and every leg retraces exactly.
+
+Two cases that make it concrete (measured on the fix/readcoord-netsteps-truncated resolver, lenG=5):
+
+  FIRST FORWARD:        netSteps  0  1  2  3      -> cells 0 1 2 3
+  REVERSE past entry:   netSteps  2  1  0 -1 -2   -> cells 2 1 0 4 3
+  FORWARD AGAIN (-2 ->):netSteps -1  0  1  2  3 4 -> cells 4 0 1 2 3 4
+
+  A. Reversed past entry into the "clean reverse" zone (netSteps −2), then forward again: we
+     retrace the clean-reverse zone exactly — netSteps −1 reads cell 4 whether we pass it going
+     back or going forward. Forward retraces back through the entry.
+  B. Continue forward through the entry and beyond: netSteps 0,1,2,3 read cells 0,1,2,3 — byte-
+     identical to the FIRST forward pass. Reverse from there and it retraces again. Arbitrarily
+     many times.
+
+THE OLD MODEL had exactly ONE retrace anchor, fixed at the first entry, and it BROKE the instant
+you crossed it (past-entry read the drifting col-derived forward branch). Net-steps has NO anchor
+and NO cliff: because the read is purely positional, the retrace/repeat guarantees NEST and
+COMPOSE instead of replacing each other. As soon as you pass the point of one guarantee you are
+laying down a new one, while the first can still be repeated or taken further. The "little given
+up" (one anchored retrace) buys "retraceable everywhere, in both directions, across any number of
+crossings" — the strictly richer thing for building deep forward/backward gestures.
+
+CAVEATS (the honest boundaries of the claim):
+- The purity holds BETWEEN position-authority events. A window re-author (the setWindow re-seed)
+  and a snapTo re-anchor netSteps, so they re-base the function at that moment — by design (an
+  external authority asserting a new position), not a leak.
+- There is NO natural "reset to zero" regulator, and there must not be: the read tracks UNBOUNDED
+  net motion precisely so reverse can span arbitrary forward phrases. A periodic zeroing would
+  destroy that guarantee (you would lose retrace across the reset). The only re-anchors are the
+  position authorities above (reset / re-author / snap). (int64 is effectively unbounded at audio
+  rates.)
+- The guarantee is on the READ (the position the resolver outputs). Whether the AUDIO retraces
+  depends on the downstream (dice / slew / probability lanes) being reversible too — reverse
+  guarantees the positional MATERIAL is identical, not that every stateful modulator replays
+  identically. The read is now perfectly path-independent; the sound is as reversible as the lanes
+  feeding off it.
+
 ## TWO COORDINATES, BY ROLE (not duplication)
 
 `transportTick_` is a CLOCK — Σ motions, never repositioned. `netSteps_` is a POSITION —
