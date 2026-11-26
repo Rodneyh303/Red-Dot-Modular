@@ -66,6 +66,34 @@ or that an unrelated signal routes through it.
 - **Priority: MEDIUM** (generic StoreEditAction gives partial assurance; the lock interaction
   is the real hole).
 
+### G4 — Warp distributions & phase distortion — PARAM-BACKED (native undo), NO lock gating
+Raised in the sweep: do the newer warp-distribution and phase-distortion features have lock
+and undo? Traced through `PhaseDistortion`, `SandsDistributionExpander`,
+`SandsPhaseDistSubpanel`, `PhaseDistStore`:
+
+- **Undo — covered natively, no custom action needed.** Both are driven by Rack **params**
+  (warp reads via `warpParamValue(s.f, p)`; the phase-dist set/kind indices are
+  `PHASE_SET_PARAM` / `SUBPHASE_SET_PARAM`). Rack pushes a `history::ParamChange` for every
+  param edit automatically, so these undo for free. There is **no** custom `history::Action`
+  anywhere in the warp/phase-dist tree — and, because the editable state *is* the params,
+  none is required. The phase-dist subpanel's `onButton` is set **selection** only, not a
+  value edit.
+- **`PhaseDistStore`'s "lock"/"snapshot" is NOT the user Lock/Undo feature** — it is a
+  per-audio-block reader-copy + `std::mutex` for audio/UI thread consistency
+  (PHASE_DISTRIBUTION_SPEC §14). Unrelated mechanism; easy to mistake by name.
+- **Lock gating — absent.** Warp has **no Monsoon-Lock control by design** (it is a
+  distributional param, not an A/B-mix property — documented at `PatternEngine.hpp:1363`).
+  Phase distortion is likewise **not gated by Monsoon Lock**: a param edit under lock takes
+  effect immediately rather than queueing to the phrase boundary like CA/Cantonment/Sands.
+  Whether that is intended (distributional params are "always live") or an oversight is a
+  **design call for Rodney**, not a mechanical gap.
+- **Verdict:** not a test gap today. Native param-undo holds; there is no custom edit state to
+  snapshot. The only open item is the **design question** of whether phase-distortion param
+  edits should respect Monsoon Lock (queue-to-boundary) the way the other voice-affecting
+  edits do. If Rodney decides they should, that becomes a feature + a boundary-commit test;
+  until then there is nothing to pin.
+- **Priority: DESIGN DECISION** (no code/test until the lock-gating question is answered).
+
 ### G3 — Sands-axis live-under-lock depth — PARTIAL
 - `dirLive_(strand)` uses `scopeLiveMask & (melodyAxis ? kSandsM : kSandsR)`; covered
   indirectly via `test_lor_phrase_latch` / `test_slew_latch_regression`. No direct test that
@@ -76,10 +104,13 @@ or that an unrelated signal routes through it.
 
 ## Recommended order
 
-1. **G1 dice undo** — high value, low effort, rack-free. Start here.
+1. **G1 dice undo** — DONE (`test_dice_undo`, 5 cases: undo/redo round-trip, ORDER-MATTERS,
+   stream independence). High value, low effort, rack-free.
 2. **G2 Straits Sands visual lock+undo** — needs a store-edit shim or a small rack-free core
    (same Cantonment/CA precedent); schedule as its own PR.
 3. **G3** — opportunistic hardening, bundle with G2 if the Sands scaffolding is already open.
+4. **G4 warp / phase-distortion** — no test to write; awaiting Rodney's call on whether
+   phase-dist param edits should be Monsoon-Lock-gated. Native param-undo already holds.
 
 ## Not in scope (deliberately)
 - Feel-tests already queued for Rodney (reset-edge commit decision, rateManager Phrase reverse
