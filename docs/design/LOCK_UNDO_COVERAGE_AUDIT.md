@@ -66,33 +66,52 @@ or that an unrelated signal routes through it.
 - **Priority: MEDIUM** (generic StoreEditAction gives partial assurance; the lock interaction
   is the real hole).
 
-### G4 — Warp distributions & phase distortion — PARAM-BACKED (native undo), NO lock gating
-Raised in the sweep: do the newer warp-distribution and phase-distortion features have lock
-and undo? Traced through `PhaseDistortion`, `SandsDistributionExpander`,
-`SandsPhaseDistSubpanel`, `PhaseDistStore`:
+### G4 — Warp distributions & phase distortion — NOT lock-gated; curve-draw undo gap
+**CORRECTION** (an earlier draft of this section wrongly called these "param-backed, native
+undo"). They are NOT Rack params. Rodney's de-paramming exercise moved the whole distribution
+set off Rack's param array (which has a hard slot cap). Re-traced through `WarpCurvePopup`,
+`SandsDistributionExpander`, `SandsPhaseDistSubpanel`, `PatternEngine`, `Monsoon`:
 
-- **Undo — covered natively, no custom action needed.** Both are driven by Rack **params**
-  (warp reads via `warpParamValue(s.f, p)`; the phase-dist set/kind indices are
-  `PHASE_SET_PARAM` / `SUBPHASE_SET_PARAM`). Rack pushes a `history::ParamChange` for every
-  param edit automatically, so these undo for free. There is **no** custom `history::Action`
-  anywhere in the warp/phase-dist tree — and, because the editable state *is* the params,
-  none is required. The phase-dist subpanel's `onButton` is set **selection** only, not a
-  value edit.
+- **De-paramming confirmed intact.** Spread, warp tilt / atom-level / atom-mass / gap-loc /
+  gap-size (= param1/param2/atom/gap), and the kind are ALL de-parammed custom store state.
+  **Zero** of them appear in Monsoon's `ParamIds` enum and there are **zero** `configParam`
+  calls for them. `warpParamValue(s.f, p)` reads `s.f` — a float inside a `PhaseDistSet` — not
+  a Rack `ParamQuantity`. So warp is correctly NOT a standard Rack param, consistent with
+  spread. Nothing regressed into a param.
 - **`PhaseDistStore`'s "lock"/"snapshot" is NOT the user Lock/Undo feature** — it is a
   per-audio-block reader-copy + `std::mutex` for audio/UI thread consistency
   (PHASE_DISTRIBUTION_SPEC §14). Unrelated mechanism; easy to mistake by name.
-- **Lock gating — absent.** Warp has **no Monsoon-Lock control by design** (it is a
-  distributional param, not an A/B-mix property — documented at `PatternEngine.hpp:1363`).
-  Phase distortion is likewise **not gated by Monsoon Lock**: a param edit under lock takes
-  effect immediately rather than queueing to the phrase boundary like CA/Cantonment/Sands.
-  Whether that is intended (distributional params are "always live") or an oversight is a
-  **design call for Rodney**, not a mechanical gap.
-- **Verdict:** not a test gap today. Native param-undo holds; there is no custom edit state to
-  snapshot. The only open item is the **design question** of whether phase-distortion param
-  edits should respect Monsoon Lock (queue-to-boundary) the way the other voice-affecting
-  edits do. If Rodney decides they should, that becomes a feature + a boundary-commit test;
-  until then there is nothing to pin.
-- **Priority: DESIGN DECISION** (no code/test until the lock-gating question is answered).
+- **Undo — mostly covered, one real gap.** The de-parammed knobs are bound via
+  `bindStoreKnob` (StoreBound), whose `onDragEnd`/`resetToDefault` push a coalesced
+  `StoreEditAction` — so **spread and the warp tune knobs (tilt/atom/gap) ARE undoable**. The
+  exception: the **freehand curve-draw** (`WarpCurveEditor` interior-point drag) — its
+  `onEdit` only calls `requestWarpRebuild*`, pushing **no** `StoreEditAction`. So editing the
+  *drawn* distribution kind is **not undoable**. (Undo gap, drawn-kind only.)
+- **Lock gating — absent, confirmed.** No warp/phase setter checks `locked` or queues to the
+  phrase boundary. A warp/phase edit under lock changes the sounding output immediately,
+  unlike CA/Cantonment/Sands (which defer to the boundary). Rodney has decided this is a
+  **defect to fix**: phase and warp SHOULD respect lock.
+- **Priority: HIGH (lock-gating — approved work).** Plus a small follow-up: a `StoreEditAction`
+  for the freehand curve-draw.
+
+#### G4 implementation plan — make warp/phase respect lock
+The apply points are clean and the boundary signal already exists (`LockManager.queueFires()`
+/ `boundaryNow()`, rack-free + tested):
+
+- **Warp.** The UI writes the store immediately (knob + undo stay live) and bumps
+  `warpUiScope_`; the audio thread drains that scope once per block at `Monsoon.cpp:~826`
+  (`switch (warpUiScope_) { rebuildWarpMirror* }`). Gate that drain: when `locked`, hold
+  `warpUiScope_` (it already accumulates/widens to ALL) and consume it only when
+  `lockManager.queueFires()` fires (boundary, or the unlock edge). Result: edit + display +
+  undo stay live under lock; the SOUNDING distribution defers to the phrase boundary — exactly
+  the CA/Sands contract.
+- **Phase distortion.** Reader picks up new sets via `PhaseDistStore::snapshotSet` per block.
+  Gate the reader's pickup the same way (defer the set-swap to the boundary under lock). More
+  involved than warp (per-block snapshot), so schedule as its own step after warp.
+- **Testability.** The decision is `lockManager.queueFires()` — already rack-free-tested. The
+  warp gate itself is a small `Monsoon.cpp` edit, pinned by the plugin-TU syntax smoke + a
+  source-shape grep (the `test_played_column_consumers` pattern). Boundary-commit behaviour
+  (sounding deferred, applied at edge) is the feel-test.
 
 ### G3 — Sands-axis live-under-lock depth — PARTIAL
 - `dirLive_(strand)` uses `scopeLiveMask & (melodyAxis ? kSandsM : kSandsR)`; covered
@@ -109,8 +128,11 @@ and undo? Traced through `PhaseDistortion`, `SandsDistributionExpander`,
 2. **G2 Straits Sands visual lock+undo** — needs a store-edit shim or a small rack-free core
    (same Cantonment/CA precedent); schedule as its own PR.
 3. **G3** — opportunistic hardening, bundle with G2 if the Sands scaffolding is already open.
-4. **G4 warp / phase-distortion** — no test to write; awaiting Rodney's call on whether
-   phase-dist param edits should be Monsoon-Lock-gated. Native param-undo already holds.
+4. **G4 warp / phase-distortion lock-gating** — APPROVED. Make warp + phase edits defer their
+   sounding change to the phrase boundary under lock (gate the apply point on
+   `lockManager.queueFires()`). Warp first (single drain point in `Monsoon.cpp`), phase-dist
+   second (per-block snapshot). Plus a small follow-up: `StoreEditAction` for the freehand
+   curve-draw (the one de-parammed edit still missing undo).
 
 ## Not in scope (deliberately)
 - Feel-tests already queued for Rodney (reset-edge commit decision, rateManager Phrase reverse
