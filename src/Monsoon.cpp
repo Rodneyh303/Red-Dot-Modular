@@ -820,20 +820,11 @@ void Monsoon::process(const ProcessArgs& args) {
     // address) and are covered by pendingRegenB → recomputeEffective* → rebuild.
     engine.pe.setWarpBank(&editor.warp);
 
-    // CC_PROMPT_04 (warp UI): consume any pending UI warp-edit scope — the East/Macro
-    // panel StoreKnobs + curve popup bumped it after writing the warp stores. The
-    // audio thread performs the scoped rebuildWarpMirror* here, so warped_ keeps a
-    // single writer; ≤1 block of latency reads as an immediate display refresh.
-    switch (warpUiScope_) {
-        case WarpUiScope::VOICE_LANE:
-            engine.pe.rebuildWarpMirrorVoiceLane(warpUiV_, warpUiLane_); break;
-        case WarpUiScope::LANE_DELEGATING:
-            engine.pe.rebuildWarpMirrorLaneDelegating(warpUiLane_); break;
-        case WarpUiScope::ALL:
-            engine.pe.rebuildWarpMirrorAll(); break;
-        default: break;
-    }
-    warpUiScope_ = WarpUiScope::NONE;
+    // CC_PROMPT_04 (warp UI): the bank POINTER is wired here (above), but the pending
+    // UI warp-edit scope is now DRAINED in the control-rate block, gated on
+    // lockManager.queueFires() — warp edits respect Lock and commit on the phrase
+    // boundary, the same contract as the CA/Sands pending machinery (G4 lock-gating,
+    // audit #377). See the gated drain after expanderManager.sync().
 
     // The distribution send-bus watchdog (see the state comment in Monsoon.hpp): the
     // SandsDistributionExpander republishes its deltas + bumps its role's heartbeat
@@ -1839,6 +1830,26 @@ void Monsoon::process(const ProcessArgs& args) {
         // The Macro sync-population producer skips on unchanged inputs (the 3% fix).
         rateManager.dispatch(redDot::Rate::Control);
         expanderManager.sync(engine, lockManager.queueFires());
+
+        // Warp UI edits respect Lock + commit on the phrase boundary — SAME gate as the
+        // pending machinery above (lockManager.queueFires(): fire at a boundary while
+        // unlocked, flush at the unlock edge, HOLD while locked between boundaries). The
+        // UI wrote the warp store immediately (knob + undo stay live); only the sounding
+        // mirror rebuild defers here. warpUiScope_ accumulates/widens to ALL while held.
+        // Engine-internal rebuilds (regen / role-flip) bypass this — they call
+        // rebuildWarpMirror* directly, not the UI request path. (G4 lock-gating, audit #377)
+        if (warpUiScope_ != WarpUiScope::NONE && lockManager.queueFires()) {
+            switch (warpUiScope_) {
+                case WarpUiScope::VOICE_LANE:
+                    engine.pe.rebuildWarpMirrorVoiceLane(warpUiV_, warpUiLane_); break;
+                case WarpUiScope::LANE_DELEGATING:
+                    engine.pe.rebuildWarpMirrorLaneDelegating(warpUiLane_); break;
+                case WarpUiScope::ALL:
+                    engine.pe.rebuildWarpMirrorAll(); break;
+                default: break;
+            }
+            warpUiScope_ = WarpUiScope::NONE;
+        }
         MONSOON_PROF_END(ctrl_sync);
 
         MONSOON_PROF_BEGIN(ctrl_rest);  // rest: cached* + CV logic + updateWindow + CV3 tail
