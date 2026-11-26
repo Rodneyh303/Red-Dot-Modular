@@ -177,16 +177,18 @@ int main() {
     // ── GATE 4: the manager feeds read the resolver (the two Rodney rulings) ─────────
     check(ctrl.find("lastStepIndex = engine.pos_.playedColumn()") != std::string::npos,
           "MonsoonModeController::updateLastStepIndex reads engine.pos_.playedColumn()");
-    check(mon.find("lockManager.tick(engine.pos_.playedColumn())") != std::string::npos,
-          "Monsoon's lock tick feeds engine.pos_.playedColumn() (the one-token transport change)");
+    // (BOUNDARY-ON-ENGINE-EDGE) tick now also takes the engine's phrase-wrap flag; it still feeds
+    // the resolver's played column (not engine.stepIndex) — the intent this gate guards.
+    check(mon.find("lockManager.tick(engine.pos_.playedColumn(), engine.lastStepResult.wrapped)") != std::string::npos,
+          "Monsoon's lock tick feeds engine.pos_.playedColumn() + the engine phrase-wrap flag");
     check(mon.find("lockManager.tick(engine.stepIndex)") == std::string::npos,
           "Monsoon's lock tick no longer feeds the bare stepIndex");
     check(og.find("const int maskStep = engine.pos_.playedColumn()") != std::string::npos,
           "MonsoonOutputGenerator's mask step reads engine.pos_.playedColumn()");
     check(og.find("maskStep = engine.stepIndex") == std::string::npos,
           "MonsoonOutputGenerator no longer reads the bare stepIndex for the mask");
-    check(lock.find("void tick(int playedColumn)") != std::string::npos,
-          "MonsoonLockManager::tick's parameter IS the played column (fed by the caller)");
+    check(lock.find("void tick(int playedColumn, bool atPhraseBoundary)") != std::string::npos,
+          "MonsoonLockManager::tick takes the played column + the engine phrase-wrap flag (BOUNDARY-ON-ENGINE-EDGE)");
 
     // ── GATE 5 (STEP 4-final — the retirement): the ENGINE sources carry NO stepIndex
     // token at all — the field, the mirror writes and the prevStep capture are gone;

@@ -170,8 +170,17 @@ public:
     // This is lock/TRANSPORT logic, not expander topology -- it belongs here, fed the engine's
     // played column (pos_.playedColumn() -- the ONE position authority, == stepIndex by the
     // identity harness; SLICE 3's consumer migration), not re-derived in a topology manager.
-    void tick(int playedColumn) {
-        boundaryNow_ = (playedColumn < prevStep_);        // step wrapped => phrase boundary
+    // (BOUNDARY-ON-ENGINE-EDGE, 2026-11-26) The phrase boundary is now the ENGINE's OWN wrap flag
+    // (atPhraseBoundary = eng.lastStepResult.wrapped — the net-steps atPhraseEdge), NOT the old
+    // column heuristic `playedColumn < prevStep_`. That heuristic assumed forward travel and so
+    // INVERTED in reverse: in reverse every ordinary step has col < prev, so it fired on every
+    // non-boundary step and was silent AT the true low->high wrap — the CA/Cantonment reverse
+    // commit-timing defect (test_cantonment/change_alley_boundary_drive_modes gate 2), and the same
+    // for rateManager Rate::Phrase. The engine flag is direction-agnostic (correct in clock-fwd,
+    // clock-rev AND phase — Intertropical already rides it; test_intertropical_scene). playedColumn
+    // is still tracked for callers that want it, but the boundary no longer derives from it.
+    void tick(int playedColumn, bool atPhraseBoundary) {
+        boundaryNow_ = atPhraseBoundary;                  // the engine's phrase-wrap flag (direction-agnostic)
         unlockNow_   = (prevLocked_ && !locked_);         // locked -> unlocked this tick
         prevStep_    = playedColumn;
         prevLocked_  = locked_;
