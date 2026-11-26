@@ -88,6 +88,7 @@ TESTS=(
   "test_StoreEditAction|"
   "test_ca_qmix_source_select|"
   "test_ca_true_reverse|"
+  "test_change_alley_module|$SE $GS $PE $CE"   # the Change Alley V2 MODULE-STATE core (ChangeAlleyModuleCore, rack-free), headless - the sibling of test_cantonment_module and the thing that was IMPOSSIBLE before the core existed: CA's commit cycle lived on the Rack Module (applyPendingTransforms), so #372 could only TRANSCRIBE the fire/axis rule. S0-S9 drive the core cycle (defaults, the hold, commit, axis gating, the q-mix 0b111 all-axis rule and its 0b011 regression guard, chronological stamp order, scatter counters, true-reverse consume + STOP-at-start, undo snapshots, resetAll). E1 drives it END TO END through the REAL seam - SequencerEngine + the real LockManager feeding queueFires() into core.applyAtBoundary - the forward verb commits exactly at the wrap, the reverse one commits off-boundary (the inherited heuristic defect, characterized). The join #372 had to mock
   "test_ca_pending_order|"
   "test_change_alley_transforms|"
   "test_cantonment_edits|"   # Cantonment step 1: edit checks (self reject, ancestor-closure wavefront reject, valid accept, idempotent re-pin, remove/clear always valid) + raw uint16[16] serialize/deserialize round-trip identity (the WARPDIAG lesson) + reject-invalid-blob guard; seeded-Philox random-DAG march (600 seeds x 80 edits, validity asserted at every step)
