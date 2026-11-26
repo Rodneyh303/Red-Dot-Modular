@@ -834,7 +834,7 @@ bool SequencerEngine::voiceFrameEdgeLive_(int v) const {
     int L, O, R; LaneDir d;
     effectiveVoiceLor(v, L, O, R, d);
     if (L == kPatternLengthCap && O == 0 && R == 0 && d == LaneDir::Forward)
-        return pos_.atPhraseEdge();   // the identity row: the global phrase edge (its pass-through cycle IS the phrase)
+        return pos_.phrasePos() == 0;   // the identity row: the global phrase ENTRY (the COLUMN edge, not the free-running counter — so the commit lands on the live anchor after a window re-author; retire-reseed)
     if (L < 1) L = 1;
     const int lenG = std::max(1, cachedLength);
     if (voiceFrameReadsFullPhrase(v))
@@ -858,7 +858,13 @@ bool SequencerEngine::voiceFrameEdgeLive_(int v) const {
     // wrapMod((dir>0 ? phrasePos : -phrasePos) + advanceOffset, lenG)); the fold =
     // walkFold (the WalkResolver<Policy> skeleton — the ONE laneTickFor+anchorBias
     // fold); the edge = walkEdge (the policy-declared direction-entry box-offset).
-    const int64_t vCoord = wrapMod(pos_.readCoord() + advanceOffset_[v], lenG);   // (TRUE-RETRACE) the same entry-anchored coordinate the read folds
+    // The commit EDGE rides the COLUMN (phrasePos, transport-signed), NOT readCoord: the
+    // edge must land on the live window anchor through a global re-author, while readCoord
+    // (netSteps) keeps its path-independent role for the READ only. These agree whenever the
+    // window is stable; decoupling them lets the in-window re-seed retire (the read and edge
+    // no longer need forcing into congruence). The reverse anchor still rides walkFold/walkEdge.
+    const int64_t sPosV_e = (pos_.direction() > 0) ? (int64_t)pos_.phrasePos() : -(int64_t)pos_.phrasePos();
+    const int64_t vCoord = wrapMod(sPosV_e + advanceOffset_[v], lenG);
     const int64_t wnow  = wrapMod(walkFold(d, vCoord + 1, L) + (int64_t)R, L);
     const int64_t wEdge = walkEdge(d, L);
     return wnow == wEdge;

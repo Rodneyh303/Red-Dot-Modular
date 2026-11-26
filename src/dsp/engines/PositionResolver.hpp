@@ -162,13 +162,14 @@ struct PositionResolver {
         // out-of-window column just BEFORE the new start — a position no phase describes. Seeding from it
         // would capture that nonsense phase (e.g. 31) and accumulate from it, where the old column-derived
         // law re-derived each step and landed at 0 on the next motion.
+        // RETIRE-RESEED: the in-window re-SEED is GONE — netSteps_ keeps counting through a
+        // re-author and folds mod the new len_ (the C2 ruling: "global 8->4 at step 8 puts the
+        // next boundaries at 12 AND 16"). It is safe to drop now that the COMMIT EDGE reads the
+        // COLUMN (voiceFrameEdgeLive_: phrasePos / phrasePos-signed), not readCoord — so the read
+        // and the edge no longer need forcing into congruence. The PARKED re-ARM stays: an
+        // out-of-window column has no phase to count from, so it anchors at 0 (next motion enters).
         if (realChange) {
             if (col_ < 0 || !inWindow(col_)) { netSteps_ = 0; netEntered_ = false; }
-            else {
-                netSteps_   = (dir_ > 0) ? (int64_t)wrapRing(col_ - startStep_)
-                                         : -(int64_t)wrapRing(endStep_ - col_);
-                netEntered_ = true;
-            }
         }
     }
     // THE ADVANCE — the traversal law verbatim (the seed/step/skip idiom stepIndex
