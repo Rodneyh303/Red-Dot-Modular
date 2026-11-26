@@ -77,6 +77,12 @@ struct PositionResolver {
     // FLOORED mod would force the remainder positive and destroy cold reverse — see readCoord().
     int64_t netSteps_   = 0;
     bool    netEntered_ = false;
+    // DIAG (reseed hunt — debug/reseed-logging, REMOVE before merge): when false,
+    // setWindow's in-window re-SEED (the else-branch) is SKIPPED, so netSteps_
+    // free-runs through a re-author. Lets diag_global_dip_edge measure the counter
+    // edge (atPhraseEdge) vs the column edge (phrasePos()==0) WITH vs WITHOUT the
+    // re-seed. Default true = shipped behaviour.
+    bool    reseedInWindowOnReauthor_ = true;
     // RESEED LOGGING (TEMP — the drain accessors + full rationale sit with the other pure
     // views below; REMOVE before merge).
     struct ReseedEvent {
@@ -184,7 +190,7 @@ struct PositionResolver {
             if (col_ < 0 || !inWindow(col_)) {
                 netSteps_ = 0; netEntered_ = false;
                 logReseed_(2, lenOldLog_, offOldLog_, netBeforeLog_);   // RESEED LOGGING (TEMP): re-ARM (parked)
-            } else {
+            } else if (reseedInWindowOnReauthor_) {   // DIAG toggle (reseed hunt)
                 netSteps_   = (dir_ > 0) ? (int64_t)wrapRing(col_ - startStep_)
                                          : -(int64_t)wrapRing(endStep_ - col_);
                 netEntered_ = true;
