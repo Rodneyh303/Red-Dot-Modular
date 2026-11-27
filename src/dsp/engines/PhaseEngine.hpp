@@ -200,9 +200,11 @@ struct PhaseEngine {
     // span (the ≤1-bar cap), so llround would leak one pulse across the region boundary
     // at s → 1⁻ (composed 0.4995 of a 0.5 region llrounds to pulse 96 = the NEXT
     // region's first pulse); floor keeps the subphase STRICTLY inside its region at
-    // every s < 1 and matches the transport path's own SEED convention (pulseInBar is
-    // floored there too). The composed value itself is the quotient/remainder formula
-    // evaluated fresh (never accumulated — see the state-block note).
+    // every s < 1. (The transport path — runner AND seed, since the part-E seam fix —
+    // llrounds throughout, by the cyclic-span reasoning above; the region's floor is
+    // its own rule, not a mirror of the transport's.) The composed value itself is the
+    // quotient/remainder formula evaluated fresh (never accumulated — see the
+    // state-block note).
     static long tierPulseFor(double contT, double s, double rF, long ppb) {
         double composed = (double)std::floor(contT / rF) * rF + s * rF;
         return (long)std::floor(composed * (double)ppb);
@@ -230,14 +232,21 @@ struct PhaseEngine {
         if (!connected) { havePrev = false; return; }
 
         double phase = applyOrigin(normPhase(phaseVolt));   // relative origin: identity in absolute mode
-        // Absolute (unwrapped) pulse index within the current bar. We keep pulsePos
-        // absolute by tracking bar wraps via the shortest-path delta below.
-        long pulseInBar = (long)std::floor(phase * (double)PPB);
 
         if (!havePrev) {
             havePrev = true;
             prevPhase = phase; prevContPhase = phase;
-            prevPulse = pulseInBar; pulsePos = pulseInBar;
+            // The SEED quantises by the SAME convention as the running path (llround —
+            // nearest pulse; the span ring is cyclic, so the edge leak at phase→1⁻ IS
+            // the wrap, exactly as tierPulseFor's comment derives for the runner).
+            // It FLOORED here until test_phase_initial_sync part E: one convention at
+            // the seed and another in the run gave a half-pulse seam with three faces —
+            // a repatch exactly mid-pulse landed one pulse off the runner, the first
+            // moving sample after a mid-pulse park crossed TWO pulses at once (the
+            // floor→llround correction riding on the real crossing), and "on the step
+            // grid" meant different things to the startup downbeat (seed) and the
+            // drift check (run).
+            prevPulse = pulsePos = (long)std::llround(phase * (double)PPB);
             return;                                  // no edge on first sample
         }
 

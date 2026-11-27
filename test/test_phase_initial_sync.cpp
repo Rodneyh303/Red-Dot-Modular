@@ -148,8 +148,8 @@ int main() {
     // ---- A4 mid-step seed -> no downbeat ----------------------------------------
     {
         PhaseEngine pe; pe.reset();
-        pe.process(volt(0.03), true, st, ppqn);          // pulse 2: inside step 0, off the grid
-        CHECK(pe.pulsePos == 2,            "A4: seated mid-step at pulse 2");
+        pe.process(volt(0.03), true, st, ppqn);          // 2.88 -> pulse 3 (llround seed, part E): mid-step, off the grid
+        CHECK(pe.pulsePos == 3,            "A4: seated mid-step at pulse 3 (nearest pulse, the runner's convention)");
         CHECK(!pe.startupDownbeat(false),  "A4: off the step grid -> nothing to gate at the origin");
     }
 
@@ -267,10 +267,9 @@ int main() {
         }
 
         // C4 the origin survives an unpatch/repatch (no mid-run re-zero): only reset
-        // re-captures. The hold rides a QUARTER pulse past the boundary: the running
-        // path llrounds the continuous phase (nearest pulse) while a re-seed floors
-        // (containing pulse), so exactly mid-pulse the two conventions differ by one —
-        // a benign half-pulse seam, but the test aligns where both agree.
+        // re-captures. (The hold rides a quarter pulse past the boundary; since part E
+        // unified the seed onto the runner's llround, any hold position works — part E
+        // pins the once-failing mid-pulse case explicitly.)
         {
             PhaseRig rig; rig.setRelative();
             const double held = rampAt + 12.25 * dP;                     // quarter-pulse: floor==llround
@@ -292,18 +291,19 @@ int main() {
     {
         const int SAMPLES = 6 * 4;
 
-        // D1 ramp parked in the LAST pulse of step 5 (0.37 -> pulse 35), absolute,
+        // D1 ramp parked in the LAST pulse of step 5 (0.368 -> 35.33 -> pulse 35; the
+        // first HALF of the pulse, so the llround seed stays off-grid), absolute,
         // moving forward: the first crossing IS a step boundary, so the edge executes
         // from the park. OLD: enters col 0 — one gate at the wrong column (the glitch,
         // pinned). NEW: seated one pulse behind first, the execute lands col 6.
         {
             PhaseRig oldRig; oldRig.useSeat = false;
-            for (int s = 0; s < SAMPLES; ++s) oldRig.sample(0.37 + s * dP, true);
+            for (int s = 0; s < SAMPLES; ++s) oldRig.sample(0.368 + s * dP, true);
             CHECK(!oldRig.cols.empty() && oldRig.cols[0] == 0,
                   "D1(old): the park glitch — first gate lands col 0, not the crossed step");
 
             PhaseRig rig;   // useSeat = true (the fix)
-            for (int s = 0; s < SAMPLES; ++s) rig.sample(0.37 + s * dP, true);
+            for (int s = 0; s < SAMPLES; ++s) rig.sample(0.368 + s * dP, true);
             CHECK(!rig.cols.empty() && rig.cols[0] == 6,
                   "D1(new): the first gate lands the CROSSED step (col 6)");
             for (int c : rig.cols) CHECK(c != 0, "D1(new): col 0 is never gated in this run");
@@ -334,6 +334,40 @@ int main() {
             pe.process(volt(0.0), true, 1.f/44100.f, 24);
             CHECK(!pe.parkedSeatBehind(false),
                   "D3: no seat-behind at pulse 0 - the startup-sync path ships unchanged");
+        }
+    }
+
+    // ---- E the SEED/RUNNER convention is ONE convention (llround) ----------------
+    // The seed floored while the runner llrounded: a half-pulse seam with three faces
+    // (mid-pulse repatch off by one; a double-pulse first crossing after a
+    // second-half-of-pulse park; grid membership differing between the downbeat and
+    // the drift check). The seed now llrounds — the span ring is cyclic, the edge
+    // leak IS the wrap, same reasoning as the runner.
+    {
+        // E1 the once-failing case, now exact: unpatch/repatch at MID-pulse lands the
+        // runner's own pulse.
+        {
+            PhaseRig rig; rig.setRelative();
+            const double held = 0.37 + 12.5 * dP;                    // exactly mid-pulse
+            rig.sample(0.37 + 0.5 * dP, true);
+            for (int s = 1; s <= 12; ++s) rig.sample(0.37 + (s + 0.5) * dP, true);
+            long before = rig.pe.pulsePos;
+            rig.sample(held, true, /*connected=*/false);             // unpatch
+            rig.sample(held, true);                                  // repatch, ramp unmoved
+            CHECK(rig.pe.pulsePos == before,
+                  "E1: a mid-pulse repatch re-seeds onto the runner's own pulse (the seam is gone)");
+        }
+
+        // E2 no double-pulse first crossing: park in the SECOND half of a pulse
+        // (0.37 -> 35.52 -> seed 36); the first moving sample crosses exactly ONE
+        // pulse (36 -> 37), not the old floor-correction two (35 -> 37).
+        {
+            PhaseEngine pe; pe.reset();
+            pe.process(volt(0.37), true, st, ppqn);
+            CHECK(pe.pulsePos == 36, "E2: a second-half park seeds the NEAREST pulse (36)");
+            pe.process(volt(0.37 + dP), true, st, ppqn);
+            CHECK(pe.pulsePos == 37 && pe.pulseEdge,
+                  "E2: the first moving sample crosses exactly one pulse (no floor-correction double step)");
         }
     }
 
