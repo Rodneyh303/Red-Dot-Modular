@@ -65,7 +65,8 @@ struct Split { int f = 0; float frac = 0.f; };
 inline Split splitScrubAt(float s, int limit) {
     Split out;
     if (!std::isfinite(s)) return out;                         // {0, 0}
-    if (limit < 0) limit = 0; if (limit > kMaxScrubEver) limit = kMaxScrubEver;
+    if (limit < 0) limit = 0;
+    if (limit > kMaxScrubEver) limit = kMaxScrubEver;
     float c = std::min(std::max(s, (float)-limit), (float)limit);
     float ff = std::floor(c);
     out.f    = (int)ff;
