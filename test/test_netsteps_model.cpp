@@ -63,8 +63,12 @@ int main() {
       for(int i=0;i<4;i++){ int e=step(-1); long long n=eng.pos_.netSteps();
         if(!first && n!=prevN-1){ std::printf("  FAIL: netSteps not strictly decrementing\n"); ++g_fail; } prevN=n; first=false;
         if(e!=model()) ++diverged; }
-      std::snprintf(m,sizeof m,"T3 reverse-after-window-change: engine diverges on %d/4 (the re-park = C3 choice)",diverged);
-      CHECK(diverged>0,m); }
+      // INTEGRATION (netsteps edge, PR #369): the re-park divergence this test originally pinned
+      // (>0) is the exact gap the arc closes — with the edges on the counter the engine is
+      // drift-free across the window change, agreeing with the model everywhere. Expect 0.
+      // (#380 then RETIRES the now-inert in-window re-seed; measured: already 0/4 without it.)
+      std::snprintf(m,sizeof m,"T3 reverse-after-window-change: engine diverges on %d/4 (arc closed the re-park; expect 0)",diverged);
+      CHECK(diverged==0,m); }
 
     // T4: static voice LOR offset — O places the read OUTSIDE mod L.
     { setup(); O=3; R=0; win(); int bad=0; for(int i=0;i<8;i++) if (step(+1)!=model()) ++bad;
@@ -107,8 +111,9 @@ int main() {
     {
         setup(); L=4; win(); for(int i=0;i<6;i++) step(+1); L=8; win();
         int diverged=0; for(int i=0;i<4;i++){ step(-1); if(!congr()) ++diverged; }
-        std::snprintf(m,sizeof m,"T9 reverse-after-window: netSteps/readCoord diverge on %d/4 (the re-anchor; expect >0)",diverged);
-        CHECK(diverged>0,m);
+        // INTEGRATION (#369): counter and fold stay congruent through the window change. Expect 0.
+        std::snprintf(m,sizeof m,"T9 reverse-after-window: netSteps/readCoord diverge on %d/4 (arc closed; expect 0)",diverged);
+        CHECK(diverged==0,m);
     }
 
     // ── T10: the swap only changes the TRANSPORT coordinate (pos_). Lane LOR (L/O/R), lane
