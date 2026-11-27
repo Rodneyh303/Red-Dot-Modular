@@ -528,12 +528,18 @@ MonsoonWidget::MonsoonWidget(Monsoon* module) {
         bindParam<TrialButton>("param_LAST_DICE_Q_PARAM",   MonsoonIds::LAST_DICE_Q_PARAM,
             std::function<void(TrialButton*)>([](TrialButton* b){ b->isMelody = true; }));
          bindParam<redDot::Scrub_Small_Cog>("param_RHYTHM_MIX_PARAM", MonsoonIds::RHYTHM_MIX_PARAM,
-            std::function<void(redDot::Scrub_Small_Cog*)>([this, module](redDot::Scrub_Small_Cog* k){ queueModArc(this, module, k, [](const Monsoon::ModViz& m){return m.rhythmMix;}, [](const Monsoon::ModViz& m){return m.cv3Lane[2];}, 0.30f, [](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
+            std::function<void(redDot::Scrub_Small_Cog*)>([this, module](redDot::Scrub_Small_Cog* k){ k->activeLimitFn = [module]() { return module ? redDot::scrub::maxScrubForK(module->engine.pe.rhythmWin_.phraseDepth()) : redDot::scrub::SCRUB_K; }; queueModArc(this, module, k, [](const Monsoon::ModViz& m){return m.rhythmMix;}, [](const Monsoon::ModViz& m){return m.cv3Lane[2];}, 0.30f, [](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
         bindParam<redDot::Scrub_Small_Cog>("param_MELODY_MIX_PARAM", MonsoonIds::MELODY_MIX_PARAM,
-            std::function<void(redDot::Scrub_Small_Cog*)>([this, module](redDot::Scrub_Small_Cog* k){ queueModArc(this, module, k, [](const Monsoon::ModViz& m){return m.melodyMix;}, [](const Monsoon::ModViz& m){return m.cv3Lane[3];}, 0.30f, [](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
+            std::function<void(redDot::Scrub_Small_Cog*)>([this, module](redDot::Scrub_Small_Cog* k){ k->activeLimitFn = [module]() { return module ? redDot::scrub::maxScrubForK(module->engine.pe.melodyWin_.phraseDepth()) : redDot::scrub::SCRUB_K; }; queueModArc(this, module, k, [](const Monsoon::ModViz& m){return m.melodyMix;}, [](const Monsoon::ModViz& m){return m.cv3Lane[3];}, 0.30f, [](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
         // Task 4 (QMIX): Mix Q mirrors Mix R/M (Scrub_Small_Cog + mod arc). Was param_LAST_TRIAL_R_PARAM.
         bindParam<redDot::Scrub_Small_Cog>("param_QMIX_MIX_PARAM", MonsoonIds::QMIX_MIX_PARAM,
-            std::function<void(redDot::Scrub_Small_Cog*)>([this, module](redDot::Scrub_Small_Cog* k){ queueModArc(this, module, k, [](const Monsoon::ModViz& m){return m.qmixMix;}, [](const Monsoon::ModViz& m){return m.cv3Lane[4];}, 0.30f, [](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
+            std::function<void(redDot::Scrub_Small_Cog*)>([this, module](redDot::Scrub_Small_Cog* k){ k->activeLimitFn = [module]() { return module ? redDot::scrub::maxScrubForK(module->engine.pe.qmixWin_.phraseDepth()) : redDot::scrub::SCRUB_K; }; queueModArc(this, module, k, [](const Monsoon::ModViz& m){return m.qmixMix;}, [](const Monsoon::ModViz& m){return m.cv3Lane[4];}, 0.30f, [](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
+
+        // Part B (CC_PROMPT_SCRUB32): per-stream MA DEPTH — plain snapped trims on the
+        // provisional right strip (ids frozen; geometry temporary until the panel rework).
+        bindParam<Trimpot>  ("param_DEPTH_R_PARAM", MonsoonIds::DEPTH_R_PARAM);
+        bindParam<Trimpot>  ("param_DEPTH_M_PARAM", MonsoonIds::DEPTH_M_PARAM);
+        bindParam<Trimpot>  ("param_DEPTH_Q_PARAM", MonsoonIds::DEPTH_Q_PARAM);
         // Task 4 (QMIX): Q-mix LEVEL is now the 6th BIG-FIVE knob (panel widened to 45HP, monsoon_art.py
         // BIG5_IDS). It is therefore bound in the theme-branched Big-Five block in applyTheme() with the
         // same Medium_Cog class + mod ring as ACCENT — NOT here in the control row.
@@ -930,6 +936,30 @@ void MonsoonWidget::draw(const DrawArgs& args) {
         labelAt("param_RHYTHM_MIX_PARAM",   -6.f, "MIX R");
         labelAt("param_MELODY_MIX_PARAM",   -6.f, "MIX M");
         labelAt("param_QMIX_MIX_PARAM",     -6.f, "MIX Q");
+        labelAt("param_DEPTH_R_PARAM",      -6.f, "DEPTH R");
+        labelAt("param_DEPTH_M_PARAM",      -6.f, "DEPTH M");
+        labelAt("param_DEPTH_Q_PARAM",      -6.f, "DEPTH Q");
+        // Part B READOUTS (required, not a nicety: an endless jog gives no absolute
+        // feedback). The CLAMPED offset over the ACTIVE range, drawn under each scrub
+        // knob: "+12.3/32". Browser preview (module == nullptr) shows the neutral form.
+        {
+            auto* mod = dynamic_cast<Monsoon*>(this->module);
+            auto readout = [&](const char* anchorId, float latched, int kAct){
+                const int lim = redDot::scrub::maxScrubForK(kAct);
+                const float v = rack::math::clamp(latched, (float)-lim, (float)lim);
+                char buf[24]; std::snprintf(buf, sizeof buf, "%+.1f/%d", v, lim);
+                labelAt(anchorId, +6.f, buf);
+            };
+            if (mod) {
+                readout("param_RHYTHM_MIX_PARAM", mod->engine.pe.rhythmMixLatched, mod->engine.pe.rhythmWin_.phraseDepth());
+                readout("param_MELODY_MIX_PARAM", mod->engine.pe.melodyMixLatched, mod->engine.pe.melodyWin_.phraseDepth());
+                readout("param_QMIX_MIX_PARAM",   mod->engine.pe.qmixMixLatched,   mod->engine.pe.qmixWin_.phraseDepth());
+            } else {
+                labelAt("param_RHYTHM_MIX_PARAM", +6.f, "+0.0/32");
+                labelAt("param_MELODY_MIX_PARAM", +6.f, "+0.0/32");
+                labelAt("param_QMIX_MIX_PARAM",   +6.f, "+0.0/32");
+            }
+        }
         labelAt("param_LOCK_PARAM",         -6.f, "LOCK");
         labelAt("param_MUTE_PARAM",         -6.f, "MUTE");
         labelAt("param_RESET_BUTTON_PARAM", -6.f, "RESET");
