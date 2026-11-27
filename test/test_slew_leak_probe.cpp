@@ -69,6 +69,14 @@ int main() {
     std::printf("LEAK %s: a mid-phrase mix move %s pull the live slew into the buffers.\n",
                 changesB > 0 ? "REPRODUCED" : "absent",
                 changesB > 0 ? "DID" : "did not");
-    // Probe prints facts; it does not assert pass/fail (investigation, not a pin).
-    return 0;
+    // ASSERTING PIN (upgraded with the Part A fix, CC_PROMPT_SCRUB32): this file began as a
+    // print-only probe — it MEASURED the leak on the pre-fix engine (CASE B: 7/8, the whole
+    // red half of red/green, through the public API so it compiles on both sides). With the
+    // CopulaWindowLatch wiring in, the contract is law and the probe asserts it: a mid-phrase
+    // slew and/or mix move must never change the applied slew. If this goes red, the live
+    // latch is leaking into a recompute path again.
+    int fails = 0;
+    if (changesA != 0) { std::printf("  FAIL: CASE A leaked (%d changes)\n", changesA); ++fails; }
+    if (changesB != 0) { std::printf("  FAIL: CASE B leaked (%d changes)\n", changesB); ++fails; }
+    return fails ? 1 : 0;
 }
