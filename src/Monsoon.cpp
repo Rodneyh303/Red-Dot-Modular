@@ -1239,6 +1239,13 @@ void Monsoon::process(const ProcessArgs& args) {
         }
 
         if (rateManager.ticked(redDot::Rate::Step)) {
+            // PARKED SEAT-BEHIND (see PhaseEngine::parkedSeatBehind): a phase-drive
+            // execute from the park would enter at col 0 regardless of where the ramp
+            // sits — seat one pulse behind the ramp first, so the execute advances onto
+            // the crossed/seated step. No-op at pulsePos 0 (the sync origin) and in
+            // relative-origin mode (seed pulse is always 0).
+            if (modeSelect == 2 && phase.parkedSeatBehind(engine.started()))
+                engine.snapToPhaseStep((phase.pulsePos / PULSES_PER_STEP) * PULSES_PER_STEP - 1, PULSES_PER_STEP);
             mc.executeMode(modeSelect, input, tc.getGate2High());
 
             // Latch each poly voice's sounding decision (Mode B poly gate-width follow).  In Mode B

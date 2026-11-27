@@ -130,6 +130,35 @@ struct PhaseEngine {
             && (((pulsePos % PULSES_PER_STEP) + PULSES_PER_STEP) % PULSES_PER_STEP) == 0;
     }
 
+    // ── PARKED SEAT-BEHIND predicate (test_phase_initial_sync part D) ─────────────
+    // An execute that fires while the engine is still PARKED enters at the window
+    // start (the resolver's entry latch lands col 0) — the WRONG column whenever the
+    // ramp is seated anywhere else in absolute mode. Two faces, one cause:
+    //   - ramp parked in the LAST pulse of a step: the first forward movement crosses
+    //     a step boundary, so the step edge executes from the park BEFORE the drift
+    //     snap (which runs after execution) has seated the column — one gate at col 0,
+    //     then the snap corrects;
+    //   - ramp parked exactly ON a non-zero step boundary: the startup downbeat fires
+    //     at the seed (correctly), but its execute enters col 0 instead of the seated
+    //     step, and the seed is not a pulse change so the drift snap never corrects
+    //     the gate.
+    // The fix the dispatch applies when this is true: seat the engine one pulse
+    // behind the BASE PULSE OF THE ENTERED STEP — snapToPhaseStep((pulsePos /
+    // PULSES_PER_STEP) * PULSES_PER_STEP - 1) — before executing, so the execute
+    // advances onto the crossed/seated step: the right column, one gate. (Not
+    // pulsePos - 1: the running path llrounds the continuous phase, so on the
+    // crossing sample pulsePos can already be PAST the boundary — park at pulse
+    // 35.52 and the first moving sample lands 37, not 36.) When the entered step is
+    // step 0 (pulsePos < PULSES_PER_STEP) the enter-from-park IS the right column,
+    // so this stays false and the startup-sync behaviour (ramp at 0, and all of
+    // relative mode, whose seed pulse is always 0) is untouched. One-shot by
+    // transport state: the seat flips started(). Reverse needs no case of its own:
+    // an off-grid park moving backward meets a non-boundary crossing first (the
+    // drift snap seats, no race), and an on-grid park is the downbeat face above.
+    bool parkedSeatBehind(bool engineStarted) const {
+        return !engineStarted && havePrev && pulsePos >= PULSES_PER_STEP;
+    }
+
     void reset() {
         havePrev = false;
         prevPhase = prevContPhase = 0.0; prevPulse = 0;

@@ -87,6 +87,8 @@ struct PhaseRig {
 
     PhaseRig() { seedEngine(eng); pe.reset(); }
 
+    bool useSeat = true;             // mirrors the fixed dispatch; false pins the old glitch
+
     void setRelative() { pe.relativeOrigin = true; }
 
     void sample(double phase, bool useDownbeat, bool connected = true) {
@@ -96,6 +98,8 @@ struct PhaseRig {
         rm.advance(redDot::Rate::PPQN, pe.pulseEdge);
         rm.advance(redDot::Rate::Step, stepEdge);
         if (rm.ticked(redDot::Rate::Step)) {
+            if (useSeat && pe.parkedSeatBehind(eng.started()))       // the parked seat-behind
+                eng.snapToPhaseStep((pe.pulsePos / PULSES_PER_STEP) * PULSES_PER_STEP - 1, PULSES_PER_STEP);
             StepResult r = eng.executeModeA(rm, 6.f, in, +1);
             if (r.stepped) { cols.push_back(eng.playedColumn()); samples.push_back(sampleIdx); }
         }
@@ -281,6 +285,55 @@ int main() {
             rig.pe.process(volt(0.8), true, 1.f/44100.f, 24);            // ...re-captures at 0.8
             CHECK(rig.pe.pulsePos == 0,
                   "C4(relative): reset re-captures — the next seed seats at step 0 again");
+        }
+    }
+
+    // ---- D the PARKED SEAT-BEHIND: no wrong-column gate from the park -----------
+    {
+        const int SAMPLES = 6 * 4;
+
+        // D1 ramp parked in the LAST pulse of step 5 (0.37 -> pulse 35), absolute,
+        // moving forward: the first crossing IS a step boundary, so the edge executes
+        // from the park. OLD: enters col 0 — one gate at the wrong column (the glitch,
+        // pinned). NEW: seated one pulse behind first, the execute lands col 6.
+        {
+            PhaseRig oldRig; oldRig.useSeat = false;
+            for (int s = 0; s < SAMPLES; ++s) oldRig.sample(0.37 + s * dP, true);
+            CHECK(!oldRig.cols.empty() && oldRig.cols[0] == 0,
+                  "D1(old): the park glitch — first gate lands col 0, not the crossed step");
+
+            PhaseRig rig;   // useSeat = true (the fix)
+            for (int s = 0; s < SAMPLES; ++s) rig.sample(0.37 + s * dP, true);
+            CHECK(!rig.cols.empty() && rig.cols[0] == 6,
+                  "D1(new): the first gate lands the CROSSED step (col 6)");
+            for (int c : rig.cols) CHECK(c != 0, "D1(new): col 0 is never gated in this run");
+        }
+
+        // D2 ramp parked exactly ON a non-zero step boundary (pulse 36 = step 6),
+        // absolute: the startup downbeat fires at the seed — and must gate the SEATED
+        // step, not col 0. OLD: enters col 0 (the downbeat's own park face, pinned).
+        // NEW: seated behind first, the downbeat gates col 6 on the seed sample.
+        {
+            PhaseRig oldRig; oldRig.useSeat = false;
+            for (int s = 0; s < SAMPLES; ++s) oldRig.sample(0.375 + (s + 0.25) * dP, true);
+            CHECK(!oldRig.cols.empty() && oldRig.cols[0] == 0,
+                  "D2(old): the downbeat from a non-zero grid park gates col 0 - the second face");
+
+            PhaseRig rig;
+            for (int s = 0; s < SAMPLES; ++s) rig.sample(0.375 + (s + 0.25) * dP, true);
+            CHECK(!rig.cols.empty() && rig.cols[0] == 6 && rig.samples[0] == 0,
+                  "D2(new): the downbeat gates the SEATED step (col 6) on the seed sample");
+            CHECK(rig.cols.size() >= 2 && rig.cols[1] == 7,
+                  "D2(new): the walk continues from there (col 7 at the next boundary)");
+        }
+
+        // D3 the sync origin is untouched: at pulse 0 the enter IS the right column,
+        // so the predicate stays false (ramp at 0, and all of relative mode).
+        {
+            PhaseEngine pe; pe.reset();
+            pe.process(volt(0.0), true, 1.f/44100.f, 24);
+            CHECK(!pe.parkedSeatBehind(false),
+                  "D3: no seat-behind at pulse 0 - the startup-sync path ships unchanged");
         }
     }
 
