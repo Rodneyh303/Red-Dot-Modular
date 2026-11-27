@@ -190,7 +190,7 @@ int main() {
 
     // ── GATE 5 (STEP 4-final — the retirement): the ENGINE sources carry NO stepIndex
     // token at all — the field, the mirror writes and the prevStep capture are gone;
-    // wrapped reads wasStarted && pos_.phrasePos() == 0; the snap's landing is a local ──
+    // wrapped reads wasStarted && pos_.atPhraseEdge(); the snap's landing is a local ──
     {
         std::string ap, sw, sp;
         const bool got = extractFn(cpp, "SequencerEngine::advancePlayhead(", ap)
@@ -198,9 +198,13 @@ int main() {
                       && extractFn(cpp, "SequencerEngine::snapToPhaseStep(", sp);
         check(got, "the three authority bodies extract");
         if (got) {
+            // (NET-STEPS step 3) the edge moved onto the counter: wrapped now reads the resolver's
+            // atPhraseEdge() — the SAME coordinate the reads fold — instead of the column-derived
+            // phrasePos()==0. The gate's intent is unchanged: wrapped is derived from wasStarted AND
+            // the phrase edge, never from a bare stepIndex.
             check(ap.find("const bool wasStarted = (pos_.playedColumn() != -1);") != std::string::npos
-                   && ap.find("const bool wrapped = (wasStarted && pos_.phrasePos() == 0);") != std::string::npos,
-                  "advancePlayhead: wasStarted captured before the advance + wrapped from wasStarted && pos_.phrasePos() == 0");
+                   && ap.find("const bool wrapped = (wasStarted && pos_.atPhraseEdge());") != std::string::npos,
+                  "advancePlayhead: wasStarted captured before the advance + wrapped from wasStarted && pos_.atPhraseEdge()");
             check(countToken(ap, "stepIndex") == 0 && countToken(sw, "stepIndex") == 0
                    && countToken(sp, "stepIndex") == 0,
                   "the three authority bodies: ZERO stepIndex tokens (the field retired)");
