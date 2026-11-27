@@ -150,6 +150,12 @@ float ParameterManager::getMelodyMix() const { return clampv(readParam_(MELODY_M
 float ParameterManager::getQmixSlew() const { return clampv(readParam_(DICE_SLEW_Q_PARAM, -1.f, 1.f) + cv3Offsets[4], -1.f, 1.f); }
 float ParameterManager::getQmixMix() const { return clampv(readParam_(QMIX_MIX_PARAM, -95.f, 95.f) + cv3Offsets[5] * scrubCvScale_[2], -95.f, 95.f); }
 
+// Part B: per-stream MA depth K (integer taps 1..64; the param snaps, CV none for now —
+// depth is a structural choice like note length, not a modulation target yet).
+int ParameterManager::getRhythmDepth() const { return (int)rack::math::clamp(std::lround(readParam_(DEPTH_R_PARAM, 1.f, 64.f)), 1l, 64l); }
+int ParameterManager::getMelodyDepth() const { return (int)rack::math::clamp(std::lround(readParam_(DEPTH_M_PARAM, 1.f, 64.f)), 1l, 64l); }
+int ParameterManager::getQmixDepth()  const { return (int)rack::math::clamp(std::lround(readParam_(DEPTH_Q_PARAM, 1.f, 64.f)), 1l, 64l); }
+
 // ──── Octave Range Getters ──────────────────────────────────────────────────
 
 float ParameterManager::getOctaveLo() const {

@@ -143,6 +143,11 @@ public:
     float getMelodyMix() const;
     float getQmixMix() const;
 
+    // Part B: per-stream MA depth K (1..64, snapped int)
+    int getRhythmDepth() const;
+    int getMelodyDepth() const;
+    int getQmixDepth()  const;
+
     // Part B: the ACTIVE scrub range per stream (R/M/Q) = maxScrubForK(stream depth K).
     // Scales CV so full CV travel == full current range, and normalises the viz. Fixed
     // at +/-32 (COPULA_K) until the per-stream depth control lands, which pokes this

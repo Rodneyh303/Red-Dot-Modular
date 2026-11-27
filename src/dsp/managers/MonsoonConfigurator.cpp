@@ -70,6 +70,16 @@ void MonsoonConfigurator::setup(Monsoon* m) {
     m->configParam(RHYTHM_MIX_PARAM, -95.f, 95.f, 0.f, "Rhythm scrub", " draws");  // Part B offset-direct: value = signed draw offset; 0 = live; widget maps rotation to the ACTIVE range (maxScrubForK)
     m->configParam(MELODY_MIX_PARAM, -95.f, 95.f, 0.f, "Melody scrub", " draws");  // Part B offset-direct: value = signed draw offset; 0 = live; widget maps rotation to the ACTIVE range (maxScrubForK)
     m->configParam(QMIX_MIX_PARAM, -95.f, 95.f, 0.f, "Q-mix scrub", " draws");  // Part B offset-direct: value = signed draw offset; 0 = live; widget maps rotation to the ACTIVE range (maxScrubForK)
+    // Part B: per-stream MA depth K — integer taps, snapped; detents {1,16,32,64} live in
+    // the widget (snapKToDetent). K is a copula-WINDOW parameter like slew: latched every
+    // cycle, consumed at the draw boundary. Shorter K = less smoothing, LONGER jog reach
+    // (the cache-budget trade: K=64 -> +/-32, K=32 -> +/-64, K=16 -> +/-80).
+    m->configParam(DEPTH_R_PARAM, 1.f, 64.f, 64.f, "Rhythm MA depth", " draws");
+    m->configParam(DEPTH_M_PARAM, 1.f, 64.f, 64.f, "Melody MA depth", " draws");
+    m->configParam(DEPTH_Q_PARAM, 1.f, 64.f, 64.f, "Q-mix MA depth", " draws");
+    m->paramQuantities[DEPTH_R_PARAM]->snapEnabled = true;
+    m->paramQuantities[DEPTH_M_PARAM]->snapEnabled = true;
+    m->paramQuantities[DEPTH_Q_PARAM]->snapEnabled = true;
 
     // Mode E manual phase (full range = one upward ramp = one bar). Fallback when CV1
     // is unpatched; automatable by a host to drive Mode E from a DAW phase modulator.

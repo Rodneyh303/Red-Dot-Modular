@@ -142,6 +142,9 @@ json_t* PersistenceManager::toJson(Monsoon* m) {
         json_object_set_new(root, "slLatchedR", json_real(m->engine.pe.rhythmWin_.pendingSlew()));
         json_object_set_new(root, "slLatchedM", json_real(m->engine.pe.melodyWin_.pendingSlew()));
         json_object_set_new(root, "slLatchedQ", json_real(m->engine.pe.qmixWin_.pendingSlew()));   // Task 4d
+        json_object_set_new(root, "depthR", json_integer(m->engine.pe.rhythmWin_.pendingDepth()));   // Part B: MA depth
+        json_object_set_new(root, "depthM", json_integer(m->engine.pe.melodyWin_.pendingDepth()));
+        json_object_set_new(root, "depthQ", json_integer(m->engine.pe.qmixWin_.pendingDepth()));
         json_object_set_new(root, "slFirstR", json_boolean(m->engine.pe.rhythmFirstDraw));
         json_object_set_new(root, "slFirstM", json_boolean(m->engine.pe.melodyFirstDraw));
         json_object_set_new(root, "slFirstQ", json_boolean(m->engine.pe.qmixFirstDraw));    // Task 4d
@@ -488,6 +491,13 @@ void PersistenceManager::fromJson(Monsoon* m, json_t* root) {
         if (auto j=json_object_get(root,"slLatchedR")) m->engine.pe.rhythmWin_.stageSlew((float)json_real_value(j));
         if (auto j=json_object_get(root,"slLatchedM")) m->engine.pe.melodyWin_.stageSlew((float)json_real_value(j));
         if (auto j=json_object_get(root,"slLatchedQ")) m->engine.pe.qmixWin_.stageSlew((float)json_real_value(j));   // Task 4d
+        // Part B: depth is SEEDED (pending AND committed) on load — load is one of the
+        // legitimate window-param assignment points (like reset/seed), so the restored
+        // patch recomputes at its own K immediately rather than at full depth until the
+        // first boundary. Missing key (old patch) = keep the COPULA_K seed from init.
+        if (auto j=json_object_get(root,"depthR")) m->engine.pe.rhythmWin_.seedDepth((int)rack::math::clamp((float)json_integer_value(j), 1.f, 64.f));
+        if (auto j=json_object_get(root,"depthM")) m->engine.pe.melodyWin_.seedDepth((int)rack::math::clamp((float)json_integer_value(j), 1.f, 64.f));
+        if (auto j=json_object_get(root,"depthQ")) m->engine.pe.qmixWin_.seedDepth((int)rack::math::clamp((float)json_integer_value(j), 1.f, 64.f));
         if (auto j=json_object_get(root,"mixLatchedR")) m->engine.pe.rhythmMixLatched=(float)json_real_value(j);
         if (auto j=json_object_get(root,"mixLatchedM")) m->engine.pe.melodyMixLatched=(float)json_real_value(j);
         if (auto j=json_object_get(root,"mixLatchedQ")) m->engine.pe.qmixMixLatched=(float)json_real_value(j);   // Task 4d

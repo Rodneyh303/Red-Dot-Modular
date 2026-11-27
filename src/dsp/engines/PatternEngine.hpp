@@ -665,16 +665,24 @@ struct PatternEngine {
     // buffers (the leak). ONE consume() path per stream — depth K joins it in Part B, not a second
     // mechanism.
     struct CopulaWindowLatch {
+        // Birth state: full MA depth (COPULA_K) — a raw-constructed engine (tests, hosts
+        // that never call the init path) must compute with the real window, not K=0.
+        CopulaWindowLatch() { depth.seed(redDot::scrub::COPULA_K); }
         redDot::LatchCell<float> slew{};
-        // Part B: redDot::LatchCell<int> depth{};  // K, runtime per stream — consume() commits both
+        redDot::LatchCell<int>   depth{};   // Part B: MA depth K (runtime, per stream); ONE consume commits both
         void  stageSlew(float v)  { slew.stage(v); }            // latch the live knob (every cycle)
         float pendingSlew() const { return slew.peek(); }       // the live latched value (persistence, guard)
         float phraseSlew() const  { return slew.read(); }       // the DRAW-FIXED value (recompute reads this)
-        void  consume()           { slew.commit(true, true, false); }  // boundary: pending -> committed
+        void  stageDepth(int k)   { depth.stage(k); }           // latch the live depth knob (every cycle)
+        int   pendingDepth() const{ return depth.peek(); }
+        int   phraseDepth() const { return depth.read(); }       // the DRAW-FIXED K (recompute + scrub budget)
+        void  consume()           { slew.commit(true, true, false); depth.commit(true, true, false); }  // boundary: BOTH window params
+        void  seedDepth(int k)    { depth.seed(k); }
         void  seed(float v)       { slew.seed(v); }             // pending AND committed together (reset/load)
     };
     CopulaWindowLatch rhythmWin_, melodyWin_, qmixWin_;   // was rhythm/melody/qmixSlewLatched
     float rhythmSlewApplied =-1.f, melodySlewApplied =-1.f, qmixSlewApplied =-1.f;  // force first recompute (record of the slew the buffers were last built at)
+    int   rhythmDepthApplied = -1, melodyDepthApplied = -1, qmixDepthApplied = -1;   // Part B: the K the buffers were last built at (-1 forces)
     // Weight-cache: L2-normalised geometric weights w[K] per stream, keyed on r (= slewKnobToR(slew)).
     // Slew r is phrase-fixed, so weights() was recomputed every sumZ call with the same r — pure
     // waste.  Cache w[] per stream; invalidate when r changes (phrase boundary).  Bit-identical.
@@ -695,9 +703,10 @@ struct PatternEngine {
         int64_t cachedCtr = -999;
         int cachedF = -999;
         double cachedR = 999.0;
+        int cachedK = -1;        // Part B: a depth change at the same r is a DIFFERENT window
         bool valid = false;
-        bool hit(int64_t ctr, int f_, double r_) const {
-            return valid && cachedCtr == ctr && cachedF == f_ && cachedR == r_;
+        bool hit(int64_t ctr, int f_, double r_, int k_) const {
+            return valid && cachedCtr == ctr && cachedF == f_ && cachedR == r_ && cachedK == k_;
         }
         void invalidate() { valid = false; }
     };
@@ -934,8 +943,7 @@ struct PatternEngine {
     // addressable at any signed index, so future draws are computable).
     static redDot::scrub::Split scrubSplit(float latchedOffset,
                                            int kActive = redDot::scrub::COPULA_K) {
-        const float lim = (float)redDot::scrub::maxScrubForK(kActive);
-        return redDot::scrub::splitScrub(rack::math::clamp(latchedOffset, -lim, lim));
+        return redDot::scrub::splitScrubAt(latchedOffset, redDot::scrub::maxScrubForK(kActive));
     }
     uint64_t  rhythmCursor  = 0, melodyCursor  = 0, qmixCursor  = 0;   // intra-draw position, reset per redraw
 
@@ -1410,6 +1418,9 @@ public:
     // rate), not here.
     void latchMix(float rhythmMix, float melodyMix, float qmixMix,
                   bool applyRhythm = true, bool applyMelody = true, bool applyQmix = true);
+    // Part B: stage the per-stream MA depth K (PENDING only; consumed at the draw boundary
+    // with slew — both are copula-window parameters, ONE boundary-consumption path).
+    void latchDepth(int rhythmK, int melodyK, int qmixK);
     void recomputeEffectiveRhythm();   // public[] = A + rhythmMixLatched*(B-A)
     void recomputeEffectiveMelody();   // public[] = A + melodyMixLatched*(B-A)
     void recomputeEffectiveQmix();     // q-mix twin of recomputeEffectiveMelody
