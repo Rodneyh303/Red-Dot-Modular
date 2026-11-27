@@ -87,6 +87,8 @@ struct PhaseRig {
 
     PhaseRig() { seedEngine(eng); pe.reset(); }
 
+    void setRelative() { pe.relativeOrigin = true; }
+
     void sample(double phase, bool useDownbeat, bool connected = true) {
         pe.process(volt(phase), connected, 1.f/44100.f, 24);
         bool stepEdge = pe.stepEdge
@@ -201,6 +203,85 @@ int main() {
         int zeros = 0; for (size_t i = 0; i < newRig.cols.size(); ++i)
             if (newRig.samples[i] < PULSES_PER_STEP) ++zeros;
         CHECK(zeros == 1, "B(new): the downbeat is a ONE-SHOT (exactly one execute before pulse 6)");
+    }
+
+    // ---- C the RELATIVE ORIGIN context option (default stays absolute) ----------
+    {
+        const int SAMPLES = 6 * 8;
+        const double rampAt = 0.37;                      // an arbitrary parked ramp
+
+        // clock reference again (same as part B).
+        SequencerEngine clk; seedEngine(clk);
+        redDot::RateManager crm; PatternInput cin = makeInput();
+        std::vector<int> clkCols, clkSamples;
+        for (int s = 0; s < SAMPLES; ++s) {
+            crm.advance(redDot::Rate::PPQN, true);
+            crm.advance(redDot::Rate::Step, (s % PULSES_PER_STEP) == 0);
+            if (crm.ticked(redDot::Rate::Step)) {
+                StepResult r = clk.executeModeA(crm, 6.f, cin, +1);
+                if (r.stepped) { clkCols.push_back(clk.playedColumn()); clkSamples.push_back(s); }
+            }
+        }
+
+        // Moving samples ride HALF A PULSE off the boundaries ((s+0.5)*dP) so float
+        // dust at floor() can never flip a pulse index; crossings still land on the
+        // same sample indices as the clock reference's edges.
+
+        // C1 ABSOLUTE (default) from a mid-cycle ramp (0.33 -> pulse 31, and the
+        // first crossings 32..35 are NOT step boundaries, so the drift snap seats the
+        // column before the first step edge): the run starts at the ramp's absolute
+        // step, not step 0 — the documented absolute semantic, unchanged.
+        // (NOTE a pre-existing seam, found writing this: park the ramp in the LAST
+        // pulse of a step and the first crossing IS a step boundary — the edge then
+        // executes from the park, gate-at-col-0, before the drift snap corrects. Not
+        // this fix's doing; tracked separately.)
+        PhaseRig abs0;
+        for (int s = 0; s < SAMPLES; ++s) abs0.sample(0.33 + (s + 0.5) * dP, /*useDownbeat=*/true);
+        CHECK(abs0.cols.empty() || abs0.cols[0] != 0,
+              "C1(absolute): a mid-cycle ramp does NOT start at step 0 (absolute semantic kept)");
+
+        // C2 RELATIVE from a mid-cycle ramp: the capture zeroes the origin, the
+        // downbeat fires, and the columns land in LOCKSTEP with the clock reference —
+        // startup sync from ANY ramp position.
+        PhaseRig rel; rel.setRelative();
+        for (int s = 0; s < SAMPLES; ++s) rel.sample(rampAt + (s + 0.5) * dP, /*useDownbeat=*/true);
+        CHECK(!rel.cols.empty() && rel.cols[0] == 0 && rel.samples[0] == 0,
+              "C2(relative): reset = pattern start — the downbeat gates step 0 at the seed");
+        CHECK(rel.cols == clkCols && rel.samples == clkSamples,
+              "C2(relative): step-synced with the clock engine from an arbitrary ramp position");
+
+        // C3 scrubbing is origin-invariant: a +0.25 span jump moves +4 steps relative
+        // (+0.5 is avoided: half a span is the shortest-path ambiguity point).
+        {
+            PhaseRig rig; rig.setRelative();
+            rig.sample(rampAt + 0.5 * dP, true);         // seed: effective step 0
+            rig.sample(rampAt + 1.5 * dP, true);         // establish forward (pulse 1)
+            long before = rig.pe.pulsePos;
+            rig.sample(rampAt + 1.5 * dP + 0.25, true);  // scrub a quarter span
+            CHECK(rig.pe.pulsePos - before == 24,        // 0.25 * 96 pulses = 4 steps
+                  "C3(relative): a +0.25 ramp jump still scrubs +4 steps (relative movement untouched)");
+        }
+
+        // C4 the origin survives an unpatch/repatch (no mid-run re-zero): only reset
+        // re-captures. The hold rides a QUARTER pulse past the boundary: the running
+        // path llrounds the continuous phase (nearest pulse) while a re-seed floors
+        // (containing pulse), so exactly mid-pulse the two conventions differ by one —
+        // a benign half-pulse seam, but the test aligns where both agree.
+        {
+            PhaseRig rig; rig.setRelative();
+            const double held = rampAt + 12.25 * dP;                     // quarter-pulse: floor==llround
+            rig.sample(rampAt + 0.25 * dP, true);                        // capture at the park
+            for (int s = 1; s <= 12; ++s) rig.sample(rampAt + (s + 0.25) * dP, true);
+            long before = rig.pe.pulsePos;                               // pulse 12
+            rig.sample(held, true, /*connected=*/false);                 // unpatch
+            rig.sample(held, true);                                      // repatch, ramp unmoved
+            CHECK(rig.pe.pulsePos == before,
+                  "C4(relative): repatch re-enters against the SAME origin (no re-zero mid-run)");
+            rig.pe.reset();                                              // a real reset...
+            rig.pe.process(volt(0.8), true, 1.f/44100.f, 24);            // ...re-captures at 0.8
+            CHECK(rig.pe.pulsePos == 0,
+                  "C4(relative): reset re-captures — the next seed seats at step 0 again");
+        }
     }
 
     if (g_fail == 0) std::printf("test_phase_initial_sync: ALL PASS\n");

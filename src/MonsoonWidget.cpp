@@ -1297,6 +1297,20 @@ void MonsoonWidget::appendContextMenu(ui::Menu* menu) {
                 auto* l = new ui::MenuLabel; l->text = "Reseed Policy"; sub->addChild(l);
                 sub->addChild(createBoolPtrMenuItem("Reseed on restart", "", &m->reseedOnRestart));
             }
+
+            sub->addChild(new ui::MenuSeparator);
+
+            {
+                // PHASE DRIVE origin (test_phase_initial_sync part C): absolute (default)
+                // follows the ramp's absolute position — ramp at 50% IS step 9 of 16, good
+                // for scrubbing to a song position. Relative measures from the ramp's value
+                // at reset, so reset lands on pattern start wherever the ramp sits — two
+                // Monsoons on a shared reset start step-synced from any ramp position.
+                // Scrubbing (relative ramp movement) is identical in both.
+                auto* l = new ui::MenuLabel; l->text = "Phase Drive"; sub->addChild(l);
+                sub->addChild(createBoolPtrMenuItem("Relative origin (reset = pattern start)", "",
+                                                    &m->phase.relativeOrigin));
+            }
         }));
 
         // menu->addChild(createSubmenuItem("DNA Rotation", "", [=](ui::Menu* sub) {

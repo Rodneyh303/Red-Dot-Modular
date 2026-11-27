@@ -43,6 +43,18 @@ struct PhaseEngine {
     // ── Config ────────────────────────────────────────────────────────────────
     int   ppqn          = 24;       // master grid (24/48/96); pulsesPer16th = ppqn/4
     float phaseInMax    = 10.f;     // input voltage that maps to phase = 1.0 (one full pattern span)
+    // RELATIVE ORIGIN (context option, test_phase_initial_sync part C): measure the
+    // transport phase from the ramp's value at the first seeded sample after reset,
+    // so reset == step 0 wherever the external ramp happens to sit — two Monsoons on
+    // a shared reset start step-synced from ANY ramp position (with the startup
+    // downbeat, beat 1 included). Relative MOVEMENT is untouched (a constant offset
+    // cancels in the shortest-path delta), so scrubbing still works; what you give up
+    // is the absolute mapping (ramp value 0.5 == step 8), which is why ABSOLUTE stays
+    // the default. The origin survives an unpatch/repatch (seamless re-entry, same as
+    // the absolute path's trackers); only reset() re-captures.
+    bool   relativeOrigin  = false; // config: false = absolute ramp position (default)
+    double originPhase     = 0.0;   // the ramp value captured at the first post-reset sample
+    bool   originCaptured  = false; // one-shot: cleared by reset(), set at the capture
     int   patternLength = 16;       // PHASE TIER Stage 1: the ACTIVE pattern length (1..kPatternLengthCap)
                                     // — phase 0→1 spans patternLength steps. Default 16 = today's
                                     // bar exactly (bit-identical); Monsoon feeds engine.cachedLength
@@ -126,6 +138,23 @@ struct PhaseEngine {
         haveTier = false; prevSub = 0.0;
         dirT = dirS = 0;
         pulseChanged = false;
+        originCaptured = false; originPhase = 0.0;   // relative origin: re-capture at the next seed
+    }
+
+    // RELATIVE ORIGIN transform — applied to the TRANSPORT phase only (never the
+    // subphase), in both entry points (process and processTiers), right after
+    // normPhase. In absolute mode it is the identity. In relative mode the first
+    // connected sample after reset() captures the ramp as the origin; thereafter the
+    // effective phase is (phase - origin) wrapped into [0,1), so the seed seats on
+    // step 0 exactly and the startup downbeat fires from any ramp position. The
+    // capture is one-shot per reset: a disconnect does NOT clear it, so a repatch
+    // re-enters against the SAME origin (seamless, matching the absolute path).
+    double applyOrigin(double phase) {
+        if (!relativeOrigin) return phase;
+        if (!originCaptured) { originPhase = phase; originCaptured = true; }
+        double p = phase - originPhase;
+        if (p < 0.0) p += 1.0;
+        return p;
     }
 
     // Map a raw phase voltage to normalised phase [0,1). Wrapping is expected: the
@@ -171,7 +200,7 @@ struct PhaseEngine {
 
         if (!connected) { havePrev = false; return; }
 
-        double phase = normPhase(phaseVolt);
+        double phase = applyOrigin(normPhase(phaseVolt));   // relative origin: identity in absolute mode
         // Absolute (unwrapped) pulse index within the current bar. We keep pulsePos
         // absolute by tracking bar wraps via the shortest-path delta below.
         long pulseInBar = (long)std::floor(phase * (double)PPB);
@@ -361,7 +390,7 @@ struct PhaseEngine {
         // the span fraction — its musical width is preserved.
         const double rF = regionSixteenths * (double)p16 / (double)PPB;
 
-        double t = normPhase(tVolt);
+        double t = applyOrigin(normPhase(tVolt));           // relative origin: transport tier only
         double s = normPhase(sVolt);
 
         if (!haveTier) {
