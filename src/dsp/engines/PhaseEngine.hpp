@@ -43,6 +43,18 @@ struct PhaseEngine {
     // ── Config ────────────────────────────────────────────────────────────────
     int   ppqn          = 24;       // master grid (24/48/96); pulsesPer16th = ppqn/4
     float phaseInMax    = 10.f;     // input voltage that maps to phase = 1.0 (one full pattern span)
+    // RELATIVE ORIGIN (context option, test_phase_initial_sync part C): measure the
+    // transport phase from the ramp's value at the first seeded sample after reset,
+    // so reset == step 0 wherever the external ramp happens to sit — two Monsoons on
+    // a shared reset start step-synced from ANY ramp position (with the startup
+    // downbeat, beat 1 included). Relative MOVEMENT is untouched (a constant offset
+    // cancels in the shortest-path delta), so scrubbing still works; what you give up
+    // is the absolute mapping (ramp value 0.5 == step 8), which is why ABSOLUTE stays
+    // the default. The origin survives an unpatch/repatch (seamless re-entry, same as
+    // the absolute path's trackers); only reset() re-captures.
+    bool   relativeOrigin  = false; // config: false = absolute ramp position (default)
+    double originPhase     = 0.0;   // the ramp value captured at the first post-reset sample
+    bool   originCaptured  = false; // one-shot: cleared by reset(), set at the capture
     int   patternLength = 16;       // PHASE TIER Stage 1: the ACTIVE pattern length (1..kPatternLengthCap)
                                     // — phase 0→1 spans patternLength steps. Default 16 = today's
                                     // bar exactly (bit-identical); Monsoon feeds engine.cachedLength
@@ -118,6 +130,35 @@ struct PhaseEngine {
             && (((pulsePos % PULSES_PER_STEP) + PULSES_PER_STEP) % PULSES_PER_STEP) == 0;
     }
 
+    // ── PARKED SEAT-BEHIND predicate (test_phase_initial_sync part D) ─────────────
+    // An execute that fires while the engine is still PARKED enters at the window
+    // start (the resolver's entry latch lands col 0) — the WRONG column whenever the
+    // ramp is seated anywhere else in absolute mode. Two faces, one cause:
+    //   - ramp parked in the LAST pulse of a step: the first forward movement crosses
+    //     a step boundary, so the step edge executes from the park BEFORE the drift
+    //     snap (which runs after execution) has seated the column — one gate at col 0,
+    //     then the snap corrects;
+    //   - ramp parked exactly ON a non-zero step boundary: the startup downbeat fires
+    //     at the seed (correctly), but its execute enters col 0 instead of the seated
+    //     step, and the seed is not a pulse change so the drift snap never corrects
+    //     the gate.
+    // The fix the dispatch applies when this is true: seat the engine one pulse
+    // behind the BASE PULSE OF THE ENTERED STEP — snapToPhaseStep((pulsePos /
+    // PULSES_PER_STEP) * PULSES_PER_STEP - 1) — before executing, so the execute
+    // advances onto the crossed/seated step: the right column, one gate. (Not
+    // pulsePos - 1: the running path llrounds the continuous phase, so on the
+    // crossing sample pulsePos can already be PAST the boundary — park at pulse
+    // 35.52 and the first moving sample lands 37, not 36.) When the entered step is
+    // step 0 (pulsePos < PULSES_PER_STEP) the enter-from-park IS the right column,
+    // so this stays false and the startup-sync behaviour (ramp at 0, and all of
+    // relative mode, whose seed pulse is always 0) is untouched. One-shot by
+    // transport state: the seat flips started(). Reverse needs no case of its own:
+    // an off-grid park moving backward meets a non-boundary crossing first (the
+    // drift snap seats, no race), and an on-grid park is the downbeat face above.
+    bool parkedSeatBehind(bool engineStarted) const {
+        return !engineStarted && havePrev && pulsePos >= PULSES_PER_STEP;
+    }
+
     void reset() {
         havePrev = false;
         prevPhase = prevContPhase = 0.0; prevPulse = 0;
@@ -126,6 +167,23 @@ struct PhaseEngine {
         haveTier = false; prevSub = 0.0;
         dirT = dirS = 0;
         pulseChanged = false;
+        originCaptured = false; originPhase = 0.0;   // relative origin: re-capture at the next seed
+    }
+
+    // RELATIVE ORIGIN transform — applied to the TRANSPORT phase only (never the
+    // subphase), in both entry points (process and processTiers), right after
+    // normPhase. In absolute mode it is the identity. In relative mode the first
+    // connected sample after reset() captures the ramp as the origin; thereafter the
+    // effective phase is (phase - origin) wrapped into [0,1), so the seed seats on
+    // step 0 exactly and the startup downbeat fires from any ramp position. The
+    // capture is one-shot per reset: a disconnect does NOT clear it, so a repatch
+    // re-enters against the SAME origin (seamless, matching the absolute path).
+    double applyOrigin(double phase) {
+        if (!relativeOrigin) return phase;
+        if (!originCaptured) { originPhase = phase; originCaptured = true; }
+        double p = phase - originPhase;
+        if (p < 0.0) p += 1.0;
+        return p;
     }
 
     // Map a raw phase voltage to normalised phase [0,1). Wrapping is expected: the
@@ -142,9 +200,11 @@ struct PhaseEngine {
     // span (the ≤1-bar cap), so llround would leak one pulse across the region boundary
     // at s → 1⁻ (composed 0.4995 of a 0.5 region llrounds to pulse 96 = the NEXT
     // region's first pulse); floor keeps the subphase STRICTLY inside its region at
-    // every s < 1 and matches the transport path's own SEED convention (pulseInBar is
-    // floored there too). The composed value itself is the quotient/remainder formula
-    // evaluated fresh (never accumulated — see the state-block note).
+    // every s < 1. (The transport path — runner AND seed, since the part-E seam fix —
+    // llrounds throughout, by the cyclic-span reasoning above; the region's floor is
+    // its own rule, not a mirror of the transport's.) The composed value itself is the
+    // quotient/remainder formula evaluated fresh (never accumulated — see the
+    // state-block note).
     static long tierPulseFor(double contT, double s, double rF, long ppb) {
         double composed = (double)std::floor(contT / rF) * rF + s * rF;
         return (long)std::floor(composed * (double)ppb);
@@ -171,15 +231,22 @@ struct PhaseEngine {
 
         if (!connected) { havePrev = false; return; }
 
-        double phase = normPhase(phaseVolt);
-        // Absolute (unwrapped) pulse index within the current bar. We keep pulsePos
-        // absolute by tracking bar wraps via the shortest-path delta below.
-        long pulseInBar = (long)std::floor(phase * (double)PPB);
+        double phase = applyOrigin(normPhase(phaseVolt));   // relative origin: identity in absolute mode
 
         if (!havePrev) {
             havePrev = true;
             prevPhase = phase; prevContPhase = phase;
-            prevPulse = pulseInBar; pulsePos = pulseInBar;
+            // The SEED quantises by the SAME convention as the running path (llround —
+            // nearest pulse; the span ring is cyclic, so the edge leak at phase→1⁻ IS
+            // the wrap, exactly as tierPulseFor's comment derives for the runner).
+            // It FLOORED here until test_phase_initial_sync part E: one convention at
+            // the seed and another in the run gave a half-pulse seam with three faces —
+            // a repatch exactly mid-pulse landed one pulse off the runner, the first
+            // moving sample after a mid-pulse park crossed TWO pulses at once (the
+            // floor→llround correction riding on the real crossing), and "on the step
+            // grid" meant different things to the startup downbeat (seed) and the
+            // drift check (run).
+            prevPulse = pulsePos = (long)std::llround(phase * (double)PPB);
             return;                                  // no edge on first sample
         }
 
@@ -361,7 +428,7 @@ struct PhaseEngine {
         // the span fraction — its musical width is preserved.
         const double rF = regionSixteenths * (double)p16 / (double)PPB;
 
-        double t = normPhase(tVolt);
+        double t = applyOrigin(normPhase(tVolt));           // relative origin: transport tier only
         double s = normPhase(sVolt);
 
         if (!haveTier) {
