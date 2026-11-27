@@ -99,6 +99,25 @@ struct PhaseEngine {
 
     static constexpr int pulsesPer16th(int p) { return (p > 0 ? p : 24) / 4; }
 
+    // ── STARTUP DOWNBEAT predicate (test_phase_initial_sync) ─────────────────────
+    // TRANSPORT-level, not a crossing: the edge stream above stays a faithful
+    // crossing reporter (the seed sample emits nothing, pinned by the test_phase_tier
+    // oracle), so a phase Monsoon started with the ramp at phase 0 would seat on
+    // step 0 SILENTLY and first gate at step 1 — missing beat 1 — while a clock
+    // Monsoon enters and plays step 0 on its first edge (the netEntered latch).
+    // This predicate is the phase analogue of GATE mode's held-at-start term
+    // (gate1High && !engine.started()): OR it into the step-edge dispatch so the
+    // seated step gates once at the origin. One-shot by transport state — the enter
+    // flips started() (playedColumn() >= 0), which disarms it; a mid-run repatch is
+    // already started, so no spurious downbeat (havePrev guards the unpatched case).
+    // DIRECTIONLESS by construction: the resolver's entry latch consumes the first
+    // motion without counting, so no direction is committed until the next PPQN
+    // pulse resolves a real delta.
+    bool startupDownbeat(bool engineStarted) const {
+        return !engineStarted && havePrev
+            && (((pulsePos % PULSES_PER_STEP) + PULSES_PER_STEP) % PULSES_PER_STEP) == 0;
+    }
+
     void reset() {
         havePrev = false;
         prevPhase = prevContPhase = 0.0; prevPulse = 0;

@@ -1216,7 +1216,13 @@ void Monsoon::process(const ProcessArgs& args) {
             // At 24 the two coincide bit-for-bit (p16 = 6 there); at 48 the step rate
             // doubles at the same BPM (a step is a 1/32 of the 48 grid).
             if (modeSelect == 0) return clock.stepEdge;            // clock origin (was A/C)
-            return phase.stepEdge;                                 // phase origin (was E/F)
+            // phase origin (was E/F): OR in the STARTUP DOWNBEAT — the held-at-start
+            // analogue for phase drive (see PhaseEngine::startupDownbeat). Without it a
+            // ramp seated at phase 0 misses beat 1 (the seed sample is contractually
+            // edge-less); with it the seated step gates once at the origin and a phase
+            // Monsoon starts step-synced with a clock Monsoon. One-shot: entering flips
+            // engine.started().
+            return phase.stepEdge || phase.startupDownbeat(engine.started());
         }();
         rateManager.advance(redDot::Rate::PPQN,
                             (modeSelect == 2) ? phase.pulseEdge : clock.pulseEdge);   // phase origin vs clock
