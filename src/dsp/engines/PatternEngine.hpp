@@ -696,10 +696,24 @@ struct PatternEngine {
     // roll (drawCtr advances).  Key: (drawCtr, f, r).  forceRecomputeSlewed() sets invalid.
     // Max fields: rhythm=4*16=64, melody=2*16=32, qmix=1*16=16.  Use 64 for all. The 16 in the
         // buffer shape is the STEP dim -> kStepStorage (Stage 2a).
-    struct ZWindowCache {
+    // alignas(16) + the static_assert below: three ZWindowCache members sit IN FRONT of the
+    // big float engine buffers, so this struct's size decides every later member's offset
+    // mod 16. The per-cell xi member originally grew it by 16392 (== 8 mod 16), shifting the
+    // slewed*/pubSlewed* buffers by 8 mod 16 and surfacing a gcc-13 -O2 aligned-SSE fault in
+    // the publish copies (the real fix is the alignas(16) now spelled on those buffers —
+    // see the note there). Keeping sizeof a multiple of 16 here keeps member congruences
+    // stable under future cache-field churn instead of a layout lottery.
+    struct alignas(16) ZWindowCache {
         static constexpr int MAX_FIELDS = 4 * kVoiceSlots;  // 64 (rhythm max: 4 strands × 16 voices)
         std::array<double, kStepStorage * MAX_FIELDS> z0{};
         std::array<double, kStepStorage * MAX_FIELDS> z1{};
+        // feat/bridge-per-cell-xi: per-cell bridge innovations, memoised beside z0/z1.
+        // Pure function of (seed, pairIndex, fi) — the cache only saves the Philox+PhiInv
+        // on the hot path (z-hit, frac moving). pairIndex = cachedCtr - cachedF - 1 is
+        // pinned by the same key, so xi shares the z key; xiValid is false until a FULL
+        // pass has drawn every cell (a frac==0 fill draws none; ForVoice fills partially).
+        std::array<double, kStepStorage * MAX_FIELDS> xi{};
+        bool xiValid = false;
         int64_t cachedCtr = -999;
         int cachedF = -999;
         double cachedR = 999.0;
@@ -708,8 +722,9 @@ struct PatternEngine {
         bool hit(int64_t ctr, int f_, double r_, int k_) const {
             return valid && cachedCtr == ctr && cachedF == f_ && cachedR == r_ && cachedK == k_;
         }
-        void invalidate() { valid = false; }
+        void invalidate() { valid = false; xiValid = false; }
     };
+    static_assert(sizeof(ZWindowCache) % 16 == 0, "keep later engine buffers 16-congruent (see alignas note above)");
     ZWindowCache rhythmZCache_, melodyZCache_, qmixZCache_;
     // Displayed voice for the Sands visual (set by the UI via setDisplayedVoice, read by
     // refreshVisualCache). Slot 0 = mono/V1, 1..15 = poly V2..V16. Used to scope the
@@ -759,9 +774,17 @@ struct PatternEngine {
     //   Sands     → Sands reads slewedDraw, applies spread at control rate, and
     //               writes the result into the public/final arrays itself.
     // COLLAPSE [15]+mono → [kVoiceSlots][16]: V1 at [0], V2..V16 at [1..15]. One array per strand.
-    std::array<std::array<float, kStepStorage>, kVoiceSlots> slewedRhythm  = {}, slewedVariation  = {}, slewedLegato  = {}, slewedAccent  = {};
-    std::array<std::array<float, kStepStorage>, kVoiceSlots> slewedMelody  = {}, slewedOctave  = {};
-    std::array<std::array<float, kStepStorage>, kVoiceSlots> slewedQmix  = {};   // q-mix twin of slewedMelody
+    // alignas(16) on the slewed*/pubSlewed* families: gcc 13 at -O2 vectorises the
+    // publishSlewed* copy loops with ALIGNED SSE (movaps) while the members sat at
+    // offsets == 8 (mod 16) — a GP fault the -O0 suite cannot see (observed when the
+    // per-cell-xi ZWindowCache growth changed the inlining context; clang and the
+    // -O3 -march=nehalem plugin flags happened not to trigger it). Spelling the
+    // alignment makes the vectoriser's assumption TRUE instead of lucky. Each row is
+    // 128 B and each array 2 KiB (both ==0 mod 16), so aligning the family costs at
+    // most one 8-byte pad. Caught by test_bridge_per_cell built at -O2 -msse4.1.
+    alignas(16) std::array<std::array<float, kStepStorage>, kVoiceSlots> slewedRhythm  = {}, slewedVariation  = {}, slewedLegato  = {}, slewedAccent  = {};
+    alignas(16) std::array<std::array<float, kStepStorage>, kVoiceSlots> slewedMelody  = {}, slewedOctave  = {};
+    alignas(16) std::array<std::array<float, kStepStorage>, kVoiceSlots> slewedQmix  = {};   // q-mix twin of slewedMelody
     // DELETED: slewedPoly* (15][16] arrays — V2..V16 now at slewed*[1..15].
     // Old: slewedRhythm[16] (mono/V1) + slewedPolyRhythm[15][16] (V2..V16, poly[0]=V2).
     // New: slewedRhythm[kVoiceSlots][16] — V1 at [0], V2 at [1], ..., V16 at [15].
@@ -773,9 +796,9 @@ struct PatternEngine {
     // floats), so the race window drops from ~116µs to ~1µs — practically eliminating flicker.
     // COLLAPSE: deleted 7 mono pubSlewed*[16] arrays — they were redundant twins of
     // pubSlewedPoly*[0]. Readers now use pubSlewedPoly*[0] for V1 directly.
-    std::array<std::array<float, kStepStorage>, kVoiceSlots> pubSlewedPolyRhythm  = {}, pubSlewedPolyMelody  = {}, pubSlewedPolyOctave  = {};
-    std::array<std::array<float, kStepStorage>, kVoiceSlots> pubSlewedPolyAccent  = {}, pubSlewedPolyQmix  = {};
-    std::array<std::array<float, kStepStorage>, kVoiceSlots> pubSlewedPolyVariation  = {}, pubSlewedPolyLegato  = {};
+    alignas(16) std::array<std::array<float, kStepStorage>, kVoiceSlots> pubSlewedPolyRhythm  = {}, pubSlewedPolyMelody  = {}, pubSlewedPolyOctave  = {};
+    alignas(16) std::array<std::array<float, kStepStorage>, kVoiceSlots> pubSlewedPolyAccent  = {}, pubSlewedPolyQmix  = {};
+    alignas(16) std::array<std::array<float, kStepStorage>, kVoiceSlots> pubSlewedPolyVariation  = {}, pubSlewedPolyLegato  = {};
     void publishSlewedRhythm() {
         for (int i=0;i<kStepStorage;++i){ for(int v=0;v<kVoiceSlots;++v){ pubSlewedPolyRhythm[v][i]=slewedRhythm[v][i];
             pubSlewedPolyAccent[v][i]=slewedAccent[v][i];

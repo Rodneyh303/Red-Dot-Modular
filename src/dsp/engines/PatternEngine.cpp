@@ -8,10 +8,29 @@ using dotModular::VoiceResolver;   // the mint authority (VoiceSlot cannot be co
 // ── OU-bridge blend coefficients (UNIFIED 2×2 conditioning for ALL r) ─────────
 // File-local: lives here (not in the header) to avoid pulling PhiInvLUT::table()
 // into header-only test builds. One bridge for all r: r>0 (monotone kernel),
-// r=0 (fresh ξ), r<0 (oscillatory kernel). ξ ALWAYS injected.
+// r=0 (fresh ξ), r<0 (oscillatory kernel).
+//
+// PER-CELL BRIDGE INNOVATIONS (feat/bridge-per-cell-xi). The parent branch drew ONE
+// ξ per interval pair, shared by every (step, lane, voice) cell of the recompute:
+// marginals stayed exactly N(0,1), but at FRACTIONAL positions all cells shared a
+// single bridge innovation — cross-cell co-movement of weight sqrtV² that integer
+// positions do not have. This branch keys ξ per CELL:
+//     ξ(cell) = PhiInv(bridgePhilox.atUniform(pairIndex·kXiStride + fi))
+// fi is the z-cache FIELD INDEX — already the stable cell identity the full and
+// ForVoice recomputes must agree on (the z-cache depends on it), so both paths
+// stay consistent by construction. The Philox is the ground truth (revisiting a
+// position replays the same ξ — the jog stays a pure function of seed+position);
+// the ZWindowCache memoises the PhiInv'd draws beside z0/z1 so the HOT path
+// (z-hit, frac moving under slew/jog CV) stays a float load, not a draw.
+// Integer positions have sqrtV == 0: no draw at all, bit-identical to parent.
 namespace {
 struct OUBridgeCoeffs {
-    double a = 0, b = 0, sqrtV = 0, xi = 0;
+    double a = 0, b = 0, sqrtV = 0;
+    const redDot::PhiloxRng* bridge_ = nullptr;
+    uint64_t pairBase_ = 0;
+    // Key stride between pairs: > kStepStorage(32) × MAX_FIELDS/step(64) = 2048 cells.
+    // Injective while |pairIndex| < 2^52 — the draw counter never gets near that.
+    static constexpr uint64_t kXiStride = 4096;
     void compute(float r, float frac, const redDot::PhiloxRng& bridge, int64_t pairIndex) {
         const double dfrac = (double)frac;
         if (r == 0.f) {
@@ -30,10 +49,15 @@ struct OUBridgeCoeffs {
             double v = 1.0 - (rhoA * a + rhoB * b);
             sqrtV = std::sqrt(v < 0.0 ? 0.0 : v);
         }
-        xi = redDot::copula::PhiInv((double)bridge.atUniform((uint64_t)pairIndex));
+        bridge_   = &bridge;
+        pairBase_ = (uint64_t)pairIndex * kXiStride;
     }
-    double blend(double z0, double z1) const {
-        return a * z0 + b * z1 + sqrtV * xi;
+    bool needXi() const { return sqrtV != 0.0; }     // frac==0 ⇒ sqrtV==0 ⇒ no draw
+    double drawXi(int fi) const {
+        return redDot::copula::PhiInv((double)bridge_->atUniform(pairBase_ + (uint64_t)fi));
+    }
+    double blend(double z0, double z1, double xiCell) const {
+        return a * z0 + b * z1 + sqrtV * xiCell;
     }
 };
 } // anon namespace
@@ -511,6 +535,8 @@ void PatternEngine::recomputeEffectiveRhythm() {
         // r>0 (OU with ξ), r=0 (fresh ξ), r<0 (variance-normalized, no ξ).
         OUBridgeCoeffs ouBC;
         ouBC.compute(r, frac, bridgeRhythmPhilox, N - f - 1);
+        const bool needXi = ouBC.needXi();                  // frac==0: no bridge draw at all
+        const bool xiHit  = cacheHit && rhythmZCache_.xiValid;  // per-cell ξ memoised beside z0/z1
         const CachedRhythmDraw* w0[K];
         const CachedRhythmDraw* w1[K];
         if (!cacheHit) {
@@ -537,7 +563,12 @@ void PatternEngine::recomputeEffectiveRhythm() {
                 rhythmZCache_.z0[fi] = z0;
                 rhythmZCache_.z1[fi] = z1;
             }
-            return (float)redDot::copula::PhiFast(ouBC.blend(z0, z1));
+            double xiC = 0.0;
+            if (needXi) {
+                if (xiHit) xiC = rhythmZCache_.xi[fi];
+                else { xiC = ouBC.drawXi(fi); rhythmZCache_.xi[fi] = xiC; }
+            }
+            return (float)redDot::copula::PhiFast(ouBC.blend(z0, z1, xiC));
         };
         int fi = 0;
         for (int i = 0; i < kPatternLengthCap; ++i) {   // the ring (copula compute)
@@ -555,6 +586,9 @@ void PatternEngine::recomputeEffectiveRhythm() {
         if (!cacheHit) {
             rhythmZCache_.cachedCtr = N; rhythmZCache_.cachedF = f; rhythmZCache_.cachedK = kAct;
             rhythmZCache_.cachedR = r;  rhythmZCache_.valid = true;
+            rhythmZCache_.xiValid = needXi;   // ξ filled only when drawn (frac!=0)
+        } else if (needXi && !xiHit) {
+            rhythmZCache_.xiValid = true;     // lazy ξ fill on a z-hit completed the full pass
         }
     } else {
         // r==0: old linear blend of raw draws (bit-identity at frac=0).
@@ -629,6 +663,8 @@ void PatternEngine::recomputeEffectiveMelody() {
         const double* wc = melodyWeightCache_.w;
         const bool cacheHit = melodyZCache_.hit(N, f, r, kAct);
         OUBridgeCoeffs ouBC; ouBC.compute(r, frac, bridgeMelodyPhilox, N - f - 1);
+        const bool needXi = ouBC.needXi();                  // frac==0: no bridge draw at all
+        const bool xiHit  = cacheHit && melodyZCache_.xiValid;  // per-cell ξ memoised beside z0/z1
         const CachedMelodyDraw* w0[K];
         const CachedMelodyDraw* w1[K];
         if (!cacheHit) {
@@ -655,7 +691,12 @@ void PatternEngine::recomputeEffectiveMelody() {
                 melodyZCache_.z0[fi] = z0;
                 melodyZCache_.z1[fi] = z1;
             }
-            return (float)redDot::copula::PhiFast(ouBC.blend(z0, z1));
+            double xiC = 0.0;
+            if (needXi) {
+                if (xiHit) xiC = melodyZCache_.xi[fi];
+                else { xiC = ouBC.drawXi(fi); melodyZCache_.xi[fi] = xiC; }
+            }
+            return (float)redDot::copula::PhiFast(ouBC.blend(z0, z1, xiC));
         };
         int fi = 0;
         for (int i = 0; i < kPatternLengthCap; ++i) {   // the ring (copula compute)
@@ -669,6 +710,9 @@ void PatternEngine::recomputeEffectiveMelody() {
         if (!cacheHit) {
             melodyZCache_.cachedCtr = N; melodyZCache_.cachedF = f; melodyZCache_.cachedK = kAct;
             melodyZCache_.cachedR = r;  melodyZCache_.valid = true;
+            melodyZCache_.xiValid = needXi;   // ξ filled only when drawn (frac!=0)
+        } else if (needXi && !xiHit) {
+            melodyZCache_.xiValid = true;     // lazy ξ fill on a z-hit completed the full pass
         }
     } else {
         MelodyDraw d0, d1;
@@ -724,6 +768,8 @@ void PatternEngine::recomputeEffectiveQmix() {
         const double* wc = qmixWeightCache_.w;
         const bool cacheHit = qmixZCache_.hit(N, f, r, kAct);
         OUBridgeCoeffs ouBC; ouBC.compute(r, frac, bridgeQmixPhilox, N - f - 1);
+        const bool needXi = ouBC.needXi();                  // frac==0: no bridge draw at all
+        const bool xiHit  = cacheHit && qmixZCache_.xiValid;  // per-cell ξ memoised beside z0/z1
         const CachedQmixDraw* w0[K];
         const CachedQmixDraw* w1[K];
         if (!cacheHit) {
@@ -750,7 +796,12 @@ void PatternEngine::recomputeEffectiveQmix() {
                 qmixZCache_.z0[fi] = z0;
                 qmixZCache_.z1[fi] = z1;
             }
-            return (float)redDot::copula::PhiFast(ouBC.blend(z0, z1));
+            double xiC = 0.0;
+            if (needXi) {
+                if (xiHit) xiC = qmixZCache_.xi[fi];
+                else { xiC = ouBC.drawXi(fi); qmixZCache_.xi[fi] = xiC; }
+            }
+            return (float)redDot::copula::PhiFast(ouBC.blend(z0, z1, xiC));
         };
         int fi = 0;
         for (int i = 0; i < kPatternLengthCap; ++i) {   // the ring (copula compute)
@@ -762,6 +813,9 @@ void PatternEngine::recomputeEffectiveQmix() {
         if (!cacheHit) {
             qmixZCache_.cachedCtr = N; qmixZCache_.cachedF = f; qmixZCache_.cachedK = kAct;
             qmixZCache_.cachedR = r;  qmixZCache_.valid = true;
+            qmixZCache_.xiValid = needXi;   // ξ filled only when drawn (frac!=0)
+        } else if (needXi && !xiHit) {
+            qmixZCache_.xiValid = true;     // lazy ξ fill on a z-hit completed the full pass
         }
     } else {
         QmixDraw d0, d1;
@@ -811,8 +865,15 @@ void PatternEngine::recomputeEffectiveRhythmForVoice(VoiceSlot voice) {
 
     const int stride = 4 + 4 * numPolyVoicesHint;
     OUBridgeCoeffs ouBC; ouBC.compute(r, frac, bridgeRhythmPhilox, N - f - 1);
+    const bool needXi = ouBC.needXi();
+    const bool xiHit  = rhythmZCache_.xiValid;   // never SET here: a voice-scoped pass fills only its own cells
     auto bl = [&](int fi) -> float {
-        return (float)redDot::copula::PhiFast(ouBC.blend(rhythmZCache_.z0[fi], rhythmZCache_.z1[fi]));
+        double xiC = 0.0;
+        if (needXi) {
+            if (xiHit) xiC = rhythmZCache_.xi[fi];
+            else { xiC = ouBC.drawXi(fi); rhythmZCache_.xi[fi] = xiC; }   // pure-function refill: identical values, partial coverage
+        }
+        return (float)redDot::copula::PhiFast(ouBC.blend(rhythmZCache_.z0[fi], rhythmZCache_.z1[fi], xiC));
     };
     if (voice == VoiceResolver::mono()) {
         for (int i = 0; i < kPatternLengthCap; ++i) {   // the ring (copula compute)
@@ -869,8 +930,15 @@ void PatternEngine::recomputeEffectiveMelodyForVoice(VoiceSlot voice) {
     if (!melodyZCache_.hit(N, f, r, kAct)) { recomputeEffectiveMelody(); return; }
     const int stride = 2 + 2 * numPolyVoicesHint;
     OUBridgeCoeffs ouBC; ouBC.compute(r, frac, bridgeMelodyPhilox, N - f - 1);
+    const bool needXi = ouBC.needXi();
+    const bool xiHit  = melodyZCache_.xiValid;   // never SET here: a voice-scoped pass fills only its own cells
     auto bl = [&](int fi) -> float {
-        return (float)redDot::copula::PhiFast(ouBC.blend(melodyZCache_.z0[fi], melodyZCache_.z1[fi]));
+        double xiC = 0.0;
+        if (needXi) {
+            if (xiHit) xiC = melodyZCache_.xi[fi];
+            else { xiC = ouBC.drawXi(fi); melodyZCache_.xi[fi] = xiC; }   // pure-function refill: identical values, partial coverage
+        }
+        return (float)redDot::copula::PhiFast(ouBC.blend(melodyZCache_.z0[fi], melodyZCache_.z1[fi], xiC));
     };
     if (voice == VoiceResolver::mono()) {
         for (int i = 0; i < kPatternLengthCap; ++i) {   // the ring (copula compute)
@@ -918,8 +986,15 @@ void PatternEngine::recomputeEffectiveQmixForVoice(VoiceSlot voice) {
     if (!qmixZCache_.hit(N, f, r, kAct)) { recomputeEffectiveQmix(); return; }
     const int stride = 1 + numPolyVoicesHint;
     OUBridgeCoeffs ouBC; ouBC.compute(r, frac, bridgeQmixPhilox, N - f - 1);
+    const bool needXi = ouBC.needXi();
+    const bool xiHit  = qmixZCache_.xiValid;   // never SET here: a voice-scoped pass fills only its own cells
     auto bl = [&](int fi) -> float {
-        return (float)redDot::copula::PhiFast(ouBC.blend(qmixZCache_.z0[fi], qmixZCache_.z1[fi]));
+        double xiC = 0.0;
+        if (needXi) {
+            if (xiHit) xiC = qmixZCache_.xi[fi];
+            else { xiC = ouBC.drawXi(fi); qmixZCache_.xi[fi] = xiC; }   // pure-function refill: identical values, partial coverage
+        }
+        return (float)redDot::copula::PhiFast(ouBC.blend(qmixZCache_.z0[fi], qmixZCache_.z1[fi], xiC));
     };
     if (voice == VoiceResolver::mono()) {
         for (int i = 0; i < kPatternLengthCap; ++i) slewedQmix[0][i] = bl(i * stride);   // the ring (copula compute)
