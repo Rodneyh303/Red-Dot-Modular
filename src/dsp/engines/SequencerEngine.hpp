@@ -16,6 +16,7 @@
 #include "../StepAdvance.hpp"     // STEP-ADVANCE: the pure decideAdvance(p, u) (CC_PROMPT_GATE_STEP_ADVANCE_SPEC, rack-free)
 #include "../VoiceLaneTypes.hpp"   // VoiceSlot — the VoiceBank below (strong per-voice indexing)
 #include "PositionResolver.hpp"   // POSITION_UNIFICATION slice 1: the ONE position authority (a pure mirror)
+#include "../LatchCell.hpp"   // CA1 (CONCEPT_ODR_AUDIT): the latched-at-boundary lifecycle as ONE mechanic
 #include <cassert>
 #include <cstdio>
 
@@ -335,6 +336,34 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
     // endpoint for one extra step (repeat) before flipping. See plans/lane_direction_ui.md.
     enum class LaneDir : uint8_t { Forward = 0, Reverse = 1, Pendulum = 2, PingPong = 3 };
     enum class LaneFlipQuant { StepEdge, Phrase };
+
+    // CA1 (CONCEPT_ODR_AUDIT): the lane-direction latch policy — the ONE edge cadence and the
+    // ONE scope gate for direction, shared by BOTH the Macro/global lane (1D macroDirLatch_)
+    // and the per-voice plane (2D voiceDirLatch_). The two bugs the audit cited (the
+    // double-commit's two sites; BUG 6's entry-vs-landed phase) lived in the EDGE; here the
+    // edge is a single definition, so a wrong-phase edge cannot hide in one of N hand-rolled
+    // copies. `scopeLive` reproduces the old dirLive_ byte-for-byte (unlocked => always live;
+    // locked => only if the strand's Sands scope bit is set). `quant` is pushed from the
+    // engine's laneFlipQuant just before each tick (it can change at runtime).
+    struct LaneDirPolicy {
+        using Value = LaneDir;
+        static constexpr std::size_t N = dotModular::NUM_STRANDS;
+        LaneFlipQuant quant = LaneFlipQuant::Phrase;
+        bool edge(const redDot::LatchCtx& ctx) const {
+            // StepEdge => every step advance; Phrase => the phrase wrap. (The old two-if split:
+            // `laneFlipQuant==StepEdge` pre-advance, `laneFlipQuant==Phrase && wrapped` post.)
+            return quant == LaneFlipQuant::StepEdge ? ctx.stepEdge : ctx.wrapped;
+        }
+        bool scopeLive(std::size_t strand, const redDot::LatchCtx& ctx) const {
+            if (!ctx.locked) return true;
+            constexpr uint32_t kSandsR = 1u << 2;   // == dotModular::SB_SANDS_R
+            constexpr uint32_t kSandsM = 1u << 3;   // == dotModular::SB_SANDS_M
+            const bool melodyAxis = ((int)strand == dotModular::STRAND_MELODY
+                                  || (int)strand == dotModular::STRAND_OCTAVE);
+            return (ctx.scopeLiveMask & (melodyAxis ? kSandsM : kSandsR)) != 0;
+        }
+    };
+
     // NUM_STRANDS-sized (7 with QMIX). The SIGN arrays MUST default +1 for every strand — a 6-element
     // brace on a 7-element array (the accent anti-pattern, QMIX_LANE_PARITY_CHECKLIST.md) value-inited
     // strand 6 (LEGATO) to 0 until the first reset(). Braces now list all 7 so adding an 8th strand can't
@@ -342,8 +371,16 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
     std::array<int, dotModular::NUM_STRANDS> laneTick_ = {0,0,0,0,0,0,0};
     std::array<int, dotModular::NUM_STRANDS> laneSign_ = {1,1,1,1,1,1,1};   // derived from laneDir_ (+1/-1)
     std::array<int, dotModular::NUM_STRANDS> laneSignPending_ = {1,1,1,1,1,1,1};
-    std::array<LaneDir, dotModular::NUM_STRANDS> laneDir_ = {};   // default Forward
-    std::array<LaneDir, dotModular::NUM_STRANDS> laneDirPending_ = {};
+    // CA1: the Macro/global lane direction (legacy name "mono"). NAME NOTE — "mono" here is
+    // the MACRO/global editor's lane direction (Monsoon::kMonoLaneDirRow + macroGlobal), i.e.
+    // the global tier that VAR/LEG and every lane follow when Macro owns them. It is NOT
+    // "voice 0" and NOT a per-voice row: the per-voice plane is voiceDirLatch_ below, fed by
+    // East's own per-voice sources. The two were verified distinct (MonsoonExpanderManager's
+    // mono arm reads kMonoLaneDirRow/macroGlobal; the per-voice arm reads owner(v,l)/getLaneDir
+    // (v,l)) — so this is not vestigial. The latch owns pending + committed + the one commit;
+    // committed is read via .read(strand), the UI stages via .stage(strand,dir). (was
+    // laneDir_ / laneDirPending_.)
+    redDot::LatchedControl<LaneDirPolicy> macroDirLatch_;
     std::array<bool, dotModular::NUM_STRANDS> lanePendulum_ = {false,false,false,false,false,false}; // derived: Pendulum/PingPong
     // PingPong endpoint-repeat: when true, the tick stays at the endpoint for one extra step
     // (the endpoint step repeats) before the direction flips. Per-strand hold flag.
@@ -449,21 +486,11 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
     // start) and zeroes the derived read caches; the next advancePlayhead walks from
     // there. Kept as one named entry point because Monsoon's hard reset calls it
     // directly.
-    // Direction scope (LOCK_SCOPE_MENU): may this STRAND's pending direction promote right now?
-    // Unlocked => always. Locked => only if the strand's Sands scope bit is set in scopeLiveMask
-    // (direction opted out of the freeze for that axis). MELODY/OCTAVE strands are the melody axis,
-    // the rest (RHYTHM/VAR/LEG/ACCENT) the rhythm axis. Kept inline on the engine (NOT routed through
-    // LockManager) so the audio-thread promotion stays include/dependency-free. The bit VALUES MUST
-    // match dotModular::ScopeBit::SB_SANDS_R/M in MonsoonLockManager.hpp (single source of truth);
-    // duplicated here only to avoid pulling the manager header into the engine. If ScopeBit is
-    // renumbered, update these two lines (they are the only place the engine hard-codes the layout).
-    inline bool dirLive_(int strand) const {
-        if (!locked) return true;
-        constexpr uint32_t kSandsR = 1u << 2;   // == dotModular::SB_SANDS_R
-        constexpr uint32_t kSandsM = 1u << 3;   // == dotModular::SB_SANDS_M
-        const bool melodyAxis = (strand == dotModular::STRAND_MELODY || strand == dotModular::STRAND_OCTAVE);
-        return (scopeLiveMask & (melodyAxis ? kSandsM : kSandsR)) != 0;
-    }
+    // Direction scope (LOCK_SCOPE_MENU): the "may this strand's pending direction promote?"
+    // gate now has ONE definition — LaneDirPolicy::scopeLive (above), used by both direction
+    // planes. (CA1: the old engine-level dirLive_ was a second copy of that gate; removed so a
+    // scope-gate change can't drift between it and the policy.) The Sands bit VALUES are still
+    // asserted against dotModular::ScopeBit in MonsoonModeController.cpp.
 
     void resetLaneWalk() {
         // THE ANCHOR first (the holders to the Beat-1 congruence — see reset()), then
@@ -505,8 +532,12 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
     std::array<std::array<int, dotModular::NUM_STRANDS>, kVoiceSlots> laneTickV_ = {};
     std::array<std::array<int, dotModular::NUM_STRANDS>, kVoiceSlots> laneSignV_ = {};   // default 0 → treated as +1 (see polyLaneSign)
     std::array<std::array<int, dotModular::NUM_STRANDS>, kVoiceSlots> laneSignVPending_ = {};
-    std::array<std::array<LaneDir, dotModular::NUM_STRANDS>, kVoiceSlots> laneDirV_ = {};   // per-voice direction (default Forward)
-    std::array<std::array<LaneDir, dotModular::NUM_STRANDS>, kVoiceSlots> laneDirVPending_ = {};
+    // CA1: the per-voice direction plane (rows = voice slots, cols = strands). Distinct from
+    // macroDirLatch_ above — this is East's own per-voice source (owner(v,l)/getLaneDir(v,l)).
+    // Same LaneDirPolicy => one edge + one scope gate across both planes. The commit tick
+    // promotes rows [0, numPolyVoices] (slot 0 for store consistency; no consumer reads it).
+    // (was laneDirV_ / laneDirVPending_.)
+    redDot::LatchedBank2D<LaneDirPolicy, kVoiceSlots, dotModular::NUM_STRANDS> voiceDirLatch_;
     std::array<std::array<bool, dotModular::NUM_STRANDS>, kVoiceSlots> lanePingPongHoldV_ = {};   // per-voice ping-pong hold flag
     // (voiceDriverPrev_ is DELETED — POSITION_HOLDER_MODEL: the lane walks read their own
     // phases; the normalized predecessor lives only inside the sign law's expression.)
@@ -1403,11 +1434,11 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
         O = lor(s, LOR_OFF) + laneLorCv_[0][s][LOR_OFF];
         R = lor(s, LOR_ROT) + laneLorCv_[0][s][LOR_ROT];
         lorRowClamp_(L, O, R);
-        d = (strand >= 0 && strand < dotModular::NUM_STRANDS) ? laneDir_[strand] : LaneDir::Forward;
+        d = (strand >= 0 && strand < dotModular::NUM_STRANDS) ? macroDirLatch_.read(strand) : LaneDir::Forward;
     }
     void effectiveMonoLaneLorLive(int strand, int& L, int& O, int& R, LaneDir& d) const {
         L = lor(strand, LOR_LEN); O = lor(strand, LOR_OFF); R = lor(strand, LOR_ROT);
-        d = (strand >= 0 && strand < dotModular::NUM_STRANDS) ? laneDir_[strand] : LaneDir::Forward;
+        d = (strand >= 0 && strand < dotModular::NUM_STRANDS) ? macroDirLatch_.read(strand) : LaneDir::Forward;
     }
     // The POLY form: THIS voice's lorStore_ row (the editorLane conversion at the
     // single storage boundary) + the voice's own lane dir row. Slot 0 reads the
@@ -1424,14 +1455,14 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
         R = polyLOR(bank, LaneId{el}, LOR_ROT) + laneLorCv_[vv][el][LOR_ROT];
         lorRowClamp_(L, O, R);
         d = (bank.v >= 0 && bank.v < kVoiceSlots && el >= 0 && el < dotModular::NUM_STRANDS)
-            ? laneDirV_[bank.v][el] : LaneDir::Forward;
+            ? voiceDirLatch_.read(bank.v, el) : LaneDir::Forward;
     }
     void effectiveLaneLorLive(dotModular::VoiceSlot bank, LaneId lane, int& L, int& O, int& R, LaneDir& d) const {
         const int el = editorLane(lane.l);
         L = polyLOR(bank, LaneId{el}, LOR_LEN); O = polyLOR(bank, LaneId{el}, LOR_OFF);
         R = polyLOR(bank, LaneId{el}, LOR_ROT);
         d = (bank.v >= 0 && bank.v < kVoiceSlots && el >= 0 && el < dotModular::NUM_STRANDS)
-            ? laneDirV_[bank.v][el] : LaneDir::Forward;
+            ? voiceDirLatch_.read(bank.v, el) : LaneDir::Forward;
     }
     // ── (CC_PROMPT_LANE_RANGE_DISPLAY_UNIFY Stage B) the PENDING-PREVIEW twins ──
     // The wireframe's authority: base + PENDING (the live-modulated window exactly —
@@ -1449,7 +1480,7 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
         R = polyLOR(bank, LaneId{el}, LOR_ROT) + laneLorCvPend_[vv][el][LOR_ROT];
         lorRowClamp_(L, O, R);
         d = (bank.v >= 0 && bank.v < kVoiceSlots && el >= 0 && el < dotModular::NUM_STRANDS)
-            ? laneDirV_[bank.v][el] : LaneDir::Forward;
+            ? voiceDirLatch_.read(bank.v, el) : LaneDir::Forward;
     }
     void effectiveMonoLanePreview(int strand, int& L, int& O, int& R, LaneDir& d) const {
         const int s = strandClamp(strand);
@@ -1457,7 +1488,7 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
         O = lor(s, LOR_OFF) + laneLorCvPend_[0][s][LOR_OFF];
         R = lor(s, LOR_ROT) + laneLorCvPend_[0][s][LOR_ROT];
         lorRowClamp_(L, O, R);
-        d = (strand >= 0 && strand < dotModular::NUM_STRANDS) ? laneDir_[strand] : LaneDir::Forward;
+        d = (strand >= 0 && strand < dotModular::NUM_STRANDS) ? macroDirLatch_.read(strand) : LaneDir::Forward;
     }
     void effectiveVoicePreview(int v, int& L, int& O, int& R, LaneDir& d) const {
         if (v < 0 || v >= kVoiceSlots) { L = kPatternLengthCap; O = 0; R = 0; d = LaneDir::Forward; return; }

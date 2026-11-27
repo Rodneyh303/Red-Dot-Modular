@@ -50,31 +50,26 @@ namespace dm = dotModular;
 // the correct reverse (recomputed to the ruling, not the ruling to the golden).
 static int fOf(const E& e, int s, int64_t tick) {
     const int len = std::max(1, e.strandLen(s));
-    return (int)((((E::laneTickFor(e.laneDir_[s], tick, len) + E::anchorBias(e.laneDir_[s])) % len) + len) % len);
+    return (int)((((E::laneTickFor(e.macroDirLatch_.read(s), tick, len) + E::anchorBias(e.macroDirLatch_.read(s))) % len) + len) % len);
 }
 static int fOfV(const E& e, int v, int s, int64_t tEff) {
     const int len = std::max(1, e.polyStrandLenOf(v, s));
-    return (int)((((E::laneTickFor(e.laneDirV_[v][s], tEff, len) + E::anchorBias(e.laneDirV_[v][s])) % len) + len) % len);
+    return (int)((((E::laneTickFor(e.voiceDirLatch_.read(v,s), tEff, len) + E::anchorBias(e.voiceDirLatch_.read(v,s))) % len) + len) % len);
 }
 
 static void authorNonDiv(E& e) {
     e.lorRef(dm::STRAND_RHYTHM, E::LOR_LEN) = 7;
     e.lorRef(dm::STRAND_MELODY, E::LOR_LEN) = 5;
-    e.laneDir_[dm::STRAND_MELODY] = E::LaneDir::Pendulum;
-    e.laneDirPending_[dm::STRAND_MELODY] = E::LaneDir::Pendulum;
+    e.macroDirLatch_.seed(dm::STRAND_MELODY, E::LaneDir::Pendulum);
     e.lorRef(dm::STRAND_OCTAVE, E::LOR_LEN) = 6;
-    e.laneDir_[dm::STRAND_OCTAVE] = E::LaneDir::PingPong;
-    e.laneDirPending_[dm::STRAND_OCTAVE] = E::LaneDir::PingPong;
+    e.macroDirLatch_.seed(dm::STRAND_OCTAVE, E::LaneDir::PingPong);
     e.lorRef(dm::STRAND_ACCENT, E::LOR_LEN) = 7;
-    e.laneDir_[dm::STRAND_ACCENT] = E::LaneDir::Reverse;
-    e.laneDirPending_[dm::STRAND_ACCENT] = E::LaneDir::Reverse;
+    e.macroDirLatch_.seed(dm::STRAND_ACCENT, E::LaneDir::Reverse);
     // per-voice: V2 (bank 1) rhythm len 7 pendulum, V3 (bank 2) VAR len 5 reverse
     e.polyLenERef(dm::VoiceResolver::slot(2), dm::LaneId{E::PL_REST}) = 7;
-    e.laneDirV_[1][dm::STRAND_RHYTHM] = E::LaneDir::Pendulum;
-    e.laneDirVPending_[1][dm::STRAND_RHYTHM] = E::LaneDir::Pendulum;
+    e.voiceDirLatch_.seed(1, dm::STRAND_RHYTHM, E::LaneDir::Pendulum);
     e.polyLORRef(dm::VoiceResolver::slot(3), dm::LaneId{E::EDITOR_LANE_VARIATION}, E::LOR_LEN) = 5;
-    e.laneDirV_[2][dm::STRAND_VARIATION] = E::LaneDir::Reverse;
-    e.laneDirVPending_[2][dm::STRAND_VARIATION] = E::LaneDir::Reverse;
+    e.voiceDirLatch_.seed(2, dm::STRAND_VARIATION, E::LaneDir::Reverse);
 }
 
 int main() {
@@ -145,10 +140,9 @@ int main() {
     E e2; e2.reset();
     e2.numPolyVoices = 1;
     e2.lorRef(dm::STRAND_RHYTHM, E::LOR_LEN) = 7;
-    e2.laneDir_[dm::STRAND_RHYTHM] = E::LaneDir::Forward;
+    e2.macroDirLatch_.seed(dm::STRAND_RHYTHM, E::LaneDir::Forward);
     for (int64_t i = 1; i <= 11; ++i) e2.advancePlayhead();
-    e2.laneDir_[dm::STRAND_RHYTHM] = E::LaneDir::Pendulum;
-    e2.laneDirPending_[dm::STRAND_RHYTHM] = E::LaneDir::Pendulum;
+    e2.macroDirLatch_.seed(dm::STRAND_RHYTHM, E::LaneDir::Pendulum);
     bool flipExact = true;
     for (int64_t i = 12; i <= 30; ++i) {
         e2.advancePlayhead();

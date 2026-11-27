@@ -190,8 +190,7 @@ void SequencerEngine::reset() {
         laneSign_[s] = 1;
         laneSignPending_[s] = 1;
         lanePendulum_[s] = false;
-        laneDir_[s] = LaneDir::Forward;
-        laneDirPending_[s] = LaneDir::Forward;
+        macroDirLatch_.seed(s, LaneDir::Forward);   // CA1: seed pending+committed together
         lanePingPongHold_[s] = false;
 
         for (int v = 1; v <= numPolyVoices; ++v) {
@@ -200,8 +199,7 @@ void SequencerEngine::reset() {
                                     // arithmetic, so a bounce flip on 0 is a no-op (the
                                     // Pendulum/PingPong bounce would never reverse direction).
             laneSignVPending_[v][s] = 1;
-            laneDirV_[v][s] = LaneDir::Forward;
-            laneDirVPending_[v][s] = LaneDir::Forward;
+            voiceDirLatch_.seed(v, s, LaneDir::Forward);   // CA1: seed pending+committed together
             lanePingPongHoldV_[v][s] = false;
         }
     }
@@ -447,26 +445,31 @@ bool SequencerEngine::advancePlayhead(int dir, const int8_t* voiceMotion) {
     // recompute-from-the-counter is gone, and no lane carries an accumulator that can drift
     // away from the transport — the phases are congruent to their drivers by construction).
     // See laneTickFor().
-    // Promote pending direction at the step edge -- BUT NOT while locked. Direction is LATCH
-    // (LOCK_SEMANTICS §9): a direction change made under lock must freeze and take effect at
-    // unlock, not commit at the next step edge. locked is this engine's live lock (aliased as
-    // Monsoon::locked, toggled by the user). Gating here staged-promotes: pending holds the new
-    // dir, and the first unlocked step edge commits it.
-    // SCOPE (LOCK_SCOPE_MENU): a strand promotes under lock IF its Sands scope bit is set (direction
-    // opted out of the freeze for that axis). dirLive_(strand) = unlocked OR that strand's bit is live.
-    if (laneFlipQuant == LaneFlipQuant::StepEdge) {
-        for (int l = 0; l < dotModular::NUM_STRANDS; ++l) {
-            if (!dirLive_(l)) continue;   // this strand's direction stays latched
-            laneDir_[l] = laneDirPending_[l];
-            // v starts at 0 (resolver step 4 — DIR-SLOT0-ROW-INERT closed): slot 0's poly
-            // row now promotes for STORE consistency. The manager resets + pushes pending
-            // for all 16 slots; the engine silently dropping slot 0 was the seam. NO
-            // consumer reads laneDirV_[0][*]: the recompute loops below stay v = 1..
-            // UNTOUCHED (widening THEM would touch laneTickV_/laneSignV_ slot-0 semantics
-            // for zero readers), and V1's audio reads the MONO channel laneDir_[l] — this
-            // change cannot move the audio.
-            for (int v = 0; v <= numPolyVoices; ++v) laneDirV_[v][l] = laneDirVPending_[v][l];
-        }
+    // Promote pending direction -- BUT NOT while locked. Direction is LATCH (LOCK_SEMANTICS §9):
+    // a direction change made under lock must freeze and take effect at unlock, not commit at the
+    // next edge. SCOPE (LOCK_SCOPE_MENU): a strand promotes under lock IFF its Sands scope bit is
+    // set (direction opted out of the freeze for that axis) — LaneDirPolicy::scopeLive.
+    //
+    // CA1 — StepEdge commit, PRE-ADVANCE (this is one of the direction control's TWO commit
+    // points, and the timing is load-bearing, NOT collapsible to a single post-advance tick):
+    // tickHolders (below) reads the committed direction through effectiveMonoLaneLor /
+    // effectiveLaneLor / effectiveMacroRowLor and feeds it to walkKeyOf/walkPeriod, so a StepEdge
+    // flip must be committed HERE to take effect on THIS tick's walk (matching the pre-holder
+    // code). The Phrase commit is post-advance (it depends on `wrapped`). Both go through the ONE
+    // mechanic — LatchedControl/Bank2D::tick + the ONE LaneDirPolicy (edge + scope) — and the ctx
+    // flags make each quant commit at exactly one of the two points (StepEdge here only, Phrase
+    // post only), so no control is ever double-committed. Only the DIR is promoted; laneSign_* are
+    // derived from position each step. Slot-0 poly row promotes for store consistency (no reader).
+    {
+        redDot::LatchCtx dirCtx;
+        dirCtx.stepEdge      = true;    // StepEdge quant: every advance is its edge
+        dirCtx.wrapped       = false;   // Phrase quant does NOT commit pre-advance
+        dirCtx.locked        = locked;
+        dirCtx.scopeLiveMask = scopeLiveMask;
+        macroDirLatch_.policy.quant = laneFlipQuant;
+        voiceDirLatch_.policy.quant = laneFlipQuant;
+        macroDirLatch_.tick(dirCtx);
+        voiceDirLatch_.tick(dirCtx, (std::size_t)numPolyVoices + 1);
     }
 
     // ── THE POSITION-HOLDER TICK (POSITION_HOLDER_MODEL.md) ─────────────────────
@@ -513,23 +516,22 @@ bool SequencerEngine::advancePlayhead(int dir, const int8_t* voiceMotion) {
     // (If a lane's LOR length == the phrase length, the endpoint coincides with the wrap, so
     // the behaviour is the same. If the LOR is shorter, the bounce happens sooner — correct.)
 
-    // Phrase: defer the manual flip to the wrap, so the next phrase plays in the new direction.
-    // Only the DIR is promoted now — laneSign_/laneSignV_ are derived from the position each
-    // step (see the recompute above), so promoting a "pending sign" would be dead motion.
-    // Also gated on !locked (LATCH): a direction change under lock waits for unlock, same as
-    // the StepEdge path above -- else direction would still commit under lock via Phrase.
-    // SCOPE per-strand (LOCK_SCOPE_MENU): promote under lock only for strands whose direction bit is live.
-    if (laneFlipQuant == LaneFlipQuant::Phrase && wrapped)
-        for (int l = 0; l < dotModular::NUM_STRANDS; ++l) {
-            if (!dirLive_(l)) continue;
-            laneDir_[l] = laneDirPending_[l];
-            // v = 0 here too (resolver step 4 — DIR-SLOT0-ROW-INERT closed): slot 0's
-            // poly row promotes for STORE consistency on BOTH flip quantizations (the
-            // StepEdge site above carries the full note). NO consumer reads
-            // laneDirV_[0][*] — the recompute loops stay v = 1.. untouched, and V1's
-            // audio reads the MONO channel laneDir_[l] — this cannot move the audio.
-            for (int v = 0; v <= numPolyVoices; ++v) laneDirV_[v][l] = laneDirVPending_[v][l];
-        }
+    // ── CA1 — Phrase commit, POST-ADVANCE (the direction control's second commit point) ──
+    // Deferred to the wrap so the NEXT phrase plays the new direction; gated on `wrapped`, which
+    // is only known after pos_.advance. The ctx here sets stepEdge=false so a StepEdge flip is
+    // NOT re-committed (it already committed pre-advance) — the policy edge thus fires exactly one
+    // of the two sites per quant. Same ONE mechanic + ONE policy as the pre-advance site above.
+    {
+        redDot::LatchCtx dirCtx;
+        dirCtx.stepEdge      = false;   // StepEdge already committed pre-advance; no double commit
+        dirCtx.wrapped       = wrapped; // Phrase quant commits iff the phrase wrapped
+        dirCtx.locked        = locked;
+        dirCtx.scopeLiveMask = scopeLiveMask;
+        macroDirLatch_.policy.quant = laneFlipQuant;
+        voiceDirLatch_.policy.quant = laneFlipQuant;
+        macroDirLatch_.tick(dirCtx);
+        voiceDirLatch_.tick(dirCtx, (std::size_t)numPolyVoices + 1);
+    }
 
     return wrapped;
 }

@@ -105,7 +105,7 @@ int main() {
         eng.voiceLorDir_[V2S.v] = SequencerEngine::LaneDir::Forward;
         eng.polyLORRef(V2S, dotModular::LaneId{SequencerEngine::PL_REST}, SequencerEngine::LOR_LEN) = 8;
         eng.polyLORRef(V2S, dotModular::LaneId{SequencerEngine::PL_REST}, SequencerEngine::LOR_ROT) = 2;
-        eng.laneDirV_[V2S.v][dotModular::STRAND_RHYTHM] = SequencerEngine::LaneDir::Reverse;
+        eng.voiceDirLatch_.seed(V2S.v, dotModular::STRAND_RHYTHM, SequencerEngine::LaneDir::Reverse);
         eng.advancePlayhead(1, nullptr);
         const int s = dotModular::STRAND_RHYTHM;
         std::snprintf(msg, sizeof msg, "G3: the reverse lane's tick at the parent's entry is %d, want 0 (the reverse walk starts at 0 — the rotation cell follows)", eng.laneTickV_[V2S.v][s]);
@@ -151,7 +151,7 @@ int main() {
             SequencerEngine eng; eng.reset();
             eng.updateWindow(16.f, 0.f, false, 0.f, 0.f, false);   // the pass-through global
             eng.lorRef(S, SequencerEngine::LOR_LEN) = 8;
-            eng.laneDir_[S] = ref.d;
+            eng.macroDirLatch_.seed(S, ref.d);
             for (int t = 0; t < 16; ++t) {
                 eng.advancePlayhead(1, nullptr);
                 std::snprintf(msg, sizeof msg, "G5 (%s): step %d lane tick %d, want %d (the full two-period bounce walk, byte-identical pre/post)", ref.tag, t, eng.laneTick_[S], ref.walk[t]);

@@ -1,11 +1,11 @@
 #include "MonsoonModeController.hpp"
 #include "MonsoonLockManager.hpp"
 
-// LOCK_SCOPE_MENU: SequencerEngine::dirLive_ hard-codes the Sands scope-bit values (to stay
-// include-free of this header). Pin them to the ScopeBit enum here, where BOTH are visible, so a
-// renumber of ScopeBit fails the build instead of silently desyncing the engine's direction gate.
-static_assert((uint32_t)dotModular::SB_SANDS_R == (1u << 2), "dirLive_ kSandsR out of sync with ScopeBit");
-static_assert((uint32_t)dotModular::SB_SANDS_M == (1u << 3), "dirLive_ kSandsM out of sync with ScopeBit");
+// LOCK_SCOPE_MENU: SequencerEngine::LaneDirPolicy::scopeLive hard-codes the Sands scope-bit values
+// (to stay include-free of this header). Pin them to the ScopeBit enum here, where BOTH are visible,
+// so a renumber of ScopeBit fails the build instead of silently desyncing the engine's direction gate.
+static_assert((uint32_t)dotModular::SB_SANDS_R == (1u << 2), "LaneDirPolicy kSandsR out of sync with ScopeBit");
+static_assert((uint32_t)dotModular::SB_SANDS_M == (1u << 3), "LaneDirPolicy kSandsM out of sync with ScopeBit");
 // Dice bits: updatePatternInput below hard-codes 1<<8 / 1<<9 for diceLiveR/M (PatternInput has no
 // LockManager include). Pin them here too.
 static_assert((uint32_t)dotModular::SB_DICE_R == (1u << 8), "diceLiveR bit out of sync with ScopeBit");

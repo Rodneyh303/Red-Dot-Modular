@@ -563,26 +563,22 @@ static void U7_direction_promote() {
             se.locked = false;
 
             for (int v = 0; v < 16; ++v)
-                for (int l = 0; l < 7; ++l) {
-                    se.laneDirVPending_[v][l] = SequencerEngine::LaneDir::Forward;
-                    se.laneDirV_[v][l]        = SequencerEngine::LaneDir::Forward;
-                }
-            for (int l = 0; l < 7; ++l) {
-                se.laneDirPending_[l] = SequencerEngine::LaneDir::Forward;
-                se.laneDir_[l]        = SequencerEngine::LaneDir::Forward;
-            }
+                for (int l = 0; l < 7; ++l)
+                    se.voiceDirLatch_.seed(v, l, SequencerEngine::LaneDir::Forward);
+            for (int l = 0; l < 7; ++l)
+                se.macroDirLatch_.seed(l, SequencerEngine::LaneDir::Forward);
 
-            se.laneDirVPending_[v0][l0] = SequencerEngine::LaneDir::Reverse;
+            se.voiceDirLatch_.stage(v0, l0, SequencerEngine::LaneDir::Reverse);
             se.advancePlayhead(+1);
 
             char buf[160];
             if (v0 >= 1) {
                 std::snprintf(buf, sizeof buf, "pending Reverse for (%d,%s) did not promote",
                               v0, LANE_NAME[l0]);
-                expectCell(se.laneDirV_[v0][l0] == SequencerEngine::LaneDir::Reverse, F, v0, l0, buf);
+                expectCell(se.voiceDirLatch_.read(v0, l0) == SequencerEngine::LaneDir::Reverse, F, v0, l0, buf);
             } else {
                 // Slot 0's poly row promotes too (resolver step 4: the v loop starts at 0).
-                expectCell(se.laneDirV_[0][l0] == SequencerEngine::LaneDir::Reverse, F, 0, l0,
+                expectCell(se.voiceDirLatch_.read(0, l0) == SequencerEngine::LaneDir::Reverse, F, 0, l0,
                            "slot-0 poly row did not promote");
             }
 
@@ -590,14 +586,14 @@ static void U7_direction_promote() {
             for (int v = 1; v <= NP && !leak; ++v)
                 for (int l = 0; l < 7 && !leak; ++l) {
                     if (v == v0 && l == l0) continue;
-                    if (se.laneDirV_[v][l] != SequencerEngine::LaneDir::Forward) {
+                    if (se.voiceDirLatch_.read(v, l) != SequencerEngine::LaneDir::Forward) {
                         leak = true; lv = v; ll = l;
                     }
                 }
             std::snprintf(buf, sizeof buf, "direction of (%d,%s) leaked to (%d,%s)",
                           v0, LANE_NAME[l0], lv, (ll >= 0 ? LANE_NAME[ll] : "?"));
             expectCell(!leak, F, v0, l0, buf);
-            expectCell(se.laneDir_[l0] == SequencerEngine::LaneDir::Forward, F, v0, l0,
+            expectCell(se.macroDirLatch_.read(l0) == SequencerEngine::LaneDir::Forward, F, v0, l0,
                        "poly-row pending write perturbed the MONO channel");
         }
 
@@ -607,15 +603,15 @@ static void U7_direction_promote() {
         se.numPolyVoices = NP;
         se.laneFlipQuant = SequencerEngine::LaneFlipQuant::StepEdge;
         se.locked = false;
-        se.laneDirPending_[l0] = SequencerEngine::LaneDir::Reverse;
+        se.macroDirLatch_.stage(l0, SequencerEngine::LaneDir::Reverse);
         se.advancePlayhead(+1);
         char buf[96];
-        std::snprintf(buf, sizeof buf, "mono laneDirPending_(%s) did not promote", LANE_NAME[l0]);
-        expectCell(se.laneDir_[l0] == SequencerEngine::LaneDir::Reverse, F, 0, l0, buf);
+        std::snprintf(buf, sizeof buf, "mono macroDirLatch_(%s) did not promote", LANE_NAME[l0]);
+        expectCell(se.macroDirLatch_.read(l0) == SequencerEngine::LaneDir::Reverse, F, 0, l0, buf);
         bool polyTouched = false;
         for (int v = 1; v <= NP && !polyTouched; ++v)
             for (int l = 0; l < 7 && !polyTouched; ++l)
-                if (se.laneDirV_[v][l] != SequencerEngine::LaneDir::Forward) polyTouched = true;
+                if (se.voiceDirLatch_.read(v, l) != SequencerEngine::LaneDir::Forward) polyTouched = true;
         expectCell(!polyTouched, F, 0, l0, "mono pending write perturbed a poly row");
     }
 

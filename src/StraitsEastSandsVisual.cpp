@@ -1407,8 +1407,8 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                     else                       auth.mod->params[auth.paramId].setValue((float)nxt);
                 } else {
                     const int pv = ch - 1;
-                    nxt = (((int)se->laneDirVPending_[pv][lane]) + d) % 4;
-                    se->laneDirVPending_[pv][lane] = (SequencerEngine::LaneDir)nxt;
+                    nxt = (((int)se->voiceDirLatch_.peek(pv, lane)) + d) % 4;   // RMW the pending dir
+                    se->voiceDirLatch_.stage(pv, lane, (SequencerEngine::LaneDir)nxt);
                 }
                 // Poly voices: persist to the target's BANK slot — syncDirBank() only ever
                 // sees the proxy, i.e. the displayed voice, so a mod aimed at any other voice
