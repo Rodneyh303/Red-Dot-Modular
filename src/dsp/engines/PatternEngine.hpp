@@ -681,7 +681,10 @@ struct PatternEngine {
         void  seed(float v)       { slew.seed(v); }             // pending AND committed together (reset/load)
     };
     CopulaWindowLatch rhythmWin_, melodyWin_, qmixWin_;   // was rhythm/melody/qmixSlewLatched
-    float rhythmSlewApplied =-1.f, melodySlewApplied =-1.f, qmixSlewApplied =-1.f;  // force first recompute (record of the slew the buffers were last built at)
+    // SENTINEL -2.f (NOT -1): the knob is bipolar, so -1 is a LEGAL committed slew — using it
+    // as the never-computed sentinel let a commit AT -1 permanently disable the boundary
+    // consumer (slew AND depth stopped committing until a roll). -2 is outside clamp range.
+    float rhythmSlewApplied =-2.f, melodySlewApplied =-2.f, qmixSlewApplied =-2.f;  // force first recompute (record of the slew the buffers were last built at)
     int   rhythmDepthApplied = -1, melodyDepthApplied = -1, qmixDepthApplied = -1;   // Part B: the K the buffers were last built at (-1 forces)
     // Weight-cache: L2-normalised geometric weights w[K] per stream, keyed on r (= slewKnobToR(slew)).
     // Slew r is phrase-fixed, so weights() was recomputed every sumZ call with the same r — pure

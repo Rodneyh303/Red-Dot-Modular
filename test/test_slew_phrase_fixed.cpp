@@ -170,6 +170,38 @@ int main() {
         }
     });
 
+    // T6 — THE -1 SENTINEL COLLISION (regression): -1 is a LEGAL bipolar knob value, but the
+    // boundary consumer's "ever computed" guard used *SlewApplied != -1.f. Commit slew == -1
+    // and the guard reads the real value as the never-computed sentinel: the consumer disables
+    // itself PERMANENTLY — every later slew (and depth, same guard) change stages but never
+    // commits until some roll redraws. RED on the -1 sentinel; GREEN with an out-of-range one.
+    TEST("slew committed at -1 does not disable the boundary consumer (sentinel collision)", {
+        PatternEngine pe;
+        pe.numPolyVoicesHint = 2;
+        pe.seedRhythmPhilox(0.42f); pe.seedMelodyPhilox(0.43f); pe.seedQmixPhilox(0.44f);
+        PatternInput in;
+        for (int i=0;i<12;++i) in.semiWeights[i]=1.f;
+        in.octaveLo=3.f; in.octaveHi=5.f; in.restProb=0.f;
+        in.variationAmount=0.5f; in.transpose=0.f;
+        in.noteVariationMask=0b111; in.locked=false;
+        pe.latchSlew(0.6f, 0.f, 0.f); pe.rhythmWin_.consume();
+        pe.latchMix(0.f, 0.f, 0.f, true, true, true);
+        pe.recomputeEffectiveRhythm();
+        auto boundary = [&](float s){ pe.latchSlew(s, 0.f, 0.f); pe.applyPendingSeedsAndRedraw(in); };
+        boundary(-1.f);                                   // commit the knob's hard end
+        EXPECT(pe.rhythmSlewApplied == -1.f);             // -1 really is the committed slew
+        boundary(-0.3f);                                  // now turn back up: MUST commit
+        EXPECT(pe.rhythmSlewApplied == -0.3f);
+        EXPECT(pe.rhythmWin_.phraseSlew() == -0.3f);
+        boundary(0.7f);                                   // and keep tracking
+        EXPECT(pe.rhythmSlewApplied == 0.7f);
+        // depth rides the same consumer guard: it must also still commit after a -1 visit
+        boundary(-1.f);
+        pe.latchDepth(16, 64, 64);
+        pe.applyPendingSeedsAndRedraw(in);
+        EXPECT(pe.rhythmWin_.phraseDepth() == 16);
+    });
+
     std::cout << std::string(50, '=') << "\n"
               << (s_fail == 0 ? "\033[32m" : "\033[31m")
               << s_pass << " passed, " << s_fail << " failed\033[0m\n";
