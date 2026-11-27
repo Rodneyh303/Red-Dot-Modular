@@ -2,6 +2,7 @@
 #include "../NoteValues.hpp"   // NUM_NOTE_VALUES (getNoteValueNorm's range — DOTTED BUILD)
 
 #include <cmath>
+#include <array>
 #include "rack.hpp"
 
 struct MonsoonInterchangeExpander;
@@ -251,7 +252,7 @@ private:
     // CV3 offsets for rhythm slew, melody slew, rhythm mix, melody mix,
     // qmix slew, qmix mix (Task 4 appended QMIX at 4,5 — R/M indices unchanged)
     float cv3Offsets[6] = {0.f, 0.f, 0.f, 0.f, 0.f, 0.f};
-    float scrubCvScale_[3] = {32.f, 32.f, 32.f};   // Part B: active scrub range per stream (R/M/Q)
+    std::array<float, 3> scrubCvScale_ = {32.f, 32.f, 32.f};   // Part B: active scrub range per stream (R/M/Q)
     // Junction expander offsets: note value, variation, legato, rest, accent
     float junctionOffsets[5] = {0.f, 0.f, 0.f, 0.f, 0.f};
     

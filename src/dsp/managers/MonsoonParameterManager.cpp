@@ -152,9 +152,9 @@ float ParameterManager::getQmixMix() const { return clampv(readParam_(QMIX_MIX_P
 
 // Part B: per-stream MA depth K (integer taps 1..64; the param snaps, CV none for now —
 // depth is a structural choice like note length, not a modulation target yet).
-int ParameterManager::getRhythmDepth() const { return (int)rack::math::clamp(std::lround(readParam_(DEPTH_R_PARAM, 1.f, 64.f)), 1l, 64l); }
-int ParameterManager::getMelodyDepth() const { return (int)rack::math::clamp(std::lround(readParam_(DEPTH_M_PARAM, 1.f, 64.f)), 1l, 64l); }
-int ParameterManager::getQmixDepth()  const { return (int)rack::math::clamp(std::lround(readParam_(DEPTH_Q_PARAM, 1.f, 64.f)), 1l, 64l); }
+int ParameterManager::getRhythmDepth() const { return rack::math::clamp((int)std::lround(readParam_(DEPTH_R_PARAM, 1.f, 64.f)), 1, 64); }
+int ParameterManager::getMelodyDepth() const { return rack::math::clamp((int)std::lround(readParam_(DEPTH_M_PARAM, 1.f, 64.f)), 1, 64); }
+int ParameterManager::getQmixDepth()  const { return rack::math::clamp((int)std::lround(readParam_(DEPTH_Q_PARAM, 1.f, 64.f)), 1, 64); }
 
 // ──── Octave Range Getters ──────────────────────────────────────────────────
 
