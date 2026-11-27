@@ -251,6 +251,16 @@
       ]
     },
     {
+      "slug": "SandsFold",
+      "name": "Sands Fold",
+      "description": "The resizable fold spike: a panel whose width changes at runtime (saved in the patch, neighbours pushed aside, undoable), hosting the Sends band. Every control edits the same Monsoon store as the Sends subpanel.",
+      "tags": [
+        "Expander",
+        "Digital",
+        "Utility"
+      ]
+    },
+    {
       "slug": "PhaseDistortion",
       "name": "Phase Distortion",
       "description": "Standalone phase distortion: 8 phase channels, per-channel warp/tilt/gap/atom sets, the shared transform. EVERY Monsoon's phase and subphase patch from its outputs (one-sample hop by design; a direct source path desyncs by one sample).",
