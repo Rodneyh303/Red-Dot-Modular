@@ -29,6 +29,7 @@
 #include "../NoteValues.hpp"   // NUM_NOTE_VALUES + NOTE_VALUES (varyNoteIndex's index domain — DOTTED BUILD)
 #include <unordered_map>
 #include <utility>
+#include "../ScrubOffsetCore.hpp"   // Part B: the ONE scrub split path (offset-direct, floor-safe)
 #include "../PhiloxRng.hpp"
 #include "../LaneMapping.hpp"   // dotModular::STRAND_* for finalRandomByStrand
 #include "../VoiceLaneTypes.hpp"   // VoiceSlot/LaneId — strong per-voice/lane indices (typed overloads below)
@@ -922,6 +923,20 @@ struct PatternEngine {
     // OU-bridge interpolation noise: SEPARATE keys per stream (S+4/5/6), position-index keyed.
     redDot::PhiloxRng bridgeRhythmPhilox, bridgeMelodyPhilox, bridgeQmixPhilox;
     int64_t   rhythmDrawCtr = 0, melodyDrawCtr = 0, qmixDrawCtr = 0;   // signed: can go negative on reverse
+
+    // ── Part B: scrub position (CC_PROMPT_SCRUB32) ────────────────────────────────
+    // The latched mix value IS the signed draw offset (offset-direct: param value =
+    // draws, integers exact in float). ONE split path for all six recompute sites so
+    // they cannot drift: clamp to the ACTIVE budget (maxScrubForK of the stream's
+    // moving-average depth; K is fixed at COPULA_K until the depth control lands),
+    // then FLOOR-split (ScrubOffsetCore — truncation corrupts negative offsets).
+    // f > 0 reads BEHIND the counter (window N-f), f < 0 reads AHEAD (Philox is
+    // addressable at any signed index, so future draws are computable).
+    static redDot::scrub::Split scrubSplit(float latchedOffset,
+                                           int kActive = redDot::scrub::COPULA_K) {
+        const float lim = (float)redDot::scrub::maxScrubForK(kActive);
+        return redDot::scrub::splitScrub(rack::math::clamp(latchedOffset, -lim, lim));
+    }
     uint64_t  rhythmCursor  = 0, melodyCursor  = 0, qmixCursor  = 0;   // intra-draw position, reset per redraw
 
     // Reset the intra-draw cursor at the start of a redraw (called by redrawRhythm/

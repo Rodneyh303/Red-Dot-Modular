@@ -139,11 +139,16 @@ float ParameterManager::getTranspose() const {
 
 float ParameterManager::getRhythmSlew() const { return clampv(readParam_(DICE_SLEW_R_PARAM, -1.f, 1.f) + cv3Offsets[0], -1.f, 1.f); }
 float ParameterManager::getMelodySlew() const { return clampv(readParam_(DICE_SLEW_M_PARAM, -1.f, 1.f) + cv3Offsets[1], -1.f, 1.f); }
-float ParameterManager::getRhythmMix() const { return clampv(readParam_(RHYTHM_MIX_PARAM, 0.f, 1.f) + cv3Offsets[2], 0.f, 1.f); }
-float ParameterManager::getMelodyMix() const { return clampv(readParam_(MELODY_MIX_PARAM, 0.f, 1.f) + cv3Offsets[3], 0.f, 1.f); }
+// Part B offset-direct: the param IS the signed draw offset. CV is scaled so FULL CV
+// travel == FULL CURRENT range (scrubCvScale_, poked to maxScrubForK of the stream's
+// depth; COPULA_K's +/-32 until the depth control lands) — per the prompt, CV scaling
+// references the CURRENT range, never the configured +/-95 storage headroom. CV is a
+// continuous addition and is NEVER snapped (modulation morphs; hand+modifier snaps).
+float ParameterManager::getRhythmMix() const { return clampv(readParam_(RHYTHM_MIX_PARAM, -95.f, 95.f) + cv3Offsets[2] * scrubCvScale_[0], -95.f, 95.f); }
+float ParameterManager::getMelodyMix() const { return clampv(readParam_(MELODY_MIX_PARAM, -95.f, 95.f) + cv3Offsets[3] * scrubCvScale_[1], -95.f, 95.f); }
 // Task 4 (QMIX): mirror R/M slew/mix; CV3 lanes 4 (slew) and 5 (mix), appended so R/M indices stay stable.
 float ParameterManager::getQmixSlew() const { return clampv(readParam_(DICE_SLEW_Q_PARAM, -1.f, 1.f) + cv3Offsets[4], -1.f, 1.f); }
-float ParameterManager::getQmixMix() const { return clampv(readParam_(QMIX_MIX_PARAM, 0.f, 1.f) + cv3Offsets[5], 0.f, 1.f); }
+float ParameterManager::getQmixMix() const { return clampv(readParam_(QMIX_MIX_PARAM, -95.f, 95.f) + cv3Offsets[5] * scrubCvScale_[2], -95.f, 95.f); }
 
 // ──── Octave Range Getters ──────────────────────────────────────────────────
 

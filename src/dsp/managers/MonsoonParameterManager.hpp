@@ -96,7 +96,14 @@ public:
     float getRhythmSlewNorm() const { return getRhythmSlew(); }
     float getMelodySlewNorm() const { return getMelodySlew(); }
     float getQmixSlewNorm()   const { return getQmixSlew(); }
-    float getRhythmMixNorm()  const { return getRhythmMix(); }
+    // Display-normalised scrub (0..1, 0.5 = live): the raw getter now returns a signed
+    // draw OFFSET (Part B offset-direct), so viz consumers get a stable unit interval.
+    // Display-normalised scrub (0..1, 0.5 = live): the raw getter now returns a signed
+    // draw OFFSET (Part B offset-direct), so viz consumers keep a stable unit interval.
+    float getRhythmMixNorm()  const {
+        const float range = scrubCvScale_[0] > 0.f ? scrubCvScale_[0] : 1.f;
+        return rack::math::clamp(0.5f + getRhythmMix() / (2.f * range), 0.f, 1.f);
+    }
     float getMelodyMixNorm()  const { return getMelodyMix(); }
     float getQmixMixNorm()    const { return getQmixMix(); }
     bool  anyCv3Modulated() const {
@@ -135,6 +142,12 @@ public:
     float getRhythmMix() const;
     float getMelodyMix() const;
     float getQmixMix() const;
+
+    // Part B: the ACTIVE scrub range per stream (R/M/Q) = maxScrubForK(stream depth K).
+    // Scales CV so full CV travel == full current range, and normalises the viz. Fixed
+    // at +/-32 (COPULA_K) until the per-stream depth control lands, which pokes this
+    // each control tick.
+    void setScrubRanges(float r, float m, float q) { scrubCvScale_[0]=r; scrubCvScale_[1]=m; scrubCvScale_[2]=q; }
     
     // ──── Octave Range Getters ──────────────────────────────────────────────
     
@@ -233,6 +246,7 @@ private:
     // CV3 offsets for rhythm slew, melody slew, rhythm mix, melody mix,
     // qmix slew, qmix mix (Task 4 appended QMIX at 4,5 — R/M indices unchanged)
     float cv3Offsets[6] = {0.f, 0.f, 0.f, 0.f, 0.f, 0.f};
+    float scrubCvScale_[3] = {32.f, 32.f, 32.f};   // Part B: active scrub range per stream (R/M/Q)
     // Junction expander offsets: note value, variation, legato, rest, accent
     float junctionOffsets[5] = {0.f, 0.f, 0.f, 0.f, 0.f};
     

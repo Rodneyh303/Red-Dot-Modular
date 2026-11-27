@@ -485,9 +485,12 @@ void PatternEngine::recomputeEffectiveRhythm() {
     // once) — blending the uniform outputs would be a linear blend of uniforms (the distortion
     // Phase 2 eliminates). At r==0 (slew knob=0) the old linear blend of raw draws is kept, so
     // bit-identity at scrub=0 is preserved.
-    const float s = rack::math::clamp(rhythmMixLatched, 0.f, 1.f) * 6.f;
-    const int   f    = (int)s;
-    const float frac = s - (float)f;
+    // Part B: the latched value IS the signed draw offset (offset-direct). ONE split path
+    // for all six sites (scrubSplit: clamp to the active budget, then FLOOR-split via
+    // ScrubOffsetCore — truncation would corrupt the bridge at negative offsets).
+    const auto  sp   = scrubSplit(rhythmMixLatched);
+    const int   f    = sp.f;
+    const float frac = sp.frac;
     const int64_t N  = rhythmDrawCtr;
     pruneDrawCache_(rhythmDrawCache_, N);   // bound the draw cache to the live window (before any cache ref)
     const float slew = rack::math::clamp(rhythmWin_.phraseSlew(), -1.f, 1.f);  // DRAW-FIXED (Part A)
@@ -603,9 +606,12 @@ void PatternEngine::recomputeEffectiveRhythm() {
 void PatternEngine::recomputeEffectiveMelody() {
 
     // Phase 2: normal-space scrub blend (mirror of recomputeEffectiveRhythm).
-    const float s = rack::math::clamp(melodyMixLatched, 0.f, 1.f) * 6.f;
-    const int   f    = (int)s;
-    const float frac = s - (float)f;
+    // Part B: the latched value IS the signed draw offset (offset-direct). ONE split path
+    // for all six sites (scrubSplit: clamp to the active budget, then FLOOR-split via
+    // ScrubOffsetCore — truncation would corrupt the bridge at negative offsets).
+    const auto  sp   = scrubSplit(melodyMixLatched);
+    const int   f    = sp.f;
+    const float frac = sp.frac;
     const int64_t N  = melodyDrawCtr;
     pruneDrawCache_(melodyDrawCache_, N);   // bound the draw cache to the live window (before any cache ref)
     const float slew = rack::math::clamp(melodyWin_.phraseSlew(), -1.f, 1.f);  // DRAW-FIXED (Part A)
@@ -690,9 +696,12 @@ void PatternEngine::recomputeEffectiveMelody() {
 void PatternEngine::recomputeEffectiveQmix() {
 
     // Phase 2: normal-space scrub blend (mirror, q-mix stream).
-    const float s = rack::math::clamp(qmixMixLatched, 0.f, 1.f) * 6.f;
-    const int   f    = (int)s;
-    const float frac = s - (float)f;
+    // Part B: the latched value IS the signed draw offset (offset-direct). ONE split path
+    // for all six sites (scrubSplit: clamp to the active budget, then FLOOR-split via
+    // ScrubOffsetCore — truncation would corrupt the bridge at negative offsets).
+    const auto  sp   = scrubSplit(qmixMixLatched);
+    const int   f    = sp.f;
+    const float frac = sp.frac;
     const int64_t N  = qmixDrawCtr;
     pruneDrawCache_(qmixDrawCache_, N);   // bound the draw cache to the live window (before any cache ref)
     const float slew = rack::math::clamp(qmixWin_.phraseSlew(), -1.f, 1.f);  // DRAW-FIXED (Part A)
@@ -770,9 +779,12 @@ void PatternEngine::recomputeEffectiveQmix() {
 // Called by refreshVisualCache for the DISPLAYED voice only (not all 15 poly voices).
 // ~16x less work than the full recomputeEffective*. Cache hit required (populated at roll).
 void PatternEngine::recomputeEffectiveRhythmForVoice(VoiceSlot voice) {
-    const float s = rack::math::clamp(rhythmMixLatched, 0.f, 1.f) * 6.f;
-    const int   f = (int)s;
-    const float frac = s - (float)f;
+    // Part B: the latched value IS the signed draw offset (offset-direct). ONE split path
+    // for all six sites (scrubSplit: clamp to the active budget, then FLOOR-split via
+    // ScrubOffsetCore — truncation would corrupt the bridge at negative offsets).
+    const auto  sp   = scrubSplit(rhythmMixLatched);
+    const int   f    = sp.f;
+    const float frac = sp.frac;
     const int64_t N  = rhythmDrawCtr;
     pruneDrawCache_(rhythmDrawCache_, N);   // bound the draw cache to the live window (before any cache ref)
     const float slew = rack::math::clamp(rhythmWin_.phraseSlew(), -1.f, 1.f);  // DRAW-FIXED (Part A)
@@ -825,9 +837,12 @@ void PatternEngine::recomputeEffectiveRhythmForVoice(VoiceSlot voice) {
     rhythmMixApplied = rhythmMixLatched;
 }
 void PatternEngine::recomputeEffectiveMelodyForVoice(VoiceSlot voice) {
-    const float s = rack::math::clamp(melodyMixLatched, 0.f, 1.f) * 6.f;
-    const int   f = (int)s;
-    const float frac = s - (float)f;
+    // Part B: the latched value IS the signed draw offset (offset-direct). ONE split path
+    // for all six sites (scrubSplit: clamp to the active budget, then FLOOR-split via
+    // ScrubOffsetCore — truncation would corrupt the bridge at negative offsets).
+    const auto  sp   = scrubSplit(melodyMixLatched);
+    const int   f    = sp.f;
+    const float frac = sp.frac;
     const int64_t N  = melodyDrawCtr;
     pruneDrawCache_(melodyDrawCache_, N);   // bound the draw cache to the live window (before any cache ref)
     const float slew = rack::math::clamp(melodyWin_.phraseSlew(), -1.f, 1.f);  // DRAW-FIXED (Part A)
@@ -870,9 +885,12 @@ void PatternEngine::recomputeEffectiveMelodyForVoice(VoiceSlot voice) {
     melodyMixApplied = melodyMixLatched;
 }
 void PatternEngine::recomputeEffectiveQmixForVoice(VoiceSlot voice) {
-    const float s = rack::math::clamp(qmixMixLatched, 0.f, 1.f) * 6.f;
-    const int   f = (int)s;
-    const float frac = s - (float)f;
+    // Part B: the latched value IS the signed draw offset (offset-direct). ONE split path
+    // for all six sites (scrubSplit: clamp to the active budget, then FLOOR-split via
+    // ScrubOffsetCore — truncation would corrupt the bridge at negative offsets).
+    const auto  sp   = scrubSplit(qmixMixLatched);
+    const int   f    = sp.f;
+    const float frac = sp.frac;
     const int64_t N  = qmixDrawCtr;
     pruneDrawCache_(qmixDrawCache_, N);   // bound the draw cache to the live window (before any cache ref)
     const float slew = rack::math::clamp(qmixWin_.phraseSlew(), -1.f, 1.f);  // DRAW-FIXED (Part A)

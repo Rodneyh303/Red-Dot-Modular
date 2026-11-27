@@ -83,11 +83,11 @@ int main() {
     TEST("mix-frac-only mid-phrase change leaves a non-displayed voice's buffer untouched", {
         PatternEngine pe; PatternInput in;
         pe.numPolyVoicesHint = 2;                 // V1(displayed, mono)=0, plus V2
-        bake(pe, 0.60f, 0.20f);                   // mix 0.20 -> s=1.2 -> f=1
+        bake(pe, 0.60f, 1.30f);                   // offset 1.30 -> f=1 (Part B offset-direct units)
         pe.recomputeEffectiveRhythm();            // warm all voices + the z-cache at (N, f=1, r)
         float before[16];
         for (int i = 0; i < 16; ++i) before[i] = pe.slewedRhythm[1][i];   // V2 == slot 1
-        pe.latchMix(0.28f, 0.f, 0.f, true, false, false);  // 0.28 -> s=1.68 -> f=1 (same f, frac only)
+        pe.latchMix(1.90f, 0.f, 0.f, true, false, false);  // 1.90 -> f=1 still (same f, frac only)
         pe.refreshVisualCache(in);                         // z-cache HIT -> for-voice(mono) only
         for (int i = 0; i < 16; ++i)
             EXPECT(std::memcmp(&pe.slewedRhythm[1][i], &before[i], sizeof(float)) == 0);
@@ -104,11 +104,12 @@ int main() {
     TEST("differential: mid-phrase slew latches never perturb any voice's buffers (hit + miss paths)", {
         PatternEngine A, B; PatternInput in;
         A.numPolyVoicesHint = 3; B.numPolyVoicesHint = 3;
-        bake(A, 0.60f, 0.20f); bake(B, 0.60f, 0.20f);
+        bake(A, 0.60f, 1.30f); bake(B, 0.60f, 1.30f);
         A.recomputeEffectiveRhythm(); B.recomputeEffectiveRhythm();
-        // mix walk: frac-only moves (f=1 throughout: 0.20->0.28), then integer crossings
-        // (0.35 -> f=2, 0.05 -> f=0), then back between — cache hits AND misses.
-        const float walk[7] = {0.24f, 0.28f, 0.35f, 0.05f, 0.33f, 0.21f, 0.30f};
+        // offset walk (Part B units: the value IS the draw offset): frac-only moves
+        // (f=1: 1.3->1.9), integer crossings (2.5 -> f=2, 0.3 -> f=0, -1.6 -> f=-2:
+        // the BIDIRECTIONAL side), and back — z-cache hits AND misses, both signs.
+        const float walk[7] = {1.4f, 1.9f, 2.5f, 0.3f, -1.6f, 1.1f, 1.9f};
         for (int k = 0; k < 7; ++k) {
             A.latchSlew(slews[k], 0.f, 0.f);                      // A's live latch MOVES
             A.latchMix(walk[k], 0.f, 0.f, true, false, false);

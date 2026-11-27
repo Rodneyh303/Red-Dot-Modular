@@ -67,9 +67,9 @@ void MonsoonConfigurator::setup(Monsoon* m) {
     m->configButton(LAST_DICE_Q_PARAM,  "Last dice q-mix (previous draw)");
     //mix defaults to 100% B, so that dice defaults to auditioning a new pattern rather than blending with the existing one.
     //mix of 100% mirrors MeloDicer which does not have mix.
-    m->configParam(RHYTHM_MIX_PARAM, 0.f, 1.f, 1.f, "Rhythm A>B mix", "%", 0.f, 100.f);
-    m->configParam(MELODY_MIX_PARAM, 0.f, 1.f, 1.f, "Melody A>B mix", "%", 0.f, 100.f);
-    m->configParam(QMIX_MIX_PARAM, 0.f, 1.f, 1.f, "Q-mix A>B mix", "%", 0.f, 100.f);
+    m->configParam(RHYTHM_MIX_PARAM, -95.f, 95.f, 0.f, "Rhythm scrub", " draws");  // Part B offset-direct: value = signed draw offset; 0 = live; widget maps rotation to the ACTIVE range (maxScrubForK)
+    m->configParam(MELODY_MIX_PARAM, -95.f, 95.f, 0.f, "Melody scrub", " draws");  // Part B offset-direct: value = signed draw offset; 0 = live; widget maps rotation to the ACTIVE range (maxScrubForK)
+    m->configParam(QMIX_MIX_PARAM, -95.f, 95.f, 0.f, "Q-mix scrub", " draws");  // Part B offset-direct: value = signed draw offset; 0 = live; widget maps rotation to the ACTIVE range (maxScrubForK)
 
     // Mode E manual phase (full range = one upward ramp = one bar). Fallback when CV1
     // is unpatched; automatable by a host to drive Mode E from a DAW phase modulator.
