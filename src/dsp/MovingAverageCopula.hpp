@@ -49,7 +49,8 @@ public:
     /// weights() arithmetic exactly (same loop shape, same order).
     static void weightsK(double r, double* w, int kAct) {
         r = clampR(r);
-        if (kAct < 1) kAct = 1; if (kAct > (int)K) kAct = (int)K;
+        if (kAct < 1) kAct = 1;
+        if (kAct > (int)K) kAct = (int)K;
         double s2 = 0.0, p = 1.0;
         for (std::size_t j = 0; j < (std::size_t)kAct; ++j) { w[j] = p; s2 += p * p; p *= r; }
         const double inv = 1.0 / std::sqrt(s2);
