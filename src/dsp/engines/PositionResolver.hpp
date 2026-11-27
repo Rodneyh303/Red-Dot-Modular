@@ -77,11 +77,6 @@ struct PositionResolver {
     int64_t netSteps_   = 0;
     bool    netEntered_ = false;
 
-    // (READ-COORDINATE ANCHOR, master-side; #369's branch predates it) the direction of the FIRST
-    // motion since reset/window-change — the read coordinate's entry anchor. The netsteps merge
-    // auto-deleted this declaration because the branch was cut before it existed; restored.
-    int entryDir_  = 0;
-
     // ── THE ONE STATE: the played column (today's stepIndex; -1 = the pre-start park) ──
     int col_ = -1;
     // (SLICE 2b — the PHASE-MODE phrase override) phase mode does not traverse, it
@@ -183,12 +178,9 @@ struct PositionResolver {
     // out-of-window landing back to the traversal's entry bound.
     void advance(int motion) {
         if (motion != 0) phraseOverridden_ = false;   // the traversal re-derives the phrase (a held event keeps it)
-        if (motion != 0 && entryDir_ == 0) entryDir_ = (motion < 0) ? -1 : +1;
-        // (NET-STEPS MODEL — Rodney 2026-11-25) a single signed counter: the FIRST motion since
-        // reset only enters (the read lands at the entry, netSteps_==0); every later motion
-        // displaces it. No seed/skip/re-park and no re-arm on a window change — the whole point:
-        // it stays drift-free across a mid-run window re-author. read = (netSteps_ + R) mod L.
-        // (NET-STEPS) a held event (motion == 0) does not move the position, so it does not count.
+        // (NET-STEPS) the FIRST motion only ENTERS — the read lands AT the entry (netSteps_ == 0) — and every
+        // later motion accumulates. A held event (motion == 0) does not move the position, so it does not count.
+        // (entryDir_ is RETIRED — superseded by the history-independent netsteps readCoord; see the model note above.)
         if (motion != 0) { if (!netEntered_) netEntered_ = true; else netSteps_ += motion; }
         if (motion < 0) {
             dir_ = -1;
