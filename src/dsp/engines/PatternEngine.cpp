@@ -170,7 +170,7 @@ void PatternEngine::reset() {
 
     rhythmWin_.seed(0.f); melodyWin_.seed(0.f); qmixWin_.seed(0.f);
     rhythmWin_.seedDepth(redDot::scrub::COPULA_K); melodyWin_.seedDepth(redDot::scrub::COPULA_K); qmixWin_.seedDepth(redDot::scrub::COPULA_K);   // Part B: full MA depth by default   // bipolar: 0 = independent (seed pending+committed)
-    rhythmSlewApplied=melodySlewApplied=qmixSlewApplied=-1.f;   // force first recompute
+    rhythmSlewApplied=melodySlewApplied=qmixSlewApplied=-2.f;   // force first recompute (-2 sentinel: -1 is a legal knob value)
     rhythmFirstDraw=melodyFirstDraw=qmixFirstDraw=true;
     sandsActive=false;
     // Mirror defaults into slewedDraw too (final == slewed at reset) — RING-bounded
@@ -487,7 +487,7 @@ void PatternEngine::redrawRhythm(const PatternInput& in) {
     // width in patternRhythmAt, not a roll-time B-shaping step.)
     (void)first;   // first-draw no longer special-cased: infinite-line, patternAt(N) is self-contained
     rhythmWin_.consume();           // THE ROLL: consume the pending slew into the phrase (Part A)
-    rhythmSlewApplied = -1.f;       // force recompute of slewedDraw
+    rhythmSlewApplied = -2.f;       // force recompute of slewedDraw (-2 sentinel: -1 is a legal knob value)
     recomputeEffectiveRhythm();
     // Cache source from the SLEWED draw (canonical draw; final may be rewritten
     // by Sands later this cycle). UI pattern previews the no-Sands final.
@@ -1028,7 +1028,7 @@ void PatternEngine::redrawMelody(const PatternInput& in) {
     // recomputeEffectiveMelody (scrub/B2). No stored A/B walk. (Step 4a.)
     (void)first;
     melodyWin_.consume();           // THE ROLL: consume the pending slew into the phrase (Part A)
-    melodySlewApplied = -1.f;
+    melodySlewApplied = -2.f;   // force recompute (-2 sentinel: -1 is a legal knob value)
     recomputeEffectiveMelody();
     for (int i = 0; i < kPatternLengthCap; ++i) {   // the ring (the pitch-compute term; the source copy is same-index — beyond-ring cells stay zero)
         melodySource[0][i]=slewedMelody[0][i]; octaveSource[0][i]=slewedOctave[0][i];
@@ -1065,7 +1065,7 @@ void PatternEngine::redrawQmix(const PatternInput& in) {
 
     (void)first;
     qmixWin_.consume();             // THE ROLL: consume the pending slew into the phrase (Part A)
-    qmixSlewApplied = -1.f;
+    qmixSlewApplied = -2.f;   // force recompute (-2 sentinel: -1 is a legal knob value)
     recomputeEffectiveQmix();
     for (int i = 0; i < kStepStorage; ++i) {
         qmixSource[0][i]=slewedQmix[0][i];
@@ -1245,11 +1245,12 @@ void PatternEngine::applyPendingSeedsAndRedraw(const PatternInput& in) {
     // handled the blanket case; a dice-live stream consumes its queued slew exactly like it may
     // roll). Out-of-range latches re-fire idempotently each boundary (clamped compare) — cheap
     // and safe; NaN latches fail the range test inside slewKnobToR and land on the r==0 path.
-    // The SlewApplied != -1 guard keeps the INITIAL computation (the force-first-recompute
+    // The SlewApplied != -2 guard (sentinel; -1 is a legal knob value) keeps the INITIAL
+    // computation (the force-first-recompute
     // sentinel) owned by the existing paths (redraw / refreshVisualCache ctr-mix triggers) —
     // this branch consumes only genuine mid-life slew changes, so first-boundary semantics are
     // byte-identical to pre-fix (test_lock_behaviour's seed-on-unlock bit-identity pins this).
-    else if (drawAllowedR && rhythmSlewApplied != -1.f
+    else if (drawAllowedR && rhythmSlewApplied != -2.f
              && (rack::math::clamp(rhythmWin_.pendingSlew(), -1.f, 1.f) != rhythmSlewApplied
                  || (rhythmDepthApplied != -1 && rhythmWin_.pendingDepth() != rhythmDepthApplied))) {   // Part B: depth is a window param — same consumer
         rhythmWin_.consume();   // THE BOUNDARY: a genuine mid-life slew change is consumed here (Part A)
@@ -1272,7 +1273,7 @@ void PatternEngine::applyPendingSeedsAndRedraw(const PatternInput& in) {
     // Only consume the melody roll flags if melody was allowed to draw (see rhythm note above).
     if (drawAllowedM) { melodyRollPending = false; melodyReseedRollPending = false; }
     if (shouldRedrawM) redrawMelody(in);
-    else if (drawAllowedM && melodySlewApplied != -1.f
+    else if (drawAllowedM && melodySlewApplied != -2.f
              && (rack::math::clamp(melodyWin_.pendingSlew(), -1.f, 1.f) != melodySlewApplied
                  || (melodyDepthApplied != -1 && melodyWin_.pendingDepth() != melodyDepthApplied))) {   // Part B: depth is a window param — same consumer
         melodyWin_.consume();   // THE BOUNDARY: a genuine mid-life slew change is consumed here (Part A)
@@ -1300,7 +1301,7 @@ void PatternEngine::applyPendingSeedsAndRedraw(const PatternInput& in) {
     }
     if (drawAllowedQ) { qmixRollPending = false; qmixReseedRollPending = false; }
     if (shouldRedrawQ) redrawQmix(in);
-    else if (drawAllowedQ && qmixSlewApplied != -1.f
+    else if (drawAllowedQ && qmixSlewApplied != -2.f
              && (rack::math::clamp(qmixWin_.pendingSlew(), -1.f, 1.f) != qmixSlewApplied
                  || (qmixDepthApplied != -1 && qmixWin_.pendingDepth() != qmixDepthApplied))) {   // Part B: depth is a window param — same consumer
         qmixWin_.consume();   // THE BOUNDARY: a genuine mid-life slew change is consumed here (Part A)
