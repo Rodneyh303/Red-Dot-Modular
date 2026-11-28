@@ -43,6 +43,15 @@ STD="$STD $ARCHF"
 # (Mac) contracts (a*b)*c into an FMA that rounds differently from x86 -> last-bit diff -> false failure.
 STD="$STD -ffp-contract=off"   # DECIDED: match Makefile DETERMINISTIC_FP — dropped reassoc guard (nil value), kept -ffp-contract=off (cross-platform FMA determinism; keeps bit-exact tests valid across x86/arm64)
 STD="$STD -D_GLIBCXX_ASSERTIONS"   # CA5 lane addressing (CC_PROMPT_REVERSE_COMPLETIONS_THEN_CA5): span::operator[] is unchecked in C++20 — the bounds live in the test builds
+# WINDOWS TEST STACK (CI fix): MinGW exes reserve a 1 MiB stack (Linux/macOS: 8 MiB).
+# Several tests keep multiple engines ON THE STACK (SequencerEngine is ~0.4 MiB since the
+# 2-slot z/xi cache), so a frame can exceed the reserve and __chkstk faults BEFORE main
+# prints anything -- test_step_advance died this way on Windows CI only (bare RUNTIME FAIL,
+# no output). 16 MiB reserve for TEST binaries only; the plugin is a DLL on Rack's threads
+# and takes no flag from here.
+case "$(uname -s)" in
+  MINGW*|MSYS*|CYGWIN*) STD="$STD -Wl,--stack,16777216" ;;
+esac
 GS="src/dsp/gates/GateState.cpp"
 PE="src/dsp/engines/PatternEngine.cpp"
 SE="src/dsp/engines/SequencerEngine.cpp"
