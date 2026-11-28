@@ -153,9 +153,9 @@ int main() {
     {
         PatternEngine A;
         setup(A, 40, +5.f, 0.6f);
-        CHECK(!A.rhythmZCache_.xiValid, "X4 integer offset fills z but draws no xi (sqrtV==0)");
+        CHECK(!A.rhythmZCacheMru().xiValid, "X4 integer offset fills z but draws no xi (sqrtV==0)");
         A.latchMix(+5.5f, 0.f, 0.f, true, false, false); A.recomputeEffectiveRhythm();
-        CHECK(A.rhythmZCache_.xiValid, "X4 first fractional recompute lazily fills xi on the z-hit");
+        CHECK(A.rhythmZCacheMru().xiValid, "X4 first fractional recompute lazily fills xi on the z-hit");
     }
 
     // ── BENCH: the scrub/jog cost question (print; assert only generous bounds) ──────────

@@ -617,9 +617,7 @@ struct PatternEngine {
         rhythmMixApplied = -999.f;   // invalidate so recompute* actually runs
         melodyMixApplied = -999.f;
         qmixMixApplied   = -999.f;
-        rhythmZCache_.invalidate();  // z0/z1 cache: force full recompute (not blend-only)
-        melodyZCache_.invalidate();
-        qmixZCache_.invalidate();
+        invalidateZSlots();          // z0/z1/xi slots: force full recompute (not blend-only)
         recomputeEffectiveRhythm();
         recomputeEffectiveMelody();
         recomputeEffectiveQmix();
@@ -728,7 +726,41 @@ struct PatternEngine {
         void invalidate() { valid = false; xiValid = false; }
     };
     static_assert(sizeof(ZWindowCache) % 16 == 0, "keep later engine buffers 16-congruent (see alignas note above)");
-    ZWindowCache rhythmZCache_, melodyZCache_, qmixZCache_;
+    // TWO-SLOT z/xi cache (perf): a scrub position DITHERING across one integer boundary
+    // (slow CV near an integer, back-and-forth jog) alternates between two adjacent window
+    // pairs; with one slot every alternation was a full z-MISS recompute (~0.4 ms at 16
+    // voices) at up to the frame rate. Two slots keep both pairs resident, so dithering is
+    // pure hits; a monotone sweep still misses once per NEW pair (new draws are new data).
+    // Slot count is VALUE-INVISIBLE by construction — the cache memoises a pure function of
+    // (seed, window key, cell) — so the bit-exactness suite is the acceptance test.
+    std::array<ZWindowCache, 2> rhythmZSlots_{}, melodyZSlots_{}, qmixZSlots_{};
+    int rhythmZMru_ = 0, melodyZMru_ = 0, qmixZMru_ = 0;
+    static ZWindowCache& selectZSlot(std::array<ZWindowCache, 2>& slots, int& mru,
+                                     int64_t ctr, int f, float r, int k) {
+        if (slots[mru].hit(ctr, f, r, k)) return slots[mru];
+        mru = 1 - mru;          // other slot either hits (dither) or is the LRU we evict into
+        return slots[mru];
+    }
+    // MRU views — tests and any single-cache reader
+    ZWindowCache&       rhythmZCacheMru()       { return rhythmZSlots_[rhythmZMru_]; }
+    const ZWindowCache& rhythmZCacheMru() const { return rhythmZSlots_[rhythmZMru_]; }
+    ZWindowCache&       melodyZCacheMru()       { return melodyZSlots_[melodyZMru_]; }
+    const ZWindowCache& melodyZCacheMru() const { return melodyZSlots_[melodyZMru_]; }
+    ZWindowCache&       qmixZCacheMru()         { return qmixZSlots_[qmixZMru_]; }
+    const ZWindowCache& qmixZCacheMru() const   { return qmixZSlots_[qmixZMru_]; }
+    void invalidateZSlots() {
+        for (int i = 0; i < 2; ++i) {
+            rhythmZSlots_[i].invalidate(); melodyZSlots_[i].invalidate(); qmixZSlots_[i].invalidate();
+        }
+    }
+    // MIX DEADBAND (perf): sub-audible CV ripple on a parked scrub offset re-blended the
+    // displayed voice every frame tick for nothing. Recompute only when the latched offset
+    // moved >= 1/512 draw from what the buffers were built at — 0.2% of one draw interval,
+    // far below audibility. A slow ramp still recomputes every ~eps of travel (Applied
+    // snaps to Latched at each recompute), so the morph quantizes, never stalls.
+    static bool mixMoved(float latched, float applied) {
+        return std::fabs(latched - applied) >= (1.f / 512.f);
+    }
     // Displayed voice for the Sands visual (set by the UI via setDisplayedVoice, read by
     // refreshVisualCache). Slot 0 = mono/V1, 1..15 = poly V2..V16. Used to scope the
     // display recompute to 1 voice. TYPED (CC_PROMPT_STRONG_TYPES): callers MINT via
