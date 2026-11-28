@@ -38,12 +38,24 @@ public:
 
     /// Fill w (K entries) with L2-normalised geometric weights for r. w[0] is the newest draw.
     /// SUM w^2 == 1 exactly (up to rounding), which is what makes the output uniform.
-    static void weights(double r, double* w) {
+    static void weights(double r, double* w) { weightsK(r, w, K); }
+
+    /// Part B (MA DEPTH): L2-normalised geometric weights over the FIRST kAct taps, the
+    /// remaining w[kAct..K) ZEROED. Uniformity holds for ANY kAct (Sum w^2 == 1), and the
+    /// zero tail makes the full-K fixed-reduction dot product a bit-exact no-op beyond
+    /// kAct — sumZ stays ONE code path (its cross-platform determinism contract is in its
+    /// body), and the sites simply do not FETCH draws beyond kAct, which is what keeps the
+    /// cache budget law (K + scrub + margin <= half-span) honest. kAct == K reproduces
+    /// weights() arithmetic exactly (same loop shape, same order).
+    static void weightsK(double r, double* w, int kAct) {
         r = clampR(r);
+        if (kAct < 1) kAct = 1;
+        if (kAct > (int)K) kAct = (int)K;
         double s2 = 0.0, p = 1.0;
-        for (std::size_t j = 0; j < K; ++j) { w[j] = p; s2 += p * p; p *= r; }
+        for (std::size_t j = 0; j < (std::size_t)kAct; ++j) { w[j] = p; s2 += p * p; p *= r; }
         const double inv = 1.0 / std::sqrt(s2);
-        for (std::size_t j = 0; j < K; ++j) w[j] *= inv;
+        for (std::size_t j = 0; j < (std::size_t)kAct; ++j) w[j] *= inv;
+        for (std::size_t j = (std::size_t)kAct; j < K; ++j) w[j] = 0.0;
     }
 
     /// Cache of L2-normalised weights for a given r.  Slew r is phrase-fixed (the slew-phrase
@@ -55,9 +67,10 @@ public:
     struct WeightCache {
         double w[K];
         double cachedR = 999.0;   ///< invalid sentinel (no valid r is 999)
-        bool matches(double r) const { return r == cachedR; }
-        void update(double r) { weights(r, w); cachedR = r; }
-        void invalidate() { cachedR = 999.0; }
+        int    cachedK = -1;      ///< Part B: the MA depth the weights were built for
+        bool matches(double r, int k = (int)K) const { return r == cachedR && k == cachedK; }
+        void update(double r, int k = (int)K) { weightsK(r, w, k); cachedR = r; cachedK = k; }
+        void invalidate() { cachedR = 999.0; cachedK = -1; }
     };
 
     /// Apply slew at one position. u holds the window NEWEST FIRST: u[0] = u_n, u[j] = u_{n-j}.

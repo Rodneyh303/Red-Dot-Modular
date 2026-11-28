@@ -24,7 +24,8 @@ TYPES = r"(?:unsigned\s+|signed\s+|const\s+|static\s+|constexpr\s+|mutable\s+|in
 DECL = re.compile(
     r"^(?P<pre>(?!\s*//)(?![^/]*\()\s*)"          # statement start; no '(' before the type
     r"(?P<qual>(?:(?:static|constexpr|const|mutable|inline|alignas\([^)]*\)|unsigned|signed)\s+)*)"
-    r"(?P<type>[A-Za-z_][\w]*(?:::[\w]+)*(?:\s+(?:int8_t|uint8_t|int16_t|uint16_t|int32_t|uint32_t|int64_t|uint64_t))?)"
+    r"(?P<type>(?!(?:return|throw|delete|goto|case|else|co_return)\b)"   # statement keywords are not types: 'return slots[mru];' is a subscript, not a decl
+    r"[A-Za-z_][\w]*(?:::[\w]+)*(?:\s+(?:int8_t|uint8_t|int16_t|uint16_t|int32_t|uint32_t|int64_t|uint64_t))?)"
     r"\s+(?P<name>[A-Za-z_]\w*)"
     r"(?P<dims>(?:\s*\[\s*[^\]]*\s*\])+)"
     r"\s*(?:=[^;]*)?;"

@@ -554,10 +554,14 @@ int main() {
         static float snapV[16]; static int snapS[16];
         std::memcpy(snapV, pe.melodyPitchV, sizeof snapV);
         std::memcpy(snapS, pe.melodySemitone, sizeof snapS);
-        // Trigger the OTHER melodyPitchV writer (the melodyChanged display refresh)
-        // WITHOUT a new draw: a pending mix change re-derives from the same
-        // warpRow(displayedVoice_,·) — the two writers must agree bit-exactly.
-        pe.melodyMixLatched = 0.5f;   // != melodyMixApplied (0) ⇒ the melodyChanged path
+        // Trigger the OTHER melodyPitchV writer (the melodyChanged display refresh) WITHOUT a new
+        // draw AND without moving the scrub: dirty mixApplied so refreshVisualCache re-derives at
+        // the SAME mix the draw used (mixLatched stays 0). Both writers read warpRow(displayedVoice_,
+        // ·) at the same input, so they must agree bit-exactly. (Was `melodyMixLatched = 0.5f`, which
+        // also SCRUBBED; now that a mix move at slew=0 correctly re-reads the draw — the for-voice
+        // r==0 scrub fix — moving it would legitimately change melodyPitchV. This test is about the
+        // warp-mirror writer agreement, not the scrub, so it holds the scrub fixed.)
+        pe.melodyMixApplied = 0.5f;   // != melodyMixLatched (0) ⇒ fires the melodyChanged path at the same scrub
         pe.refreshVisualCache(in);
         for (int i = 0; i < 16; ++i)
             EXPECTF(pe.melodyPitchV[i] == snapV[i] && pe.melodySemitone[i] == snapS[i],

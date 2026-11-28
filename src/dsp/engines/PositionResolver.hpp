@@ -90,6 +90,10 @@ struct PositionResolver {
     int  phraseOverride_    = 0;
     bool phraseOverridden_  = false;
 
+    // (NET-STEPS MODEL — Rodney 2026-11-25; see also the block above) the single signed
+    // coordinate; pinned against the engine in test_netsteps_model and the atPhraseEdge
+    // predicate below. See CC_PROMPT_POSITION_RESOLVER_C3_UNIT_OF_ABSOLUTENESS.
+
     static int wrapRing(int v) { return ((v % kMaskRing) + kMaskRing) % kMaskRing; }
     // Negative-safe mod (mirrors SequencerEngine::wrapMod's body verbatim — unreachable
     // from here by include order; the identity harness pins the equality).
@@ -111,6 +115,7 @@ struct PositionResolver {
         col_ = -1;   // the pre-start park (mirrors stepIndex)
         netSteps_ = 0; netEntered_ = false;   // (NET-STEPS) reset is the coordinate's only boundary
         phraseOverridden_ = false;   // the traversal owns the phrase from here
+        netSteps_ = 0; netEntered_ = false;   // (NET-STEPS MODEL) reset is the natural boundary — reverse is not carried across it
     }
     void setWindow(int length, int offset) {
         const bool realChange = (offset != startStep_) || (((length < 1) ? 1 : length) != len_);
@@ -157,13 +162,14 @@ struct PositionResolver {
         // out-of-window column just BEFORE the new start — a position no phase describes. Seeding from it
         // would capture that nonsense phase (e.g. 31) and accumulate from it, where the old column-derived
         // law re-derived each step and landed at 0 on the next motion.
+        // RETIRE-RESEED: the in-window re-SEED is GONE — netSteps_ keeps counting through a
+        // re-author and folds mod the new len_ (the C2 ruling: "global 8->4 at step 8 puts the
+        // next boundaries at 12 AND 16"). It is safe to drop now that the COMMIT EDGE reads the
+        // COLUMN (voiceFrameEdgeLive_: phrasePos / phrasePos-signed), not readCoord — so the read
+        // and the edge no longer need forcing into congruence. The PARKED re-ARM stays: an
+        // out-of-window column has no phase to count from, so it anchors at 0 (next motion enters).
         if (realChange) {
             if (col_ < 0 || !inWindow(col_)) { netSteps_ = 0; netEntered_ = false; }
-            else {
-                netSteps_   = (dir_ > 0) ? (int64_t)wrapRing(col_ - startStep_)
-                                         : -(int64_t)wrapRing(endStep_ - col_);
-                netEntered_ = true;
-            }
         }
     }
     // THE ADVANCE — the traversal law verbatim (the seed/step/skip idiom stepIndex
@@ -175,6 +181,7 @@ struct PositionResolver {
         if (motion != 0) phraseOverridden_ = false;   // the traversal re-derives the phrase (a held event keeps it)
         // (NET-STEPS) the FIRST motion only ENTERS — the read lands AT the entry (netSteps_ == 0) — and every
         // later motion accumulates. A held event (motion == 0) does not move the position, so it does not count.
+        // (entryDir_ is RETIRED — superseded by the history-independent netsteps readCoord; see the model note above.)
         if (motion != 0) { if (!netEntered_) netEntered_ = true; else netSteps_ += motion; }
         if (motion < 0) {
             dir_ = -1;
