@@ -21,6 +21,7 @@
 #include "dsp/ChangeAlleyTransforms.hpp"   // ca::applyCorrelation (transform apply owned here)
 #include "dsp/CATrajectoryBuffer.hpp"      // TRUE REVERSE: per-stream committed-state trajectory ring
 #include "dsp/CAPendingOrder.hpp"          // chronological pending-transform ordering
+#include "dsp/ChangeAlleyModuleCore.hpp"   // the rack-free module-state core (state + boundary commit)
 #include "ui/IntertropicalPairing.hpp"     // shared pairing: assignPairIdT / resolveFollowedT (templates)
 #include "ui/ConnectMark.hpp"              // shared dot.modular connect indicator (same as other panels)
 #include "ui/SvgPanelKit.hpp"             // Option B-full: bind ports/params/lights by name from anchors
@@ -33,8 +34,26 @@ using namespace rack;
 namespace CA = ChangeAlleyV2Ids;
 
 struct MonsoonChangeAlleyV2 : Module {
-    std::array<uint8_t, CA::N_VOICES> rhythmSrc{};
-    std::array<uint8_t, CA::N_VOICES> melodySrc{};
+    // ── RACK-FREE CORE (ChangeAlleyModuleCore) — the single source of truth for the pending /
+    // transform / undo / trajectory state + the boundary commit. The Module keeps only Rack wiring
+    // (triggers, lamps, pairing, the UI history-ring drain). The moved fields below are REFERENCE
+    // ALIASES into `core` so every existing accessor (arm handlers, draw, serialize, the manager's
+    // v2->rhythmSrc reads, the widget's ca->undoHead drain) keeps working byte-identically — the
+    // external contract is unchanged; only applyPendingTransforms's body + the moved-state reset
+    // delegate to the core. `core` is declared FIRST so the aliases bind at construction.
+    redDot::ChangeAlleyModuleCore core;
+    // The rack-free dims are redeclared in the core; assert they match CA:: here (the one TU that
+    // sees both). A drift fails THIS build loudly rather than silently diverging the two.
+    static_assert(CA::N_VOICES == redDot::ChangeAlleyModuleCore::N_VOICES, "CA core N_VOICES drift");
+    static_assert(CA::N_ROWS   == redDot::ChangeAlleyModuleCore::N_ROWS,   "CA core N_ROWS drift");
+    static_assert(CA::TYPES    == redDot::ChangeAlleyModuleCore::TYPES,    "CA core TYPES drift");
+    static_assert(CA::SIDES    == redDot::ChangeAlleyModuleCore::SIDES,    "CA core SIDES drift");
+    static_assert(CA::N_SCATTER      == redDot::ChangeAlleyModuleCore::N_SCATTER,      "CA core N_SCATTER drift");
+    static_assert(CA::SCATTER_TYPES  == redDot::ChangeAlleyModuleCore::SCATTER_TYPES,  "CA core SCATTER_TYPES drift");
+    static_assert((int)CA::V_SCATTER == redDot::ChangeAlleyModuleCore::V_SCATTER,      "CA core V_SCATTER drift");
+
+    std::array<uint8_t, CA::N_VOICES>& rhythmSrc = core.rhythmSrc;
+    std::array<uint8_t, CA::N_VOICES>& melodySrc = core.melodySrc;
     // Q-MIX source-select plane (QMIX_LANE_PARITY §"The blend"): the NEW green plane, a full
     // parity sibling of rhythm(white)/melody(red). Row-radio like the other two: qmixSrc[v] holds
     // the ONE source column voice v consumes for its q-mix PROBABILITY. Downstream of CA the
@@ -42,7 +61,7 @@ struct MonsoonChangeAlleyV2 : Module {
     // on. Default identity (qmixSrc[v]=v) → the Straits per-voice level reads exactly as before.
     // The PANEL's physical q-mix pin ROW is a later layer (CA_PANEL_THREE_STREAM_LAYOUT.md); this
     // field + its persistence/undo/scatter are wired NOW so the panel layer only adds click+render.
-    std::array<uint8_t, CA::N_VOICES> qmixSrc{};
+    std::array<uint8_t, CA::N_VOICES>& qmixSrc = core.qmixSrc;
 
     // ── Shared-CA pairing (CA_SHARED_EXPANDER_BUILD.md) ──────────────────────────────────────
     // Self-assigned lowest-free number (1..N) so a second Monsoon can bind this CA by id, rack-wide
@@ -97,7 +116,7 @@ struct MonsoonChangeAlleyV2 : Module {
     // Owner guard for the shared case: applyPendingTransforms MUTATES this CA's pins, so only ONE
     // Monsoon may call it per block (the first sync() caller = the owner). Reset at the top of
     // process() each block; the ExpanderManager sets it after applying. Runtime only (not persisted).
-    bool transformsAppliedThisBlock = false;
+    bool& transformsAppliedThisBlock = core.transformsAppliedThisBlock;
 
     static constexpr const char* CURRENCIES[CA::N_VOICES] = {
         "SGD","MYR","IDR","THB","PHP","VND","MMK","KHR",
@@ -105,7 +124,7 @@ struct MonsoonChangeAlleyV2 : Module {
     };
 
     // ── Transforms (§15): the full Temasek control set, in one module ──────────────────
-    std::array<CA::PendingAction, CA::N_ROWS> pendingRows{};
+    std::array<redDot::ChangeAlleyModuleCore::PendingAction, CA::N_ROWS>& pendingRows = core.pendingRows;
     std::array<rack::dsp::SchmittTrigger, CA::N_ROWS> domTrig{};
     std::array<rack::dsp::SchmittTrigger, CA::N_ROWS> codTrig{};
     std::array<rack::dsp::BooleanTrigger, CA::N_ROWS * 2> btnTrig{};
@@ -126,7 +145,7 @@ struct MonsoonChangeAlleyV2 : Module {
     std::array<rack::dsp::SchmittTrigger, CA::TYPES> sTrueRevIn{};
     std::array<rack::dsp::BooleanTrigger, CA::TYPES> sTrueRevBtn{};
     // Set when a true-reverse jack/button fires (index = stream/type); drained by the future engine.
-    std::array<bool, CA::TYPES> trueRevRequested = {};
+    std::array<bool, CA::TYPES>& trueRevRequested = core.trueRevRequested;
     // Scatter draw counters: 8 = Intra/Inter x rhythm/melody x domain/codomain (the panel's separate
     // scatter jacks). Each is a SIGNED int64 addressable POSITION in its own domain-separated Philox
     // stream -- the SAME model as the main dice draw counters. Forward jack = counter++, back jack =
@@ -136,7 +155,7 @@ struct MonsoonChangeAlleyV2 : Module {
     // intra/inter. SCATTER_TYPES=3 (not TYPES=2) so q-mix gets CA scatter parity without touching
     // the panel row/param geometry. Indexing: ci = (side*SCATTER_TYPES + type)*2 + (dom?0:1),
     // type 0=rhythm 1=melody 2=qmix — kept consistent with corrKey + transform apply below.
-    std::array<int64_t, CA::N_SCATTER> scatterCounter = {};
+    std::array<int64_t, CA::N_SCATTER>& scatterCounter = core.scatterCounter;
 
     // One Philox KEY per scatter stream (8 = the counters' Intra/Inter x r/m x dom/cod), mirroring
     // the 2 main-dice RNGs. INTERNAL seeding = 8 INDEPENDENT random keys (different per stream, like
@@ -144,7 +163,7 @@ struct MonsoonChangeAlleyV2 : Module {
     // draw builds a transient PhiloxRng from corrKey[ci] and reads at(scatterCounter[ci]) -- the
     // counter is the addressable position, so counter-- rewinds exactly. Keys persist so saved
     // patches reproduce future scatters. See CA_DICE_COUNTER_MODEL.md.
-    std::array<uint64_t, CA::N_SCATTER> corrKey = {};
+    std::array<uint64_t, CA::N_SCATTER>& corrKey = core.corrKey;
     void seedCorrKeysInternal() {
         for (int i = 0; i < CA::N_SCATTER; ++i) corrKey[i] = rack::random::u64();
     }
@@ -165,15 +184,12 @@ struct MonsoonChangeAlleyV2 : Module {
     // into a small single-producer/single-consumer RING here, and the widget's step() (UI thread)
     // drains it and pushes a Rack history action per committed transform. Transform commits are
     // infrequent (phrase boundaries), so 16 slots is ample.
-    struct TransformUndoSnapshot {
-        std::array<uint8_t, CA::N_VOICES> beforeR{}, beforeM{}, beforeQ{};   // q-mix plane (parity with R/M)
-        std::array<uint8_t, CA::N_VOICES> afterR{}, afterM{}, afterQ{};
-        std::array<int64_t, CA::N_SCATTER> counterBefore{}, counterAfter {};
-    };
-    static constexpr int UNDO_RING = 16;
-    std::array<TransformUndoSnapshot, UNDO_RING> undoRing{};
-    std::atomic<uint32_t> undoHead{0};   // producer (audio) writes, then advances
-    std::atomic<uint32_t> undoTail{0};   // consumer (UI) reads, then advances
+    // The snapshot type + ring now live in the core; alias the names the Module/widget use.
+    using TransformUndoSnapshot = redDot::ChangeAlleyModuleCore::UndoSnapshot;
+    static constexpr int UNDO_RING = redDot::ChangeAlleyModuleCore::UNDO_RING;
+    std::array<TransformUndoSnapshot, UNDO_RING>& undoRing = core.undoRing;
+    std::atomic<uint32_t>& undoHead = core.undoHead;   // producer (audio) writes, then advances
+    std::atomic<uint32_t>& undoTail = core.undoTail;   // consumer (UI) reads, then advances
 
     // ── TRUE REVERSE trajectory buffer (CA_DICE_COUNTER_MODEL.md) ────────────────────────────
     // A per-stream ring of COMMITTED pin states, pushed once per phrase-boundary commit AFTER the
@@ -182,14 +198,14 @@ struct MonsoonChangeAlleyV2 : Module {
     // from Monsoon's diceUndoRing — this is an audio-thread performance buffer. Rack-free struct
     // (CATrajectoryBuffer.hpp) so the engine is unit-testable. Modulation-class: commits WITHOUT
     // pushing undo history (per the build brief).
-    redDot::CATrajectoryBuffer trajectory_;
+    redDot::CATrajectoryBuffer& trajectory_ = core.trajectory;
 
     // ── Chronological pending-transform ordering (CA_DICE_COUNTER_MODEL.md) ───────────────────
     // Monotonic counter stamped on each unarmed→armed transition (latchRow). The boundary
     // applies armed rows in ascending-stamp order (ties by row index = verb-major). Reset ONLY
     // when the pending set becomes fully empty — NOT at every boundary — so out-of-axis
     // (lock-deferred) rows keep a comparable stamp and don't jump to the front of later arms.
-    uint32_t pendingStampCounter_ = 0;
+    uint32_t& pendingStampCounter_ = core.pendingStampCounter;
 
     MonsoonChangeAlleyV2() {
         config(CA::NUM_PARAMS_TOTAL, CA::NUM_INPUTS, CA::NUM_OUTPUTS, CA::NUM_LIGHTS);
@@ -307,108 +323,30 @@ struct MonsoonChangeAlleyV2 : Module {
     // (type 0/1), so type==2 rows only arrive once the panel layer adds the q-mix pin row — the mask +
     // apply handle it now so no engine change is needed then.
     void applyPendingTransforms(int active, unsigned axisMask = 0b111u) {
-        // axis bit for a row's type: 0=rhythm→0b001, 1=melody→0b010, 2=qmix→0b100.
-        auto axisBitForType = [](int type) -> unsigned { return 1u << type; };
-        // TRUE-REVERSE consume at the PHRASE BOUNDARY (same commit gesture as the verbs): a queued
-        // per-stream request commits + clears its pending lamp here. Gated by the SAME axisMask as
-        // verbs (bit ty = stream). The trajectory-replay ENGINE is deferred (CA_DICE_COUNTER_MODEL:
-        // buffer depth + momentary/toggle open); this consumes the queue + lamp with correct
-        // boundary timing so the affordance matches the verbs now. When the engine lands it walks
-        // the committed-state trajectory back one entry per consumed request (modulation-class: it
-        // must NOT push undo). Runs before the verb early-return so it fires even with no armed rows.
-        for (int ty = 0; ty < CA::TYPES; ++ty) {
-            if (!trueRevRequested[ty]) continue;
-            if (!(axisMask & axisBitForType(ty))) continue;   // out-of-axis: stay queued (like verbs)
-            trueRevRequested[ty] = false;
-            lights[CA::TRUE_REV_LIGHT_START + ty].setBrightness(0.f);
-            // TRUE-REVERSE engine: step this stream's committed-state trajectory back one phrase.
-            // stepBack pops the newest committed state and restores the PREVIOUS one into src[].
-            // Modulation-class: does NOT push undo (per the build brief). At the buffer start it
-            // returns false (STOP, don't wrap) — the consume still clears the lamp above so the
-            // affordance is consistent, but the state is left unchanged.
-            {
-                std::array<uint8_t, CA::N_VOICES> restored{};
-                uint8_t* tbl = (ty == 0) ? rhythmSrc.data() : (ty == 1) ? melodySrc.data() : qmixSrc.data();
-                if (trajectory_.stepBack(ty, restored.data()))
-                    std::memcpy(tbl, restored.data(), CA::N_VOICES);
-            }
-        }
-        // Any armed row this call whose AXIS is in the mask?  If none, nothing to snapshot or apply.
-        bool any = false;
-        for (int row = 0; row < CA::N_ROWS; ++row) {
-            if (!pendingRows[row].armed) continue;
-            if (axisMask & axisBitForType(row % CA::TYPES)) { any = true; break; }  // panel rows: type = row % TYPES
-        }
-        if (!any) return;
-
-        // Snapshot BEFORE (whole pin matrix + scatter counters). One phrase-boundary commit = one
-        // undo step (mirrors ResetPinsAction: a multi-change gesture is a single snapshot).
-        TransformUndoSnapshot snap;
-        for (int v = 0; v < CA::N_VOICES; ++v) { snap.beforeR[v] = rhythmSrc[v]; snap.beforeM[v] = melodySrc[v]; snap.beforeQ[v] = qmixSrc[v]; }
-        for (int i = 0; i < CA::N_SCATTER; ++i) snap.counterBefore[i] = scatterCounter[i];
-
-        // Chronological apply order: armed rows in ascending-stamp order, ties by row index
-        // (today's verb-major). Includes out-of-axis rows so their stamp survives for the later
-        // commit; the axis check below skips them (they stay armed). CA_DICE_COUNTER_MODEL.md
-        // "Pending transform ORDER".
-        std::array<bool, CA::N_ROWS> armedArr{}; std::array<uint32_t, CA::N_ROWS> stampArr{};
-        for (int row = 0; row < CA::N_ROWS; ++row) { armedArr[row] = pendingRows[row].armed; stampArr[row] = pendingRows[row].stamp; }
-        std::array<int, CA::N_ROWS> orderArr{};
-        const int nOrdered = redDot::CAPendingOrder::orderRows(CA::N_ROWS, armedArr.data(), stampArr.data(), orderArr.data());
-        for (int oi = 0; oi < nOrdered; ++oi) {
-            const int row = orderArr[oi];
-            auto& p = pendingRows[row];
-            // Decode (verb,side,type) from row using the current dims — NOT hardcoded 4/2
-            // (rowId = verb*SIDES*TYPES + side*TYPES + type; TYPES=3 now).
-            const int verb = row / (CA::SIDES * CA::TYPES);
-            const int side = (row / CA::TYPES) % CA::SIDES;
-            const int type = row % CA::TYPES;   // 0=rhythm 1=melody 2=q-mix (panel 3rd stream)
-            // SCOPE (LOCK_SCOPE_MENU §6): only commit rows whose axis is in axisMask. Out-of-axis rows
-            // stay armed (NOT applied, NOT cleared) so they fire at the next in-axis/unlock commit.
-            if (!(axisMask & axisBitForType(type))) continue;
-            // Table + scatter index by type: 0=rhythm 1=melody 2=qmix (parity, kept consistent with the
-            // corrKey/scatterCounter ordering). ci uses SCATTER_TYPES so the q-mix streams (type 2) are
-            // addressable NOW even though the current panel only fires type 0/1.
-            uint8_t* tbl   = (type == 0) ? rhythmSrc.data() : (type == 1) ? melodySrc.data() : qmixSrc.data();
-            const int ci   = (side * CA::SCATTER_TYPES + type) * 2 + (p.isDomain ? 0 : 1);
-            if (verb == CA::V_SCATTER)
-                scatterCounter[ci] += (int64_t)p.scatterDelta;   // +1 fwd jack, -1 back jack
-            dotModular::ca::applyCorrelation(
-                verb, p.isDomain, p.isInter,
-                tbl, active, p.grain, p.leaderOrStep,
-                corrKey[ci], scatterCounter[ci]);   // fixed stream key + addressable position
-            p.armed = false;
-            lights[CA::PENDING_LIGHT_START + row].setBrightness(0.f);
-        }
-
-        // Snapshot AFTER, and publish to the ring for the UI thread to turn into a history action.
-        for (int v = 0; v < CA::N_VOICES; ++v) { snap.afterR[v] = rhythmSrc[v]; snap.afterM[v] = melodySrc[v]; snap.afterQ[v] = qmixSrc[v]; }
-        for (int i = 0; i < CA::N_SCATTER; ++i) snap.counterAfter[i] = scatterCounter[i];
-        const uint32_t h = undoHead.load(std::memory_order_relaxed);
-        const uint32_t t = undoTail.load(std::memory_order_acquire);
-        if (h - t < (uint32_t)UNDO_RING) {           // drop if UI hasn't drained (never in practice)
-            undoRing[h % UNDO_RING] = snap;
-            undoHead.store(h + 1, std::memory_order_release);
-        }
-        // TRUE REVERSE trajectory: record the post-commit state for each axis that committed this
-        // call (records RESULTS, not causes — after the verbs applied). pushIfChanged skips
-        // unchanged states so static passages don't consume depth. This is what makes true-reverse
-        // verb-agnostic and able to step back through a lossy collapse.
-        if (axisMask & 0b001) trajectory_.pushIfChanged(0, rhythmSrc.data());
-        if (axisMask & 0b010) trajectory_.pushIfChanged(1, melodySrc.data());
-        if (axisMask & 0b100) trajectory_.pushIfChanged(2, qmixSrc.data());
-        // Chronological counter: reset ONLY when the pending set is now fully empty (no armed
-        // rows remain — out-of-axis rows would still be armed). Resetting at every boundary would
-        // give new post-boundary arms stamp 0 < persistent out-of-axis rows' stamps, jumping them
-        // to the front = wrong. So reset only on a complete clear.
-        bool anyArmed = false;
-        for (int row = 0; row < CA::N_ROWS; ++row) if (pendingRows[row].armed) { anyArmed = true; break; }
-        if (!anyArmed) pendingStampCounter_ = 0;
+        // Delegates to the rack-free core (ChangeAlleyModuleCore::applyAtBoundary), then reflects
+        // the resulting pending / true-reverse state onto the Rack lamps — the CantonmentModuleCore
+        // pattern (core mutates state, module syncs lamps). The whole commit body — true-reverse
+        // consume, axis-gated chronological apply, undo snapshot, trajectory push, the stamp-reset —
+        // moved verbatim into the core; see ChangeAlleyModuleCore.hpp (headless-tested in
+        // test_change_alley_module).
+        core.applyAtBoundary(active, axisMask);
+        for (int row = 0; row < CA::N_ROWS; ++row)
+            lights[CA::PENDING_LIGHT_START + row].setBrightness(pendingRows[row].armed ? 1.f : 0.f);
+        for (int ty = 0; ty < CA::TYPES; ++ty)
+            lights[CA::TRUE_REV_LIGHT_START + ty].setBrightness(trueRevRequested[ty] ? 1.f : 0.f);
     }
 
     // LOOKUP AUTHORITY (CC_PROMPT_MODULE_LOOKUP_AUTHORITY_START): the event is THE trigger — bump the
     // global topology epoch so the bound-host enumeration and the lookup* memos re-resolve on the
     // next read, engine + widget threads.
+    // Deletion is the event onExpanderChange cannot see: removing a module with no
+    // adjacent neighbour fires no slot-change handler anywhere, so an event-only
+    // epoch keeps every memoized pointer to the removed module alive after free
+    // (ModuleLookupCore). onRemove is the missing bump (L6 grep-gate pins this).
+    void onRemove(const RemoveEvent& e) override {
+        rack::Module::onRemove(e);
+        redDot::bumpTopologyEpoch();
+    }
     void onExpanderChange(const ExpanderChangeEvent& e) override {
         redDot::bumpTopologyEpoch();
     }

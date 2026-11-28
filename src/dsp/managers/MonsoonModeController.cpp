@@ -260,6 +260,19 @@ void ModeController::updatePatternInput() {
     engine.pe.latchSlew(currentPatternInput.rhythmSlew,
                         currentPatternInput.melodySlew,
                         currentPatternInput.qmixSlew);
+    // Part B: MA DEPTH latches with slew — the other copula-window parameter, same
+    // unconditional rationale (no own lock control; consumed only at the draw boundary,
+    // where ONE consume() commits slew AND depth). The scrub budget follows the
+    // DRAW-FIXED depth: poke the active ranges so CV scaling + the viz norm track
+    // maxScrubForK of what the buffers are actually built at (one control-tick lag at
+    // the boundary is the latch cadence, not a race).
+    engine.pe.latchDepth(paramManager.getRhythmDepth(),
+                         paramManager.getMelodyDepth(),
+                         paramManager.getQmixDepth());
+    paramManager.setScrubRanges(
+        (float)redDot::scrub::maxScrubForK(engine.pe.rhythmWin_.phraseDepth()),
+        (float)redDot::scrub::maxScrubForK(engine.pe.melodyWin_.phraseDepth()),
+        (float)redDot::scrub::maxScrubForK(engine.pe.qmixWin_.phraseDepth()));
     // PLAYABLE LIVE MORPH: apply the live MIX every process (control rate), like
     // spread — this is the continuous A<->B blend. recomputeEffective only does
     // work when MIX actually changes, so it is cheap. SLEW is NOT applied here;

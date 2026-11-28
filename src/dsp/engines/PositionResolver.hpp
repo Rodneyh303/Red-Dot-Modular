@@ -58,12 +58,24 @@ struct PositionResolver {
     int endStep_   = kPatternLengthCap - 1;   // the transport default = the full ring (the 16-triage option-C ruling)
     int len_       = kPatternLengthCap;
     int dir_       = +1;                      // the last motion's sign (the traversal + phrasePos direction)
-    // (TRUE-RETRACE, Rodney 2026-11-21) the direction of the FIRST motion since reset / a window change: the
-    // READ coordinate (readCoord) stays anchored to THIS entry, so reversing the transport mid-phrase walks BACK
-    // along the same coordinate (an exact retrace) instead of re-anchoring to the new direction's entry (which
-    // returned the voice read one step ahead and by a wrap-dependent offset). 0 = no motion yet. phrasePos()
-    // (the phrase EDGE predicate) is deliberately UNCHANGED — it keeps meaning "the current-direction entry".
-    int entryDir_  = 0;
+    // (NET-STEPS, Rodney 2026-11-25 — supersedes TRUE-RETRACE's entryDir_) THE read coordinate's state: one
+    // signed counter of NET motion since reset. +1 forward, -1 back, 0 for a held event (the position does not
+    // move, so the count does not either). The FIRST motion only ENTERS — the read lands AT the entry, so the
+    // counter is 0 there and every later motion accumulates. netEntered_ marks that entry as taken.
+    //
+    // WHY THIS REPLACED entryDir_. readCoord used to sign its magnitude by the direction of the FIRST motion
+    // (entryDir_), which made it a pure function of the played COLUMN and gave "same column -> same cell" for a
+    // whole run — a RETRACE that held even after the traversal walked back PAST its own entry. That cost a bit of
+    // hidden entry history, and it could only ever anchor ONE entry point. readCoord is now history-INDEPENDENT:
+    // past the entry it reads exactly what a COLD start in that direction would read. The architecture already
+    // draws this line — the model is stateless by default, and where genuine history replay IS wanted it is paid
+    // for explicitly and sized (MonsoonChangeAlleyV2's true-reverse trajectory buffer), never smuggled in as a bit.
+    //
+    // The sign falls out of the counter, so there is no direction field here: C++ truncated % keeps the remainder's
+    // sign on the dividend, which is what reproduces a cold reverse (negative) AND a forward run (positive). A
+    // FLOORED mod would force the remainder positive and destroy cold reverse — see readCoord().
+    int64_t netSteps_   = 0;
+    bool    netEntered_ = false;
 
     // ── THE ONE STATE: the played column (today's stepIndex; -1 = the pre-start park) ──
     int col_ = -1;
@@ -77,6 +89,10 @@ struct PositionResolver {
     // from the column in gate/clock mode.
     int  phraseOverride_    = 0;
     bool phraseOverridden_  = false;
+
+    // (NET-STEPS MODEL — Rodney 2026-11-25; see also the block above) the single signed
+    // coordinate; pinned against the engine in test_netsteps_model and the atPhraseEdge
+    // predicate below. See CC_PROMPT_POSITION_RESOLVER_C3_UNIT_OF_ABSOLUTENESS.
 
     static int wrapRing(int v) { return ((v % kMaskRing) + kMaskRing) % kMaskRing; }
     // Negative-safe mod (mirrors SequencerEngine::wrapMod's body verbatim — unreachable
@@ -97,11 +113,12 @@ struct PositionResolver {
         len_ = kPatternLengthCap;
         dir_ = +1;
         col_ = -1;   // the pre-start park (mirrors stepIndex)
-        entryDir_ = 0;
+        netSteps_ = 0; netEntered_ = false;   // (NET-STEPS) reset is the coordinate's only boundary
         phraseOverridden_ = false;   // the traversal owns the phrase from here
+        netSteps_ = 0; netEntered_ = false;   // (NET-STEPS MODEL) reset is the natural boundary — reverse is not carried across it
     }
     void setWindow(int length, int offset) {
-        if (offset != startStep_ || ((length < 1) ? 1 : length) != len_) entryDir_ = 0;   // a REAL window change re-anchors the read coordinate
+        const bool realChange = (offset != startStep_) || (((length < 1) ? 1 : length) != len_);
         startStep_ = offset;
         endStep_ = (offset + length - 1) & (kMaskRing - 1);
         len_ = (length < 1) ? 1 : length;
@@ -110,6 +127,50 @@ struct PositionResolver {
         // law the engine applies to stepIndex).
         if (col_ != -1 && !inWindow(col_)) col_ = (startStep_ - 1 + kMaskRing) % kMaskRing;
         phraseOverridden_ = false;   // a window change invalidates the window-relative phrase
+        // (NET-STEPS) A REAL window change RE-SEEDS the counter to the column's phase in the NEW window —
+        // the signed phrasePos, which is exactly what readCoord returned here under the old entryDir_ law
+        // (cleared entryDir_ fell back to dir_, giving +(col-start) forward / -(end-col) reverse).
+        //
+        // WHY THIS IS KEPT, when the past-entry retrace was not. The engine reads the position through TWO
+        // faces: the READS fold readCoord (sites 861/1301/1419) and the EDGES — the draw edge, the LOR
+        // latches and the lane-offset COMMIT gate (sites 506/837/939/1030/1227) — test phrasePos(), which is
+        // still COLUMN-derived. Under the old law both faces were column-derived, so a window re-author moved
+        // them together. Let the counter run free through a re-author and the two faces DESYNC: the commit
+        // fires at a moment the reads no longer call a wrap (measured — test_bug6_commit_wrap_guard scenes
+        // B/C, both global-length modulation, and test_global_dip_differential's 16->4->16 dip). That is the
+        // edge-vs-read desync class this engine has been chasing, not a behaviour choice, so the re-anchor
+        // stays until the edges are moved onto the same coordinate (the resolver-ownership follow-up).
+        //
+        // Retiring entryDir_ is UNAFFECTED by this: that bit governed the retrace SIGN past the entry, which
+        // is a different concern from where a window re-author re-seeds. History-independence past the entry
+        // — the point of the net-steps swap — is intact.
+        // A REAL window change RE-SEEDS the counter to the column's phase in the NEW window — the signed
+        // phrasePos, which is what readCoord returned here under the old entryDir_ law.
+        //
+        // WHY THIS IS STILL HERE, after the edges moved onto the counter. C2 rules that the walk should
+        // KEEP COUNTING through a re-author and fold mod the new len_ ("global 8->4 at step 8 puts the next
+        // boundaries at 12 AND 16"), which is what a free-running counter does — so this re-seed is the
+        // thing standing between us and that ruling. It cannot go yet: position is read through a THIRD
+        // face this swap has not touched. The per-voice voiceFramePhase_[v] holders — the probability-lane
+        // latch level (parent = the voice, CC_PROMPT_CADENCE_C1_LOR_PHRASE_LATCH) — are still window-
+        // anchored, so letting the global counter run free desyncs the lane commits from them: measured,
+        // test_global_dip_differential's 16->4->16 dip fails 173 checks with this re-seed removed, all of
+        // the form "no commit off the live anchor". Moving those holders onto the counter is the remaining
+        // step; until then the re-seed keeps the three faces in step.
+        //
+        // The PARKED case re-ARMS rather than seeds. When the window shrinks, the line above parks an
+        // out-of-window column just BEFORE the new start — a position no phase describes. Seeding from it
+        // would capture that nonsense phase (e.g. 31) and accumulate from it, where the old column-derived
+        // law re-derived each step and landed at 0 on the next motion.
+        // RETIRE-RESEED: the in-window re-SEED is GONE — netSteps_ keeps counting through a
+        // re-author and folds mod the new len_ (the C2 ruling: "global 8->4 at step 8 puts the
+        // next boundaries at 12 AND 16"). It is safe to drop now that the COMMIT EDGE reads the
+        // COLUMN (voiceFrameEdgeLive_: phrasePos / phrasePos-signed), not readCoord — so the read
+        // and the edge no longer need forcing into congruence. The PARKED re-ARM stays: an
+        // out-of-window column has no phase to count from, so it anchors at 0 (next motion enters).
+        if (realChange) {
+            if (col_ < 0 || !inWindow(col_)) { netSteps_ = 0; netEntered_ = false; }
+        }
     }
     // THE ADVANCE — the traversal law verbatim (the seed/step/skip idiom stepIndex
     // uses; the ONE copy once the migration completes). Mirrors advancePlayhead's
@@ -118,7 +179,10 @@ struct PositionResolver {
     // out-of-window landing back to the traversal's entry bound.
     void advance(int motion) {
         if (motion != 0) phraseOverridden_ = false;   // the traversal re-derives the phrase (a held event keeps it)
-        if (motion != 0 && entryDir_ == 0) entryDir_ = (motion < 0) ? -1 : +1;
+        // (NET-STEPS) the FIRST motion only ENTERS — the read lands AT the entry (netSteps_ == 0) — and every
+        // later motion accumulates. A held event (motion == 0) does not move the position, so it does not count.
+        // (entryDir_ is RETIRED — superseded by the history-independent netsteps readCoord; see the model note above.)
+        if (motion != 0) { if (!netEntered_) netEntered_ = true; else netSteps_ += motion; }
         if (motion < 0) {
             dir_ = -1;
             if (col_ == -1) col_ = (endStep_ + 1) & (kMaskRing - 1);
@@ -147,27 +211,73 @@ struct PositionResolver {
         dir_ = (dir < 0) ? -1 : +1;
         phraseOverride_ = phrasePos;
         phraseOverridden_ = true;
+        // (NET-STEPS) A snap is a POSITION AUTHORITY, so it re-seeds the counter to the phrase it just
+        // asserted — the same signed value readCoord returns while the override stands. Without this the
+        // counter never learns about the snap, and the first clocked advance() (which clears the override)
+        // would silently resume from the pre-snap count: the phase-drive -> clock handover would jump.
+        // Under the old col_-derived law the snap persisted for free, because the snap set col_.
+        netSteps_   = (dir_ > 0) ? (int64_t)phrasePos : -(int64_t)phrasePos;
+        netEntered_ = true;   // the snap IS the entry: the next motion accumulates from here
     }
 
     // ── the PURE views ──
     int playedColumn() const { return col_; }
     int direction() const { return dir_; }
+    // (NET-STEPS) the raw count, for tests/diagnostics — readCoord() is the folded view consumers read.
+    int64_t netSteps() const { return netSteps_; }
+
+    // (NET-STEPS, step 3) THE PHRASE EDGE on the SAME coordinate the reads fold. Mirrors phrasePos()==0's
+    // guards exactly; the body is the counter instead of the column.
+    //
+    // WHY THIS EXISTS. The engine read position through two faces: the READS fold readCoord (the counter)
+    // and the EDGES — draw edge, LOR latches, the lane-offset COMMIT gate — tested phrasePos()==0 (the
+    // column). Two faces means they can disagree, which is the edge-vs-read desync class this engine has
+    // chased for weeks (a commit firing where the reads no longer call a wrap).
+    //
+    // The boundary stays LIVE: len_ is read HERE, every call, so a mid-phrase length change moves the next
+    // boundary immediately — the C1 live-boundary rule, and C2's keep-counting (global 8->4 at step 8 puts
+    // boundaries at 12 AND 16, measured). Nothing is precomputed and nothing goes stale, so the emergent
+    // cadence property survives: each level still asks its parent "are you at your wrap THIS step?".
+    //
+    // MEASURED vs phrasePos()==0: bit-identical on every pure run, forward and cold reverse, and through a
+    // mid-phrase window change. They diverge only after a mid-run DIRECTION FLIP, where phrasePos re-anchors
+    // the edge onto the new direction's entry while this stays anchored to the net-zero position — the same
+    // history-independence the read law now has. That flip divergence is an audible cadence change (dice and
+    // slew redraw, LOR latch, commit) and NEEDS A RACK FEEL-TEST.
+    bool atPhraseEdge() const {
+        if (phraseOverridden_) return phraseOverride_ == 0;
+        if (col_ < 0) return true;   // the pre-start park: phrasePos() reads 0 there
+        const int64_t lg = (len_ < 1) ? 1 : (int64_t)len_;
+        return (netSteps_ % lg) == 0;
+    }
     int phrasePos() const {
         if (phraseOverridden_) return phraseOverride_;   // the phase snap's raw phrase
         if (col_ < 0) return 0;   // the pre-start park: no phrase yet
         return (dir_ > 0) ? wrapRing(col_ - startStep_) : wrapRing(endStep_ - col_);
     }
-    // (TRUE-RETRACE) THE SIGNED READ COORDINATE the voice/macro reads fold: the transport-signed steps since the
-    // ENTRY-direction phrase entry — +(col-start) when the traversal was entered forward, -(end-col) when entered
-    // in reverse — NOT re-anchored by a later mid-phrase reversal. Equals the old (dir>0 ? phrasePos : -phrasePos)
-    // whenever the current direction IS the entry direction (every forward-only and every fresh-reverse run —
-    // byte-identical there); after a flip it keeps walking the SAME coordinate backwards (exact retrace).
-    // The phase-snap override keeps its own raw phrase (unchanged).
+    // (NET-STEPS) THE SIGNED READ COORDINATE the voice/macro reads fold: the NET steps travelled since the entry,
+    // folded into the window. One law, no direction field, no entry history — where you are, not how you got here.
+    //
+    // THE FOLD IS mod len_, NOT mod the row length. readCoord is bounded by the GLOBAL window (len_ == lenG); the
+    // consumers then fold it again into their own row/lane length L. Returning the raw count instead would be read
+    // straight into the mod-L fold by the Macro frame path (which does NOT re-reduce mod lenG first) and diverge by
+    // the global-lap remainder every lap when L does not divide lenG — the slice-4 regression. Reducing here is what
+    // makes the two folds agree.
+    //
+    // TRUNCATED, NOT FLOORED. C++ % keeps the remainder's sign on the dividend, so a forward run reads positive and
+    // a cold reverse reads negative — which is what the engine's reverse path expects. A floored mod (always
+    // 0..len_-1) matches a reverse that has walked back past a FORWARD entry but destroys plain cold reverse, since
+    // the two cases want opposite signs. Measured across forward / cold-reverse / both mixed flips: truncated is
+    // exact on both pure runs, floored breaks every reverse-entered run.
+    //
+    // HISTORY-INDEPENDENT. Past its own entry this reads what a COLD start in that direction would read, so a column
+    // revisited from the other side can report a different cell when L does not divide lenG. That retrace is
+    // deliberately retired — see netSteps_ above. The phase-snap override keeps its own raw phrase (unchanged).
     int64_t readCoord() const {
         if (phraseOverridden_) return (dir_ > 0) ? (int64_t)phraseOverride_ : -(int64_t)phraseOverride_;
         if (col_ < 0) return 0;
-        const int e = (entryDir_ != 0) ? entryDir_ : dir_;
-        return (e > 0) ? (int64_t)wrapRing(col_ - startStep_) : -(int64_t)wrapRing(endStep_ - col_);
+        const int64_t lg = (len_ < 1) ? 1 : (int64_t)len_;
+        return netSteps_ % lg;   // truncated: the sign rides the count
     }
     // (SLICE 5 — CC_PROMPT_POSITION_RESOLVER_SLICE5_PHASECLOCK, option (a)) The abs-mode
     // read coordinate: the transport's absolute phase in the window, ≡ the retired

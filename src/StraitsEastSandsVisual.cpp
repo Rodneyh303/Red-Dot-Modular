@@ -892,28 +892,38 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             // Cycle confines the read to the LOR. The painted overlay is NOT a base —
             // it composes on either; returning to Cycle with a pattern painted keeps
             // the overlay (kind 2 = cycle + overlay).
+            // CC_PROMPT_UAS_CYCLE_PHRASE_MODE — the per-voice 3-way base mode (the East twin of the
+            // Sands Macro selector; names: Rodney 2026-11-24).
+            //   Global:   this voice's window follows the GLOBAL phrase (O=0, R=transport offset,
+            //             L=transport length) — takes effect when the voice is Independent (East).
+            //   Cycle:    the read cycles within this voice's own authored LOR window.
+            //   Absolute: full-phrase read / abs1 (mask kind 1).
+            // Global and Cycle share the mask kind (0, or 2 when painted) and differ ONLY by the
+            // per-voice phrase flag; Absolute is mask kind 1. Mutually exclusive, per voice.
             menu->addChild(createSubmenuItem("Base mode", "",
                 [m, v](Menu* sub) {
-                    static const char* const baseNames[2] =
-                        { "Cycle — read cycles within the LOR",
-                          "Absolute-1 — full-phrase read, plays the LOR only" };
-                    for (int k = 0; k < 2; ++k) {
-                        const bool abs1 = (k == 1);
-                        sub->addChild(createCheckMenuItem(baseNames[k], "",
-                            [m, v, abs1]() {
-                                const int cur = (int)std::lround(m->getMaskEastKind(v));
-                                return abs1 ? (cur == 1) : (cur != 1);
-                            },
-                            [m, v, abs1]() {
-                                const float oldK = m->getMaskEastKind(v);
-                                const float newK = abs1 ? 1.f
-                                    : (m->getMaskEastPatternBits(v) == dotModular::kMaskLenMask) ? 0.f : 2.f;
-                                if (oldK == newK) return;
-                                m->setMaskEastKind(v, newK);
-                                redDot::applyAndPushStoreEdit<Monsoon>(m, "Mask kind",
-                                    [v](Monsoon& m2, float kk) { m2.setMaskEastKind(v, kk); }, oldK, newK);
-                            }));
-                    }
+                    auto cycleKind = [m, v]() -> float {
+                        return (m->getMaskEastPatternBits(v) == dotModular::kMaskLenMask) ? 0.f : 2.f;
+                    };
+                    auto setAll = [m, v](bool phrase, float kind) {
+                        m->engine.setVoiceCyclePhrase(v, phrase);
+                        const float oldK = m->getMaskEastKind(v);
+                        if (oldK != kind) {
+                            m->setMaskEastKind(v, kind);
+                            redDot::applyAndPushStoreEdit<Monsoon>(m, "Mask kind",
+                                [v](Monsoon& m2, float kk) { m2.setMaskEastKind(v, kk); }, oldK, kind);
+                        }
+                    };
+                    const int kind = (int)std::lround(m->getMaskEastKind(v));
+                    sub->addChild(createCheckMenuItem("Global — window follows the global phrase", "",
+                        [m, v, kind]() { return m->engine.voiceCyclePhraseRaw(v) && kind != 1; },
+                        [setAll, cycleKind]() { setAll(true, cycleKind()); }));
+                    sub->addChild(createCheckMenuItem("Cycle — read cycles within the LOR", "",
+                        [m, v, kind]() { return !m->engine.voiceCyclePhraseRaw(v) && kind != 1; },
+                        [setAll, cycleKind]() { setAll(false, cycleKind()); }));
+                    sub->addChild(createCheckMenuItem("Absolute — full-phrase read, plays the LOR only", "",
+                        [kind]() { return kind == 1; },
+                        [setAll]() { setAll(false, 1.f); }));
                 }));
             // (follow-R retired 2026-11-21: the painted pattern is static in global-step space)
             menu->addChild(new MenuSeparator);

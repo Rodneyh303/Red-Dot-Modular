@@ -325,6 +325,17 @@ namespace MonsoonIds {
         PHASE_SET_PARAM,
         SUBPHASE_SET_PARAM,
 
+        // ── Part B (CC_PROMPT_SCRUB32): per-stream MA DEPTH K (R/M/Q). IDs are FROZEN
+        //    here deliberately (saved patches carry param ids; geometry is provisional,
+        //    ids are not — the prompt's ruling). Integer K in [1, 64], default 64; the
+        //    widget snaps to the detent set {1, 16, 32, 64} (snapKToDetent). Latched every
+        //    control cycle, consumed at the DRAW boundary with slew (one window-param
+        //    consume), and the scrub budget re-clamps when a K commit shrinks the range
+        //    (the accepted jump — the readout shows it). ──
+        DEPTH_R_PARAM,
+        DEPTH_M_PARAM,
+        DEPTH_Q_PARAM,
+
         NUM_PARAMS
     };
 
@@ -1800,6 +1811,7 @@ struct Monsoon : Module {
     void onReset() override;
     void onSampleRateChange(const SampleRateChangeEvent& e) override;
     int getNoteLenIdx_();
+    void onRemove(const RemoveEvent& e) override;   // epoch bump — deletion fires no slot event (L6)
     void onExpanderChange(const ExpanderChangeEvent& e) override;
     int computeNoteLengthIdx(int requestedIdx, int ppqnMask);
     void updateStepLEDs_(float sampleTime);
@@ -1911,6 +1923,7 @@ extern Model* modelStraitsEastSandsVisual;      // East visual DNA editor (voice
 extern Model* modelStraitsSandsMacroVisual;     // Macro visual DNA editor (global)
 extern Model* modelSandsDistributionExpander;   // the distribution sub-expander (dual role by host)
 extern Model* modelSandsMacroSendSubpanel;      // the Macro send subpanel (every Macro→East send, one snapped panel)
+extern Model* modelSandsFold;                   // the seamless-fold resize spike (SEAMLESS_FOLD_PLAN step 1: runtime-resizable, hosts the Sends band)
 extern Model* modelIntertropical;               // Intertropical scene sequencer
 extern Model* modelPhaseDistortion;             // the standalone phase-distortion module (PHASE_DISTRIBUTION_SPEC §13 — the B comparison build; 8 phase in/out, per-channel sets, the ONE shared primitive; the expander model A stays)
 extern Model* modelSandsPhaseDistSubpanel;      // the phase-distortion sets authoring subpanel (CC_PROMPT_PHASE_DISTORTION_PANEL TASK 1 — the §14 store's UI; edits the rack-wide-lowest-id expander's store, the SAME instance the Monsoons read)

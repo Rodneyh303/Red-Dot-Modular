@@ -250,6 +250,13 @@ void Monsoon::updateExpanderPointers() {
         }
 
         engine.reset();
+        // CC_PROMPT_UAS_CYCLE_PHRASE_MODE: Phrase is the product DEFAULT (the voice window follows
+        // the global phrase, O=0, R=transport offset). The engine itself defaults to Custom so the
+        // bare-engine tests/goldens are unchanged; the module opts every row in here. At the default
+        // transport (cap) this resolves to the old (cap,0,0) — sound-identical until a global length
+        // is authored. dataFromJson overrides per the saved patch (absent field -> stays Phrase).
+        engine.setMacroCyclePhrase(true);
+        for (int v = 0; v < SequencerEngine::kVoiceSlots; ++v) engine.setVoiceCyclePhrase(v, true);
 
         bpm = 120.f;
         clock.reset();
@@ -784,6 +791,15 @@ void Monsoon::onPhraseBoundary_() {
 // PolyVoice.  If DNA is present, PolyVoice is expected to the right of DNA
 // and is reached by walking one step further.  If no DNA is present,
 // PolyVoice may attach directly to Monsoon's right.
+// Deletion is the event onExpanderChange cannot see: removing a module with no
+// adjacent neighbour fires no slot-change handler anywhere, so an event-only
+// epoch keeps every memoized pointer to the removed Monsoon alive after free
+// (ModuleLookupCore). onRemove is the missing bump (L6 grep-gate pins this).
+void Monsoon::onRemove(const RemoveEvent& e) {
+    Module::onRemove(e);
+    redDot::bumpTopologyEpoch();
+}
+
 void Monsoon::onExpanderChange(const ExpanderChangeEvent& e) {
     // THE LOOKUP AUTHORITY (CC_PROMPT_MODULE_LOOKUP_AUTHORITY_START): the event is
     // the sole trigger — it bumps the global topology epoch (every consumer's memo
@@ -1236,7 +1252,13 @@ void Monsoon::process(const ProcessArgs& args) {
             // At 24 the two coincide bit-for-bit (p16 = 6 there); at 48 the step rate
             // doubles at the same BPM (a step is a 1/32 of the 48 grid).
             if (modeSelect == 0) return clock.stepEdge;            // clock origin (was A/C)
-            return phase.stepEdge;                                 // phase origin (was E/F)
+            // phase origin (was E/F): OR in the STARTUP DOWNBEAT — the held-at-start
+            // analogue for phase drive (see PhaseEngine::startupDownbeat). Without it a
+            // ramp seated at phase 0 misses beat 1 (the seed sample is contractually
+            // edge-less); with it the seated step gates once at the origin and a phase
+            // Monsoon starts step-synced with a clock Monsoon. One-shot: entering flips
+            // engine.started().
+            return phase.stepEdge || phase.startupDownbeat(engine.started());
         }();
         rateManager.advance(redDot::Rate::PPQN,
                             (modeSelect == 2) ? phase.pulseEdge : clock.pulseEdge);   // phase origin vs clock
@@ -1253,6 +1275,13 @@ void Monsoon::process(const ProcessArgs& args) {
         }
 
         if (rateManager.ticked(redDot::Rate::Step)) {
+            // PARKED SEAT-BEHIND (see PhaseEngine::parkedSeatBehind): a phase-drive
+            // execute from the park would enter at col 0 regardless of where the ramp
+            // sits — seat one pulse behind the ramp first, so the execute advances onto
+            // the crossed/seated step. No-op at pulsePos 0 (the sync origin) and in
+            // relative-origin mode (seed pulse is always 0).
+            if (modeSelect == 2 && phase.parkedSeatBehind(engine.started()))
+                engine.snapToPhaseStep((phase.pulsePos / PULSES_PER_STEP) * PULSES_PER_STEP - 1, PULSES_PER_STEP);
             mc.executeMode(modeSelect, input, tc.getGate2High());
 
             // Latch each poly voice's sounding decision (Mode B poly gate-width follow).  In Mode B

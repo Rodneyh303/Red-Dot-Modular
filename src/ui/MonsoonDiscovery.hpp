@@ -17,6 +17,8 @@
 #include <rack.hpp>
 #include "../Monsoon.hpp"   // extern model globals (modelMonsoon, modelLantern, …)
 
+extern ::rack::plugin::Model* modelSandsFold;   // SandsFold.hpp's extern (spike module)
+
 namespace redDot {
 
 // ── Recognised-suite predicate ────────────────────────────────────────────────────────────────────
@@ -87,7 +89,12 @@ inline bool isSuiteChainModel(const rack::Model* m) {
                                    //   Intertropical mid-chain acted as a foreign boundary and
                                    //   un-bound everything past it (e.g. M-Lantern-IT-Straits
                                    //   dimmed Straits; M-Lantern-IT-IT dimmed the 2nd IT). Hop-only.
-        || m == modelSandsPhaseDistSubpanel;  // hop-only (never a boundary, never a host)                          
+        || m == modelSandsPhaseDistSubpanel   // hop-only (never a boundary, never a host)
+        || m == modelSandsFold;   // the seamless-fold spike (hop-through): WITHOUT this a
+                                  //   SandsFold mid-chain acted as a FOREIGN BOUNDARY and
+                                  //   un-bound everything past it — the CONNECTION_UI_MODEL
+                                  //   §4 bug class, fourth occurrence (ChangiT2, IT, Dist).
+                                  //   LOCKSTEP with MonsoonExpanderManager's scan set.                          
 }
 
 

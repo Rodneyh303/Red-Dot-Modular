@@ -18,6 +18,7 @@ extern rack::Model* modelStraitsLaneREST;
 extern rack::Model* modelStraitsLaneACCENT;
 extern rack::Model* modelStraitsLaneVARIATION;
 extern rack::Model* modelStraitsLaneLEGATO;
+extern rack::Model* modelSandsFold;   // fold spike (hop-through in the scan; LOCKSTEP with isSuiteChainModel)
 extern rack::Model* modelMonsoonShophouseMicro;
 extern rack::Model* modelSandsDistributionExpander;   // the Sands subpanel (hop-through)
 
@@ -279,6 +280,7 @@ struct MonsoonExpanderManager {
                         || curr->model == modelSandsDistributionExpander
                         || curr->model == modelMonsoonShophouseMicro
                         || curr->model == modelSandsPhaseDistSubpanel
+                        || curr->model == modelSandsFold   // fold spike: hop-through (LOCKSTEP with isSuiteChainModel)
                     ) {
                     // Hop-through modules (no cache slot): observer/follower suite modules (Lantern;
                     // Changi T3) AND lane-extension sub-modules (StraitsLaneQMIX/REST/ACCENT/

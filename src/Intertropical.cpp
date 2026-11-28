@@ -104,37 +104,15 @@ void Intertropical::process(const ProcessArgs& args) {
     // genuine reset (button or gate input), NOT on phrase wraps.
     // Check every process() call (not just on step edges) so a mid-step reset isn't missed.
     if (host->outputs[MonsoonIds::RESET_TRIGGER_OUTPUT].getVoltage() >= 1.f) {
-        activeScene = 0;
-        repeatPos   = 0;
-        liveMask    = sceneMask[0];
-        lastStepIndex = -1;   // force re-sample on the next step
-        justReset   = true;   // swallow the first post-reset wrap (reset makes engine report wrapped)
+        scene.onReset();   // sync to scene 0, arm the post-reset wrap swallow (the 0->1 off-by-one guard)
     }
-    // Use the engine's own phrase-boundary detection: lastStepResult.wrapped is true on the
-    // step where the pattern wraps (accounts for modulated start/endStep correctly).
-    // We track the stepIndex to detect when a new step result is available.
-    // ---- boundary-crossing advance (phrase-boundary, direction-agnostic) ----
-    const int si = eng.playedColumn();   // (step 3b) the resolver's played column
-    if (lastStepIndex >= 0 && si != lastStepIndex) {
-        // A new step was processed. Check if the engine reported a phrase boundary wrap.
-        if (eng.lastStepResult.wrapped) {
-            if (justReset) {
-                // The reset itself makes the engine report wrapped=true on the first step after
-                // reset. Swallow exactly this one wrap so the reset holds on scene 0 instead of
-                // advancing 0 -> 1 (the off-by-one). Subsequent wraps advance normally.
-                justReset = false;
-            } else {
-                repeatPos++;
-                if (repeatPos >= getRepeats(activeScene)) {
-                    repeatPos = 0;
-                    activeScene = (activeScene + 1) % getLoopLen();
-                }
-                // Read-at-boundary rule: sample the active scene's membership NOW.
-                liveMask = sceneMask[activeScene];
-            }
-        }
-    }
-    lastStepIndex = si;
+    // Boundary-crossing advance (phrase-boundary, DIRECTION-AGNOSTIC): the scene core advances on
+    // the engine's OWN phrase-wrap flag (eng.lastStepResult.wrapped — the net-steps atPhraseEdge),
+    // which fires once per phrase in clock-fwd, clock-rev and phase alike (unlike the LockManager
+    // column heuristic CA/Cantonment use, which inverts in reverse). The state machine (repeat
+    // hold, loopLen wrap, read-at-boundary membership) lives in the core — headless-tested in
+    // test_intertropical_scene.
+    scene.onStep(eng.playedColumn(), eng.lastStepResult.wrapped);
 
     // ---- route: hybrid auto-pack + override routing (<=8 output channels) ----
     // ---- route: read the Straits expander's 16-channel poly outputs (the poly output source) ----

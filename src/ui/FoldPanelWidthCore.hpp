@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <vector>
 
 namespace redDot { namespace fold {
 
@@ -73,6 +74,46 @@ struct NeighbourRecord {
 inline bool shouldRestoreNeighbour(float currentX, float expectedX, float tolPx = 1.f) {
     if (!std::isfinite(currentX) || !std::isfinite(expectedX)) return false;
     return std::fabs(currentX - expectedX) <= tolPx;
+}
+
+// ── RESIZE ORDER + TIMING (the adjacency-preserving plan) ───────────────────────
+// setModulePosForce places a module AT the target and SHOVES whatever the target
+// overlaps. So the ONLY way a per-neighbour push is a clean rigid translation is to
+// visit the neighbours in an order where each target lands on EMPTY space (no
+// overlap at call time), and to resize ourself at the moment that keeps it empty:
+//
+//   GROW  (shift>0): resize self LAST. Translate neighbours FARTHEST-FIRST
+//                    (descending x): the far module moves +shift into open space,
+//                    then each nearer module moves +shift into the gap the farther
+//                    one just vacated — never overlapping it. Finally our box grows
+//                    into the shift-wide gap left at our right edge. Flush.
+//   SHRINK(shift<0): resize self FIRST (frees a shift-wide gap at our right edge).
+//                    Translate neighbours NEAREST-FIRST (ascending x): the nearest
+//                    moves -|shift| flush against our new edge, then each farther
+//                    module follows into the gap the nearer one vacated. Flush.
+//
+// The OLD spike always pushed-then-resized in getModuleIds() order: on grow that
+// re-shifted already-shoved modules (gaps mid-chain → the chain broke); on shrink
+// the push hit our still-wide box (neighbours stopped short → the accepted gap).
+//
+// resizeSelfFirst: true iff we must resize before touching the neighbours (shrink).
+inline bool resizeSelfFirst(float shiftPx) { return shiftPx < 0.f; }
+
+// Strict-weak order for the neighbour walk given the signed pixel shift: grow =>
+// descending x (farthest first); shrink => ascending x (nearest first).
+inline bool resizeOrderBefore(float ax, float bx, float shiftPx) {
+    return (shiftPx > 0.f) ? (ax > bx) : (ax < bx);
+}
+
+// Processing order (indices into xs) for a resize by signed pixel `shift`.
+// Pure and testable: the widget sorts its collected neighbours by this, the
+// simulation test drives the same planner to prove flush/no-overlap layouts.
+inline std::vector<int> resizeNeighbourOrder(const std::vector<float>& xs, float shiftPx) {
+    std::vector<int> idx(xs.size());
+    for (std::size_t i = 0; i < xs.size(); ++i) idx[i] = (int)i;
+    std::sort(idx.begin(), idx.end(),
+              [&](int a, int b) { return resizeOrderBefore(xs[a], xs[b], shiftPx); });
+    return idx;
 }
 
 }} // namespace redDot::fold
