@@ -50,6 +50,14 @@ struct StraitsQmixOctPanelModule : rack::engine::Module {
     // The lane's left-link fast path: a mid-chain insertion never changes the
     // BASE's own expanders, so it fires HERE (the StraitsLaneExpander hook
     // verbatim, family-parameterised — the predicate includes this panel).
+    // Deletion is the event onExpanderChange cannot see: removing a module with no
+    // adjacent neighbour fires no slot-change handler anywhere, so an event-only
+    // epoch keeps every memoized pointer to the removed module alive after free
+    // (ModuleLookupCore). onRemove is the missing bump (L6 grep-gate pins this).
+    void onRemove(const RemoveEvent& e) override {
+        rack::Module::onRemove(e);
+        redDot::bumpTopologyEpoch();
+    }
     void onExpanderChange(const ExpanderChangeEvent& e) override {
         redDot::bumpTopologyEpoch();
         rack::Module* left = leftExpander.module;

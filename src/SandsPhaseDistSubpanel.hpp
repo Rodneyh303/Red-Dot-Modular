@@ -104,6 +104,14 @@ struct SandsPhaseDistSubpanel : rack::Module, redDot::SandsSnapGuest {
 
     // ── topology events: bump the epoch (the ONLY legal bump site) + the
     // left-link hardening check (the StraitsLane idiom, family swapped).
+    // Deletion is the event onExpanderChange cannot see: removing a module with no
+    // adjacent neighbour fires no slot-change handler anywhere, so an event-only
+    // epoch keeps every memoized pointer to the removed module alive after free
+    // (ModuleLookupCore). onRemove is the missing bump (L6 grep-gate pins this).
+    void onRemove(const RemoveEvent& e) override {
+        rack::Module::onRemove(e);
+        redDot::bumpTopologyEpoch();
+    }
     void onExpanderChange(const ExpanderChangeEvent& e) override {
         redDot::bumpTopologyEpoch();
         rack::Module* left = leftExpander.module;

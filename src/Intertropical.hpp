@@ -14,6 +14,7 @@
 #include "dsp/VoiceResolver.hpp"
 #include "ui/VisualExpanderHelpers.hpp"   // Monsoon complete type (the walk helpers are service-internal now)
 #include "ui/ModuleLookupCore.hpp"   // THE lookup authority: the topology epoch (onExpanderChange bump — CC_PROMPT_MODULE_LOOKUP_AUTHORITY_START)
+#include "ui/IntertropicalSceneCore.hpp"   // the rack-free scene-advance state machine
 
 using namespace rack;
 // The real Monsoon is a GLOBAL type from Monsoon.hpp (included by the .cpp before use).
@@ -64,13 +65,24 @@ struct IntertropicalIds {
 struct Intertropical : Module {
     using Ids = IntertropicalIds;
 
+    // ── RACK-FREE SCENE CORE (IntertropicalSceneCore) — the single source of truth for the scene-
+    // advance state machine (config + the boundary-crossing advance). The Module keeps the Rack
+    // wiring (host lookup, the RESET pulse read, output routing). The scene fields below are
+    // REFERENCE ALIASES into `scene` so every existing accessor (the widget's module->activeScene,
+    // dataToJson/fromJson, getMembership/setMembership) keeps working unchanged; only the advance
+    // logic in process() delegates to scene.onReset()/onStep(). `scene` is declared FIRST so the
+    // aliases bind at construction. (Headless-tested in test_intertropical_scene.)
+    redDot::IntertropicalSceneCore scene;
+    static_assert(Ids::N_SCENES  == redDot::IntertropicalSceneCore::N_SCENES,  "IT scene N_SCENES drift");
+    static_assert(Ids::MAX_REPEAT == redDot::IntertropicalSceneCore::MAX_REPEAT, "IT scene MAX_REPEAT drift");
+
     // ---- STORE (persisted; store-backed, no params) ----
     // sceneMask[scene] : bit v set => voice v (0..15) is IN this scene.
-    uint16_t sceneMask[Ids::N_SCENES]   = {0};
+    std::array<uint16_t, Ids::N_SCENES>& sceneMask = scene.sceneMask;
     // repeats[scene]   : 1..4 boundary crossings the scene holds before advancing.
-    uint8_t  repeats[Ids::N_SCENES]     = {1,1,1,1,1,1,1,1};
+    std::array<uint8_t, Ids::N_SCENES>&  repeats   = scene.repeats;
     // loopLen: how many scenes to cycle through (1..8). Scene advance wraps at loopLen, not N_SCENES.
-    uint8_t  loopLen                    = Ids::N_SCENES;   // default: all 8 scenes
+    uint8_t&  loopLen                   = scene.loopLen;   // default: all 8 scenes
     // --- Routing model (SETTLED, INTERTROPICAL_SPEC "Routing model + fan-out") ---
     // Three spaces (voices 16 -> slots <=8 -> outputs 8), two mappings:
     //  voice -> slot : PER-SCENE seating (this array). -1 = auto-pack, 0..7 = seated in that slot.
@@ -227,6 +239,14 @@ struct Intertropical : Module {
 
     // LOOKUP AUTHORITY: the event is THE trigger — bump the global topology epoch so this module's
     // adjacency (the lookup* memos) re-resolves on the next read, engine + widget threads.
+    // Deletion is the event onExpanderChange cannot see: removing a module with no
+    // adjacent neighbour fires no slot-change handler anywhere, so an event-only
+    // epoch keeps every memoized pointer to the removed module alive after free
+    // (ModuleLookupCore). onRemove is the missing bump (L6 grep-gate pins this).
+    void onRemove(const RemoveEvent& e) override {
+        rack::Module::onRemove(e);
+        redDot::bumpTopologyEpoch();
+    }
     void onExpanderChange(const ExpanderChangeEvent& e) override {
         redDot::bumpTopologyEpoch();
     }
@@ -236,14 +256,14 @@ struct Intertropical : Module {
     bool  pairChecked   = false;
 
     // ---- live playback state (NOT persisted  derived from host phase) ----
-    int   activeScene   = 0;     // which scene is currently sounding
-    int   repeatPos     = 0;     // 0..repeats[activeScene]-1  which repeat we're on
-    int   lastStepIndex = -1;    // last stepIndex seen (for step-change detection)
-    bool  justReset     = false; // set on reset; swallows the first post-reset phrase wrap
+    int&  activeScene   = scene.activeScene;     // which scene is currently sounding
+    int&  repeatPos     = scene.repeatPos;       // 0..repeats[activeScene]-1  which repeat we're on
+    int&  lastStepIndex = scene.lastStepIndex;   // last stepIndex seen (for step-change detection)
+    bool& justReset     = scene.justReset;       // set on reset; swallows the first post-reset phrase wrap
                                  // (the reset itself makes the engine report wrapped=true, which
                                  //  would otherwise advance scene 0 -> 1 = off-by-one)
     int   stepCounter   = 0;     // steps counted toward the current pattern cycle
-    uint16_t liveMask   = 0;     // membership sampled AT the boundary (read-at-boundary rule)
+    uint16_t& liveMask  = scene.liveMask;        // membership sampled AT the boundary (read-at-boundary rule)
 
     // (Constructor moved to .cpp — initialises sceneOutput to -1 + config)
 

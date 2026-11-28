@@ -4,6 +4,7 @@
 #include "RhythmDecisionCore.hpp"   // RDM: MonoDecision + ParentView — the R-2 seam (plan §2)
 #include "PatternEngine.hpp"
 #include "../SpreadInterp.hpp"   // effectiveProbability's spread term (the a2ccb842 one-accessor design it subsumes was deleted by UI_TO_RESOLVER step 2)
+#include "../CycleModeCore.hpp"   // CC_PROMPT_UAS_CYCLE_PHRASE_MODE: resolveCycle — the Phrase/Custom window law
 #include "../gates/GateState.hpp"
 #ifdef MONSOON_PROFILE
 #include "../../MonsoonProfile.hpp"   // CC_PROMPT_cpu_section_profile: Suspect-A call counter (empty flag-off)
@@ -789,6 +790,18 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
     int     macroVoiceLor_[LOR_ITEMS]               = {};   // the Macro (global) voice range
     LaneDir macroVoiceLorDir_                       = LaneDir::Forward;
     std::array<bool, kVoiceSlots> voiceLorLocalEast_ = {};   // false = follow Macro (default)
+    // CC_PROMPT_UAS_CYCLE_PHRASE_MODE — per-row cycle mode. false = Custom (own authored L/O/R, the
+    // pre-mode behaviour); true = Phrase (the voice window is LOCKED to the transport: O=0, R=the
+    // transport offset, L=the transport length; the authored L/O/R are ignored, direction stays
+    // free). UI NAMES (Rodney 2026-11-24): this flag true == the "Global" base mode; false == the
+    // "Cycle" base mode; the third UI mode "Absolute" is the separate abs1 mask kind (unaffected
+    // here). The ENGINE defaults to Custom so every existing test/golden is byte-identical; the
+    // MODULE sets Phrase/"Global" as the product default (at the default transport = cap it resolves
+    // to the same cap/0/0, so a fresh module is sound-identical until a global length is authored).
+    static_assert(dotModular::kPatternLengthCap == redDot::cycle::kMaxLen,
+                  "resolveCycle's kMaxLen must match the engine's pattern-length cap");
+    std::array<bool, kVoiceSlots> voicePhraseMode_ = {};   // per-voice (localEast rows)
+    bool macroPhraseMode_ = false;                          // the Macro (delegated) row
     // The per-voice map's output caches, re-derived with the lane walks each event (the
     // HOLDER law): voiceDriver_ = the 1-based frame tick the voice's LANES hang under —
     // the BOUNDED window-walk representative now (pass-through config: ((t+offset−1) mod
@@ -1142,6 +1155,18 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
     // edit lands immediately while unlocked) + the COMMITTED CV delta (the boundary
     // sample); the row invariants re-applied; the direction stays live (C3's slice).
     // effectiveVoiceLorLive is the BASE-only read (what the managers write).
+    // CC_PROMPT_UAS_CYCLE_PHRASE_MODE: Phrase mode replaces the authored window with the transport
+    // window (resolveCycle is the one law) — O=0, R=transport offset, L=transport length. Direction
+    // is untouched (Phrase locks only the window). Custom mode is a no-op (keep authored).
+    inline void phraseWindow_(int& L, int& O, int& R) const {
+        const auto c = redDot::cycle::resolveCycle(redDot::cycle::CycleMode::Phrase,
+                                                   cachedLength, cachedOffset, {});
+        L = c.L; O = c.O; R = c.R;
+    }
+    // The effective mode for a voice row follows the same delegation as its L/O/R.
+    inline bool voicePhraseEffective_(int v) const {
+        return (v >= 0 && v < kVoiceSlots && voiceLorLocalEast_[v]) ? voicePhraseMode_[v] : macroPhraseMode_;
+    }
     void effectiveVoiceLor(int v, int& L, int& O, int& R, LaneDir& d) const {
         if (v < 0 || v >= kVoiceSlots) { L = kPatternLengthCap; O = 0; R = 0; d = LaneDir::Forward; return; }   // (bucket 2) the out-of-range fallback = the identity values (the cap — was the literal 16, which read as a MAPPED row)
         if (voiceLorLocalEast_[v]) {
@@ -1155,6 +1180,7 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
             R = macroVoiceLor_[LOR_ROT] + voiceLorCvMacro_[LOR_ROT];
             d = macroVoiceLorDir_;
         }
+        if (voicePhraseEffective_(v)) phraseWindow_(L, O, R);   // Phrase: lock the window to the transport
         lorRowClamp_(L, O, R);
     }
     void effectiveVoiceLorLive(int v, int& L, int& O, int& R, LaneDir& d) const {
@@ -1175,6 +1201,7 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
         L = macroVoiceLor_[LOR_LEN] + voiceLorCvMacro_[LOR_LEN];
         O = macroVoiceLor_[LOR_OFF] + voiceLorCvMacro_[LOR_OFF];
         R = macroVoiceLor_[LOR_ROT] + voiceLorCvMacro_[LOR_ROT];
+        if (macroPhraseMode_) phraseWindow_(L, O, R);   // Phrase: lock the Macro-row window to the transport
         lorRowClamp_(L, O, R);
         d = macroVoiceLorDir_;
     }
@@ -1809,6 +1836,13 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
     void reset();
     bool isStepInWindow(int idx) const;
     void setWindow(int length, int offset);
+    // CC_PROMPT_UAS_CYCLE_PHRASE_MODE — the per-row cycle-mode API (phrase=true -> Phrase/locked,
+    // false -> Custom/authored). voiceCyclePhrase reads through the Macro delegation.
+    void setMacroCyclePhrase(bool phrase)        { macroPhraseMode_ = phrase; }
+    bool macroCyclePhrase() const                { return macroPhraseMode_; }
+    void setVoiceCyclePhrase(int v, bool phrase) { if (v >= 0 && v < kVoiceSlots) voicePhraseMode_[v] = phrase; }
+    bool voiceCyclePhrase(int v) const           { return voicePhraseEffective_(v); }   // delegated read
+    bool voiceCyclePhraseRaw(int v) const        { return (v >= 0 && v < kVoiceSlots) && voicePhraseMode_[v]; }   // the row's own flag (persistence)
     // voiceMotion (PER-VOICE STEP-ADVANCE Stage 2, optional): the per-voice motion for
     // the per-voice prev pairs (exact walk-sign cues when voices diverged); nullptr =
     // uniform dir (every pre-existing caller). Positions are pure functions of the
