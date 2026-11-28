@@ -530,7 +530,8 @@ void PatternEngine::recomputeEffectiveRhythm() {
         // z0/z1 cache: within a phrase (r fixed) + same integer position f, the two window
         // sumZ results depend ONLY on position -> cache and reuse on frac-only changes (scrub
         // within a position-pair).  Invalidate on roll (ctr), position-cross (f), or r change.
-        const bool cacheHit = rhythmZCache_.hit(N, f, r, kAct);
+        ZWindowCache& rhythmZCache_ = selectZSlot(rhythmZSlots_, rhythmZMru_, N, f, r, kAct);   // 2-slot: dither stays hit
+    const bool cacheHit = rhythmZCache_.hit(N, f, r, kAct);
         // B2: OU-bridge coefficients — computed once per (r, frac, pair). Three branches:
         // r>0 (OU with ξ), r=0 (fresh ξ), r<0 (variance-normalized, no ξ).
         OUBridgeCoeffs ouBC;
@@ -661,7 +662,8 @@ void PatternEngine::recomputeEffectiveMelody() {
     if (r != 0.f) {
         if (!melodyWeightCache_.matches(r, kAct)) melodyWeightCache_.update(r, kAct);
         const double* wc = melodyWeightCache_.w;
-        const bool cacheHit = melodyZCache_.hit(N, f, r, kAct);
+        ZWindowCache& melodyZCache_ = selectZSlot(melodyZSlots_, melodyZMru_, N, f, r, kAct);   // 2-slot: dither stays hit
+    const bool cacheHit = melodyZCache_.hit(N, f, r, kAct);
         OUBridgeCoeffs ouBC; ouBC.compute(r, frac, bridgeMelodyPhilox, N - f - 1);
         const bool needXi = ouBC.needXi();                  // frac==0: no bridge draw at all
         const bool xiHit  = cacheHit && melodyZCache_.xiValid;  // per-cell ξ memoised beside z0/z1
@@ -766,7 +768,8 @@ void PatternEngine::recomputeEffectiveQmix() {
     if (r != 0.f) {
         if (!qmixWeightCache_.matches(r, kAct)) qmixWeightCache_.update(r, kAct);
         const double* wc = qmixWeightCache_.w;
-        const bool cacheHit = qmixZCache_.hit(N, f, r, kAct);
+        ZWindowCache& qmixZCache_ = selectZSlot(qmixZSlots_, qmixZMru_, N, f, r, kAct);   // 2-slot: dither stays hit
+    const bool cacheHit = qmixZCache_.hit(N, f, r, kAct);
         OUBridgeCoeffs ouBC; ouBC.compute(r, frac, bridgeQmixPhilox, N - f - 1);
         const bool needXi = ouBC.needXi();                  // frac==0: no bridge draw at all
         const bool xiHit  = cacheHit && qmixZCache_.xiValid;  // per-cell ξ memoised beside z0/z1
@@ -861,6 +864,7 @@ void PatternEngine::recomputeEffectiveRhythmForVoice(VoiceSlot voice) {
     const float slew = rack::math::clamp(rhythmWin_.phraseSlew(), -1.f, 1.f);  // DRAW-FIXED (Part A)
     const float r = slewKnobToR(slew);
     if (r == 0.f) { recomputeEffectiveRhythm(); return; }   // slew=0: the scrub (mix) still moves the draw — the full path does the r==0 linear blend + sets mixApplied (the for-voice early-return left the scrub dead at slew=0)
+    ZWindowCache& rhythmZCache_ = selectZSlot(rhythmZSlots_, rhythmZMru_, N, f, r, kAct);   // 2-slot: dither stays hit
     if (!rhythmZCache_.hit(N, f, r, kAct)) { recomputeEffectiveRhythm(); return; }
 
     const int stride = 4 + 4 * numPolyVoicesHint;
@@ -927,6 +931,7 @@ void PatternEngine::recomputeEffectiveMelodyForVoice(VoiceSlot voice) {
     const float slew = rack::math::clamp(melodyWin_.phraseSlew(), -1.f, 1.f);  // DRAW-FIXED (Part A)
     const float r = slewKnobToR(slew);
     if (r == 0.f) { recomputeEffectiveMelody(); return; }   // slew=0: scrub still moves the draw (see rhythm)
+    ZWindowCache& melodyZCache_ = selectZSlot(melodyZSlots_, melodyZMru_, N, f, r, kAct);   // 2-slot: dither stays hit
     if (!melodyZCache_.hit(N, f, r, kAct)) { recomputeEffectiveMelody(); return; }
     const int stride = 2 + 2 * numPolyVoicesHint;
     OUBridgeCoeffs ouBC; ouBC.compute(r, frac, bridgeMelodyPhilox, N - f - 1);
@@ -983,6 +988,7 @@ void PatternEngine::recomputeEffectiveQmixForVoice(VoiceSlot voice) {
     const float slew = rack::math::clamp(qmixWin_.phraseSlew(), -1.f, 1.f);  // DRAW-FIXED (Part A)
     const float r = slewKnobToR(slew);
     if (r == 0.f) { recomputeEffectiveQmix(); return; }   // slew=0: scrub still moves the draw (see rhythm)
+    ZWindowCache& qmixZCache_ = selectZSlot(qmixZSlots_, qmixZMru_, N, f, r, kAct);   // 2-slot: dither stays hit
     if (!qmixZCache_.hit(N, f, r, kAct)) { recomputeEffectiveQmix(); return; }
     const int stride = 1 + numPolyVoicesHint;
     OUBridgeCoeffs ouBC; ouBC.compute(r, frac, bridgeQmixPhilox, N - f - 1);
@@ -1127,19 +1133,19 @@ void PatternEngine::refreshVisualCache(const PatternInput& in) {
     {
         if (rhythmDrawCtr != rhythmCtrApplied) {
             recomputeEffectiveRhythm();           // roll: full recompute (all voices)
-        } else if (rhythmMixLatched != rhythmMixApplied) {
+        } else if (mixMoved(rhythmMixLatched, rhythmMixApplied)) {
             recomputeEffectiveRhythmForVoice(displayedVoice_);  // mix: displayed voice only
         }
         if (melodyDrawCtr != melodyCtrApplied) {
             recomputeEffectiveMelody();
             melodyChanged = true;
-        } else if (melodyMixLatched != melodyMixApplied) {
+        } else if (mixMoved(melodyMixLatched, melodyMixApplied)) {
             recomputeEffectiveMelodyForVoice(displayedVoice_);
             melodyChanged = true;
         }
         if (qmixDrawCtr != qmixCtrApplied)
             recomputeEffectiveQmix();
-        else if (qmixMixLatched != qmixMixApplied)
+        else if (mixMoved(qmixMixLatched, qmixMixApplied))
             recomputeEffectiveQmixForVoice(displayedVoice_);
     }
     // (rhythmChanged + its rhythmPattern display writer RETIRED — ITEM 1: the LEDs read
