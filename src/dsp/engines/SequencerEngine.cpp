@@ -2,6 +2,7 @@
 #include "../SpreadInterp.hpp"   // Stage 2a: refreshPolyRandomCell -> applyPoly
 #include "../VoiceResolver.hpp"  // CC_PROMPT_STRONG_TYPES: VoiceSlot minting (mono/slot) for the typed accessors
 #include "../QuantiserPartitionCore.hpp"   // redDot::weightedQuantize — the weighted-partition quantiser
+#include "../NoPreferenceFallbackCore.hpp" // redDot::buildActiveDegreeSet — no-preference (all-faders-down) fallback
 #include <array>
 #include <cmath>
 #include <algorithm>
@@ -1709,21 +1710,25 @@ int SequencerEngine::getNoteLenIdx(float baseNoteParam, const PatternInput& inpu
     return pe.varyNoteIndex(baseIdx, input, r);
 }
 
-void SequencerEngine::rebuildScaleCache(const float weights[], int n) {
+void SequencerEngine::rebuildScaleCache(const float weights[], int n, const bool members[]) {
     // The quantize() one-entry memo (lastQuantIn/Out) is keyed on the INPUT VOLTAGE only, so it must die
     // with the active-degree set: a held CV (a chord-pad / Scaler note) kept returning a degree whose
     // weight had just been zeroed — the quantised note (and its green flash) landed on a muted fader.
     lastQuantIn = -100.f;
-    activeSemiCount = 0;
+    // faderCache keeps the RAW (clamped) weights for the module-side dirty check — the no-preference
+    // substitution below never leaks back into it (faders are the STORE; this cache mirrors them).
+    std::array<float, dotModular::TuningTable::MAXN> clamped{};
     for (int s = 0; s < n; ++s) {
-        float w = pe_clamp<float>(weights[s], 0.f, 1.f);
-        faderCache[s] = w;
-        if (w > 0.f) {
-            activeSemiList[activeSemiCount] = s;
-            activeSemiWeight[activeSemiCount] = w;
-            ++activeSemiCount;
-        }
+        clamped[(size_t)s] = pe_clamp<float>(weights[s], 0.f, 1.f);
+        faderCache[s] = clamped[(size_t)s];
     }
+    // Weighted regime when any weight is up (byte-identical to the legacy w>0 filter); otherwise the
+    // no-preference fallback: uniform weight 1 over the MEMBERSHIP set (the selected scale / enabled[]
+    // mask), so quantizeResolve snaps to the nearest note of the selected scale through the same
+    // pairwise partition (uniform ⇒ midpoint boundaries ⇒ exact nearest-note). members == nullptr
+    // means all n degrees; an all-false members[] degrades to all n (FB6) — see NoPreferenceFallbackCore.
+    activeSemiCount = redDot::buildActiveDegreeSet(clamped.data(), members, n,
+                                                   activeSemiList, activeSemiWeight);
 }
 
 float SequencerEngine::getStepLightBrightness(int lightIdx) const {
@@ -3177,7 +3182,10 @@ int SequencerEngine::degreeOf(float pitchV) const {
 // regime); only non-uniform weights change.
 SequencerEngine::QuantPick SequencerEngine::quantizeResolve(float vIn) {
     QuantPick out;
-    // Cold/empty-scale path (no active degrees — a fresh/reset engine before a scale is set).
+    // DEFENSIVE-ONLY cold path: rebuildScaleCache's no-preference fallback guarantees at least one
+    // active degree (uniform over the scale/tuning membership when all faders are down — the
+    // fallback-ladder ruling), so this is reachable only on a fresh/reset engine before the first
+    // rebuild. Raw clamp, never musical policy — that lives in the fallback set construction.
     if (activeSemiCount == 0) {
         out.volts    = pe_clamp<float>(vIn, 0.f, 5.f);
         out.octave   = (int)std::floor(out.volts);
@@ -3195,9 +3203,10 @@ SequencerEngine::QuantPick SequencerEngine::quantizeResolve(float vIn) {
     }
     const redDot::QuantResult r = redDot::weightedQuantize(pos.data(), wt.data(), activeSemiCount,
                                                            vIn, 0.f, 5.f);
-    out.semitone = activeSemiList[r.index];
-    out.octave   = r.octave;
-    out.volts    = r.volts;   // already within [0,5] by construction
+    out.semitone  = activeSemiList[r.index];
+    out.octave    = r.octave;
+    out.volts     = r.volts;   // already within [0,5] by construction
+    out.wrapDelta = r.wrapDelta;
     return out;
 }
 

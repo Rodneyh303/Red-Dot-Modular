@@ -249,6 +249,83 @@ int main(){
         EXPECT_NEAR(gShare, 1.f/3.f, 0.05f);
     });
 
+    // ─────────────────────────────────────────────────────────────────────────
+    SUITE("G5 — POSITIONAL SYMMETRY (Rodney's feel-test: the lowest nonzero degree over-picked)");
+    // The old core gave the LOWEST and HIGHEST in-range instance an unbounded bound
+    // (lb_0 = -inf, ub_last = +inf), so each absorbed the whole unweighted tail
+    // ([vLo, firstCenter) / (lastCenter, vHi]) — a full degree's worth regardless of
+    // its fader. A faint degree that happened to be the lowest active (e.g. C# when C
+    // is muted) was picked far above its weight, while a faint degree in the MIDDLE
+    // (same weight, same unit neighbours) was not — a positional asymmetry. The margin
+    // enumeration gives the edge instances real weighted boundaries, so a degree's
+    // share no longer depends on WHERE it sits. RED on the old core, GREEN now.
+    TEST("G5a lowest-active faint == middle faint (C muted; C# low vs G mid, both 1%)", {
+        std::vector<int> act; for (int s = 1; s < 12; ++s) act.push_back(s);   // C (0) muted
+        std::vector<float> w(act.size(), 1.f);
+        w[0] = 0.01f;                        // C# — the LOWEST active degree
+        w[6] = 0.01f;                        // G  — a MIDDLE active degree (act[6] == semitone 7)
+        float sCs = coreShare(act, w, 1);    // C#
+        float sG  = coreShare(act, w, 7);    // G
+        EXPECT(std::fabs(sCs - sG) < 0.005f);   // SAME share regardless of position (the fix)
+        EXPECT(sCs < 0.04f);                     // and small — no free tail (old core: ~0.09)
+    });
+    TEST("G5b same weight, same position-independence at the TOP (B high vs E mid, both 1%)", {
+        std::vector<int> all; for (int s = 0; s < 12; ++s) all.push_back(s);
+        std::vector<float> w(12, 1.f);
+        w[11] = 0.01f;                       // B — the HIGHEST active degree
+        w[4]  = 0.01f;                       // E — a MIDDLE active degree
+        float sB = coreShare(all, w, 11);
+        float sE = coreShare(all, w, 4);
+        EXPECT(std::fabs(sB - sE) < 0.005f); // the top tail no longer inflates B
+        EXPECT(sB < 0.03f);
+    });
+
+
+    // ─────────────────────────────────────────────────────────────────────────
+    SUITE("G6 — ZERO-WEIGHT SELF-PROTECTION (Rodney: several zero neighbours need a fallback)");
+    // The core must not trust the caller to pre-filter muted degrees. A w<=0 degree
+    // passed in must be TRANSPARENT (identical to it being absent — the real neighbours
+    // border each other and split their gap), never a winner, and an all-muted array
+    // must return a finite in-range fallback (no 0/(0+0)=NaN boundary).
+    TEST("G6a a muted degree passed in is transparent (== caller having filtered it)", {
+        // with muted C(0) present vs absent, the sweep must map identically
+        std::vector<int> withMuted = {0, 4, 7};      // C(muted), E, G
+        std::vector<float> wWith   = {0.f, 1.f, 1.f};
+        std::vector<int> without   = {4, 7};          // E, G
+        std::vector<float> wWithout= {1.f, 1.f};
+        std::vector<float> pW, wW, pO, wO;
+        build12(withMuted, wWith, pW, wW);
+        build12(without,  wWithout, pO, wO);
+        int diffs = 0, mutedWins = 0;
+        for (int k = 0; k < 20000; ++k) {
+            float v = 5.f * (float)k / 19999.f;
+            auto a = redDot::weightedQuantize(pW.data(), wW.data(), (int)withMuted.size(), v);
+            auto b = redDot::weightedQuantize(pO.data(), wO.data(), (int)without.size(),  v);
+            if (withMuted[(size_t)a.index] == 0) ++mutedWins;                 // C must never win
+            if (withMuted[(size_t)a.index] != without[(size_t)b.index]) ++diffs;
+            if (std::fabs(a.volts - b.volts) > 1e-4f) ++diffs;
+        }
+        EXPECT(mutedWins == 0);   // the muted degree never sounds
+        EXPECT(diffs == 0);       // and its presence changes nothing — fully transparent
+    });
+    TEST("G6b all-muted array -> chromatic passthrough (no NaN; volts == clamp(vIn))", {
+        std::vector<int> all = {0, 4, 7};
+        std::vector<float> wz = {0.f, 0.f, 0.f};
+        std::vector<float> pz, wzz; build12(all, wz, pz, wzz);
+        bool ok = true;
+        for (int k = 0; k <= 100; ++k) {
+            float v = 5.f * (float)k / 100.f;
+            auto r = redDot::weightedQuantize(pz.data(), wzz.data(), 3, v);
+            if (!std::isfinite(r.volts)) ok = false;
+            if (std::fabs(r.volts - v) > 1e-4f) ok = false;   // passthrough, not snapped
+        }
+        EXPECT(ok);
+        // out-of-range passthrough clamps to the edge
+        auto lo = redDot::weightedQuantize(pz.data(), wzz.data(), 3, -2.f);
+        auto hi = redDot::weightedQuantize(pz.data(), wzz.data(), 3,  9.f);
+        EXPECT(std::fabs(lo.volts - 0.f) < 1e-4f && std::fabs(hi.volts - 5.f) < 1e-4f);
+    });
+
     std::cout<<"\n"<<std::string(62,'=')<<"\n";
     std::cout<<(s_fail==0?"\033[32m":"\033[31m")<<s_pass<<" passed, "<<s_fail
              <<" failed\033[0m\n";

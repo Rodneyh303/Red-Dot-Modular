@@ -1699,6 +1699,10 @@ struct Monsoon : Module {
 
     int& activeSemiCount = engine.activeSemiCount;
     float (&faderCache)[dotModular::TuningTable::MAXN] = engine.faderCache;
+    // Membership signature behind the quantiser-cache rebuild trigger (fallback-ladder ruling): the
+    // no-preference fallback set follows the governing scale membership, which can change with no
+    // fader movement. 0xFFFFFFFF = "never computed" so the first block always rebuilds.
+    uint32_t lastMembershipSig_ = 0xFFFFFFFFu;
 
     // --- Audio-rate parameter caches (updated in controlDivider) ---
     float cachedBpmParam = 120.f;

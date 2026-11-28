@@ -1817,18 +1817,25 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
             const QuantPick q = quantizeResolve(quantiserCV[rvi]);
             const PatternEngine::PitchSplit split = pe.genPitchSplit(input, r_semi, r_oct);
             if (forceGenerated) {
-                // Generated DEGREE rides the external note's OCTAVE (where the external pitch
-                // quantised to — wrap folded in by the partition). Failed pick -> 0.f.
+                // Generated DEGREE rides the external note's OCTAVE. Octave-wrap ruling
+                // (2026-11-28): use the UNFOLDED octave (q.octave - q.wrapDelta) so an input
+                // just below the range bottom contributes the octave it actually pointed at,
+                // not the register the in-range fold parked the quantised note in; the final
+                // clamp catches true out-of-range. Mid-range wrapDelta = 0 → byte-identical.
+                // Failed pick -> 0.f.
                 if (!split.picked) { outSem = 0; return 0.f; }
                 outSem = split.sem;
-                return pe_clamp((float)q.octave + split.degTerm, -5.f, 5.f);
+                return pe_clamp((float)(q.octave - q.wrapDelta) + split.degTerm, -5.f, 5.f);
             }
             // External DEGREE rides the generated OCTAVE — the musical case. The external
             // degree's within-octave position is volts - octave (= degreeVolts(q.semitone)),
-            // and its degree is q.semitone directly (no round-trip).
+            // and its degree is q.semitone directly (no round-trip). Octave-wrap ruling
+            // (2026-11-28): subtract the fold so "just below the bottom C" sounds as the B
+            // just BELOW the generated register (frac - 1 = -0.083) rather than the B near
+            // its top — the memo moves the register by ±1 only when the wrap warranted it.
             const float frac = q.volts - (float)q.octave;
             outSem = q.semitone;
-            return pe_clamp((split.octTerm + split.shiftTerm) + frac, -5.f, 5.f);
+            return pe_clamp((split.octTerm + split.shiftTerm) + (frac - (float)q.wrapDelta), -5.f, 5.f);
         }
         return pe.genPitchLive(outSem, input, r_semi, r_oct);
     }
@@ -1909,7 +1916,10 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
     void updateWindow(float lenParam, float lenCv, bool lenPatched, float offParam, float offCv, bool offPatched);
     int computeNoteLengthIdx(int requestedIdx, int ppqnMask) const;
     int getNoteLenIdx(float baseNoteParam, const PatternInput& input, float r);
-    void rebuildScaleCache(const float weights[], int n);
+    // members[i] = is degree i in the governing scale set (membership is SCALE, weight is LOUDNESS).
+    // nullptr = all n. Used for the no-preference fallback: all weights down ⇒ uniform over members,
+    // so the quantiser snaps to the nearest note of the selected scale (fallback-ladder ruling).
+    void rebuildScaleCache(const float weights[], int n, const bool members[] = nullptr);
     // Degree name of a quantized pitch (Mode C/D flash LEDs). 12-TET default → legacy round(*12)%12;
     // custom tuning → nearest table degree. See the .cpp.
     int degreeOf(float pitchV) const;
@@ -2230,7 +2240,10 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
     // voicePitch rows read the component they need from this instead of re-deriving the
     // degree via round(frac*12) and the octave via floor() — which removes the latent
     // micro-tuning rounding mismatch and keeps the degree/octave/volts mutually consistent.
-    struct QuantPick { int semitone = 0; int octave = 0; float volts = 0.f; };
+    // wrapDelta: the octave fold the in-range remap applied (QuantResult::wrapDelta — 0 mid-range,
+    // +1 below-range winner folded up, -1 above-range folded down). Mixed rows apply its inverse so
+    // the unfolded intent survives the fold; the both-external row uses volts as-is (must be 0..5).
+    struct QuantPick { int semitone = 0; int octave = 0; float volts = 0.f; int wrapDelta = 0; };
     QuantPick quantizeResolve(float vIn);
 
     // (CC_PROMPT_POLY_LEGATO_QUANTISER) THE ONE POLY PITCH-DRAW LAW: the onset

@@ -1537,7 +1537,14 @@ void MonsoonWidget::appendContextMenu(ui::Menu* menu) {
                             if (module->scaleManager) { module->scaleManager->lastSelectedScale = index; module->scaleManager->updateScaleMask(); }
                         }
                         void step() override {
-                            rightText = (module->scaleManager && module->scaleManager->lastSelectedScale == index) ? "✔" : "";
+                            // Chromatic (index 0) is the DEFAULT scale: a fresh/unset Monsoon
+                            // (lastSelectedScale = -1) falls through the mask arbiter to all-12,
+                            // byte-identical to selecting Chromatic, so show it as checked. The
+                            // no-preference quantiser/generative fallback snaps to this scale.
+                            const bool sel = module->scaleManager &&
+                                (module->scaleManager->lastSelectedScale == index ||
+                                 (index == 0 && module->scaleManager->lastSelectedScale < 0));
+                            rightText = sel ? "✔" : "";
                             ui::MenuItem::step();
                         }
                     };
