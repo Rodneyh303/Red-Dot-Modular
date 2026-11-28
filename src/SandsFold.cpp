@@ -77,7 +77,8 @@ struct FoldWidthChangeAction : history::Action {
 
 private:
     SandsFoldWidget* foldWidget() const;
-    void restoreMoves(bool toOld);
+    void applyRestore(bool toOld);
+    void restoreMoves(bool toOld, float netShiftPx);
 };
 
 // ── the widget ─────────────────────────────────────────────────────────────────
@@ -174,13 +175,17 @@ struct SandsFoldWidget : app::ModuleWidget {
     // Returns ONE record per moved neighbour ({id, oldX, newX}, newX READ BACK
     // after setModulePosForce) for the history action's exact-restore undo.
     //
-    // WHAT THE WALK REALLY DOES (CC_FIX_FOLD_UNDO_EXACT corrected this comment):
-    // the RIGHTWARD push on a grow lands cleanly; a LEFTWARD target on a shrink
-    // can overlap our still-wide box (the walk runs before our own resize), and
-    // setModulePosForce's overlap resolution leaves the neighbours short of it —
-    // the SHRINK GAP, observed in Rack and ACCEPTED (Tessera does the same; no
-    // pull-back on an explicit shrink). UNDO therefore never re-runs this walk:
-    // the action restores the recorded positions exactly.
+    // ADJACENCY (CC_FIX_FOLD_RESIZE_ADJACENCY — Rodney's feel-test: grow broke the
+    // expander chain, shrink left a physical gap). setModulePosForce places a
+    // module AT the target and SHOVES whatever it overlaps, so a clean rigid
+    // translation needs every push to land on EMPTY space. The plan
+    // (FoldPanelWidthCore resizeNeighbourOrder / resizeSelfFirst, proved flush in
+    // test_fold_resize_adjacency):
+    //   GROW   push farthest-first (descending x), resize self LAST;
+    //   SHRINK resize self FIRST, pull nearest-first (ascending x).
+    // The old spike pushed in getModuleIds() order and always resized last — on
+    // grow it re-shifted already-shoved modules (gaps mid-chain → broke the chain);
+    // on shrink the pull hit our still-wide box (neighbours stopped short → gap).
     std::vector<redDot::fold::NeighbourRecord> applyWidth(int newHp) {
         std::vector<redDot::fold::NeighbourRecord> moves;
         SandsFold* m = dynamic_cast<SandsFold*>(module);
@@ -189,24 +194,37 @@ struct SandsFoldWidget : app::ModuleWidget {
         const int oldHp = m->panelHp;
         if (newHp == oldHp) return moves;
 
-        // THE NEIGHBOUR PUSH: every module whose left edge sits at or beyond our
-        // right edge, in our row, shifts by the width delta (setModulePosForce —
-        // the SDK-verified RackWidget API). Our own position never moves: the
-        // module grows rightward from its left edge. The walk is the public
-        // surface only: the engine's module IDs -> the rack's widgets.
         const float oldRight = box.pos.x + box.size.x;
         const float shift = redDot::fold::neighbourShiftPx(oldHp, newHp);
+
+        // Collect the right-side, same-row neighbours (the public surface: the
+        // engine's module IDs -> the rack's widgets).
+        std::vector<app::ModuleWidget*> block;
+        std::vector<float> xs;
         for (int64_t id : APP->engine->getModuleIds()) {
+            (void)id;
             app::ModuleWidget* nw = APP->scene->rack->getModule(id);
             if (!nw || nw == this) continue;
-            if (nw->box.pos.x < oldRight - 1.f) continue;                       // left of us — untouched
+            if (nw->box.pos.x < oldRight - 1.f) continue;                        // left of us — untouched
             if (std::fabs(nw->box.pos.y - box.pos.y) >= RACK_GRID_HEIGHT) continue;   // not our row
+            block.push_back(nw);
+            xs.push_back(nw->box.pos.x);
+        }
+        const std::vector<int> order = redDot::fold::resizeNeighbourOrder(xs, shift);
+        const bool selfFirst = redDot::fold::resizeSelfFirst(shift);
+
+        // SHRINK frees the gap at our right edge BEFORE we pull the neighbours in.
+        if (selfFirst) setOwnWidth(newHp);
+        moves.reserve(order.size());
+        for (int k : order) {
+            app::ModuleWidget* nw = block[k];
+            const int64_t id = nw->module ? nw->module->id : -1;
             const float oldX = nw->box.pos.x;
             APP->scene->rack->setModulePosForce(nw, nw->box.pos + math::Vec(shift, 0.f));
             moves.push_back({ id, oldX, nw->box.pos.x });   // newX READ BACK
         }
-
-        setOwnWidth(newHp);
+        // GROW fills the gap the farthest-first pushes opened at our right edge.
+        if (!selfFirst) setOwnWidth(newHp);
         return moves;
     }
 
@@ -284,22 +302,28 @@ struct SandsFoldWidget : app::ModuleWidget {
 };
 
 // ── the undo/redo bodies (SandsFoldWidget is complete now) — STATE restore ─────
-// ORDER (the doc's rule — setModulePosForce pushes on overlap, so a wrong order
-// displaces a second time): undoing a GROW shrinks us FIRST, then restores the
-// neighbours; undoing a SHRINK moves the neighbours FIRST, then grows us. Redo
-// mirrors the interactive order (the neighbours, then our own size).
-void FoldWidthChangeAction::undo() {
+// Undo/redo restore STATE (never re-run the resize), using the SAME adjacency plan
+// as the forward resize (FoldPanelWidthCore): the net self-change direction in THIS
+// restore sets the self-resize timing and the neighbour order, so every restore
+// push lands on empty space — on grow AND shrink, undo AND redo. (The old path
+// always resized self last, so redo of a shrink pulled neighbours into our still-
+// wide box — the same gap the interactive shrink used to leave.)
+void FoldWidthChangeAction::undo() { applyRestore(/*toOld=*/true); }
+void FoldWidthChangeAction::redo() { applyRestore(/*toOld=*/false); }
+
+void FoldWidthChangeAction::applyRestore(bool toOld) {
     SandsFoldWidget* fw = foldWidget();
     if (!fw) return;
-    if (newHp > oldHp) fw->setOwnWidth(oldHp);   // undoing a grow: shrink us first
-    restoreMoves(/*toOld=*/true);
-    if (newHp <= oldHp) fw->setOwnWidth(oldHp);  // undoing a shrink: grow us last
-}
-void FoldWidthChangeAction::redo() {
-    SandsFoldWidget* fw = foldWidget();
-    if (!fw) return;
-    restoreMoves(/*toOld=*/false);
-    fw->setOwnWidth(newHp);
+    const int targetHp = toOld ? oldHp : newHp;
+    // net self width change in THIS direction (same sign as the neighbour move):
+    // undo reverses the recorded shift, redo re-applies it.
+    const float recorded = redDot::fold::neighbourShiftPx(oldHp, newHp);
+    const float netShift = toOld ? -recorded : recorded;
+    const bool selfFirst = redDot::fold::resizeSelfFirst(netShift);
+
+    if (selfFirst) fw->setOwnWidth(targetHp);
+    restoreMoves(toOld, netShift);
+    if (!selfFirst) fw->setOwnWidth(targetHp);
 }
 
 SandsFoldWidget* FoldWidthChangeAction::foldWidget() const {
@@ -308,13 +332,22 @@ SandsFoldWidget* FoldWidthChangeAction::foldWidget() const {
     return nullptr;
 }
 
-// Restore each recorded neighbour — but ONLY if it is still at the position the
-// action left it (the 1 px gate: a module the user has moved since stays where
-// the user put it); a module that no longer exists is skipped, never a crash.
-void FoldWidthChangeAction::restoreMoves(bool toOld) {
-    for (const redDot::fold::NeighbourRecord& r : moves) {
-        app::ModuleWidget* nw = APP->scene->rack->getModule(r.id);
+// Restore each recorded neighbour — ONLY if it is still where the action left it
+// (the 1 px gate: a user-moved module stays put; a deleted one is skipped). Ordered
+// by netShift so each restore lands on empty space (the forward resize's rule).
+void FoldWidthChangeAction::restoreMoves(bool toOld, float netShiftPx) {
+    std::vector<float> xs;
+    std::vector<int> present;
+    for (int i = 0; i < (int)moves.size(); ++i) {
+        app::ModuleWidget* nw = APP->scene->rack->getModule(moves[i].id);
         if (!nw) continue;   // deleted since the action — skip
+        xs.push_back(nw->box.pos.x);
+        present.push_back(i);
+    }
+    for (int k : redDot::fold::resizeNeighbourOrder(xs, netShiftPx)) {
+        const redDot::fold::NeighbourRecord& r = moves[present[k]];
+        app::ModuleWidget* nw = APP->scene->rack->getModule(r.id);
+        if (!nw) continue;
         const float fromX = toOld ? r.newX : r.oldX;
         const float toX   = toOld ? r.oldX : r.newX;
         if (!redDot::fold::shouldRestoreNeighbour(nw->box.pos.x, fromX)) continue;
