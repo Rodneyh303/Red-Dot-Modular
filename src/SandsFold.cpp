@@ -171,6 +171,21 @@ struct SandsFoldWidget : app::ModuleWidget {
         repositionRightAnchored();
     }
 
+    // Commit our footprint to the rack AND refresh Rack's leftExpander/rightExpander
+    // pointers. setOwnWidth changes box.size.x with a raw write — Rack never sees it,
+    // so the adjacency the engine walks (findMonsoonEitherSide) stays stale until the
+    // next module move. setModulePosForce runs updateExpanders() internally (which is
+    // PRIVATE — not callable directly), and forcing ourself to our OWN position is a
+    // no-op move (widths/positions are exact HP multiples → flush, never an overlap to
+    // shove) that triggers the global refresh. This is why the old spike reconnected
+    // on SHRINK (its last op was a neighbour force) but hung on GROW (its last op was
+    // setOwnWidth): a click re-forced us and refreshed. Now every resize does it.
+    // CANNOT be unit-tested (pure Rack) — Rodney's Rack confirm covers it.
+    void commitFootprint() {
+        if (APP && APP->scene && APP->scene->rack)
+            APP->scene->rack->setModulePosForce(this, box.pos);
+    }
+
     // ── THE RESIZE (the spike's point) ──
     // Returns ONE record per moved neighbour ({id, oldX, newX}, newX READ BACK
     // after setModulePosForce) for the history action's exact-restore undo.
@@ -225,6 +240,7 @@ struct SandsFoldWidget : app::ModuleWidget {
         }
         // GROW fills the gap the farthest-first pushes opened at our right edge.
         if (!selfFirst) setOwnWidth(newHp);
+        commitFootprint();   // refresh Rack's expander pointers (no click needed)
         return moves;
     }
 
@@ -324,6 +340,7 @@ void FoldWidthChangeAction::applyRestore(bool toOld) {
     if (selfFirst) fw->setOwnWidth(targetHp);
     restoreMoves(toOld, netShift);
     if (!selfFirst) fw->setOwnWidth(targetHp);
+    fw->commitFootprint();   // refresh expanders on undo/redo too (grow-direction restores)
 }
 
 SandsFoldWidget* FoldWidthChangeAction::foldWidget() const {
