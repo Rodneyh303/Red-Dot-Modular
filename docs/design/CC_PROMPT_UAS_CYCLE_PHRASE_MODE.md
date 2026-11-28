@@ -130,9 +130,13 @@ CONSEQUENCES:
 7. Delegation: a voice row following Macro inherits Macro's mode; a localEast row has its own.
 8. Persistence round-trip + undo of the mode change; old saves without the field load as Custom with their
    stored L/O/R (Rodney does not care about old patches; but loading must not crash or reseed).
-9. Slew/draw boundary: in Phrase mode the draw cycle == global phrase wrap, so `result.wrapped` is the right
-   boundary; in Custom with L != global length the boundary for slew is the wrap of the effective draw
-   window (see CC_PROMPT_SCRUB32_BIDIR_SLEW_PHRASE.md Part A, amended).
+9. Slew/draw boundary: the RE-DRAW (roll / draw-counter / slew-consume boundary) is driven by GLOBAL
+   TRANSPORT in ALL cases (Rodney 2026-11-24) — `result.wrapped` (the global phrase wrap) is the boundary
+   in BOTH Phrase and Custom, even when Custom's L != global. There is NO effective-draw-window-lap boundary.
+   Verified + pinned by `test_redraw_global_transport` (see CC_PROMPT_SCRUB32_BIDIR_SLEW_PHRASE.md Part A,
+   ruling). CONSEQUENCE FOR THE CYCLE WIRING: Custom's L/O/R change only the voice's READ window (the fold /
+   which cells it reads); they must NOT give the voice its own draw cadence — the draw counter stays on the
+   global transport wrap.
 Mutation-check: make Phrase read L=cap again -> test 1 fails; ignore the offset -> test 4 fails; drop the
 identity rewrite -> the pass-through goldens or test 2 fail.
 

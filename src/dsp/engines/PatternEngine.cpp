@@ -8,10 +8,29 @@ using dotModular::VoiceResolver;   // the mint authority (VoiceSlot cannot be co
 // ── OU-bridge blend coefficients (UNIFIED 2×2 conditioning for ALL r) ─────────
 // File-local: lives here (not in the header) to avoid pulling PhiInvLUT::table()
 // into header-only test builds. One bridge for all r: r>0 (monotone kernel),
-// r=0 (fresh ξ), r<0 (oscillatory kernel). ξ ALWAYS injected.
+// r=0 (fresh ξ), r<0 (oscillatory kernel).
+//
+// PER-CELL BRIDGE INNOVATIONS (feat/bridge-per-cell-xi). The parent branch drew ONE
+// ξ per interval pair, shared by every (step, lane, voice) cell of the recompute:
+// marginals stayed exactly N(0,1), but at FRACTIONAL positions all cells shared a
+// single bridge innovation — cross-cell co-movement of weight sqrtV² that integer
+// positions do not have. This branch keys ξ per CELL:
+//     ξ(cell) = PhiInv(bridgePhilox.atUniform(pairIndex·kXiStride + fi))
+// fi is the z-cache FIELD INDEX — already the stable cell identity the full and
+// ForVoice recomputes must agree on (the z-cache depends on it), so both paths
+// stay consistent by construction. The Philox is the ground truth (revisiting a
+// position replays the same ξ — the jog stays a pure function of seed+position);
+// the ZWindowCache memoises the PhiInv'd draws beside z0/z1 so the HOT path
+// (z-hit, frac moving under slew/jog CV) stays a float load, not a draw.
+// Integer positions have sqrtV == 0: no draw at all, bit-identical to parent.
 namespace {
 struct OUBridgeCoeffs {
-    double a = 0, b = 0, sqrtV = 0, xi = 0;
+    double a = 0, b = 0, sqrtV = 0;
+    const redDot::PhiloxRng* bridge_ = nullptr;
+    uint64_t pairBase_ = 0;
+    // Key stride between pairs: > kStepStorage(32) × MAX_FIELDS/step(64) = 2048 cells.
+    // Injective while |pairIndex| < 2^52 — the draw counter never gets near that.
+    static constexpr uint64_t kXiStride = 4096;
     void compute(float r, float frac, const redDot::PhiloxRng& bridge, int64_t pairIndex) {
         const double dfrac = (double)frac;
         if (r == 0.f) {
@@ -30,10 +49,15 @@ struct OUBridgeCoeffs {
             double v = 1.0 - (rhoA * a + rhoB * b);
             sqrtV = std::sqrt(v < 0.0 ? 0.0 : v);
         }
-        xi = redDot::copula::PhiInv((double)bridge.atUniform((uint64_t)pairIndex));
+        bridge_   = &bridge;
+        pairBase_ = (uint64_t)pairIndex * kXiStride;
     }
-    double blend(double z0, double z1) const {
-        return a * z0 + b * z1 + sqrtV * xi;
+    bool needXi() const { return sqrtV != 0.0; }     // frac==0 ⇒ sqrtV==0 ⇒ no draw
+    double drawXi(int fi) const {
+        return redDot::copula::PhiInv((double)bridge_->atUniform(pairBase_ + (uint64_t)fi));
+    }
+    double blend(double z0, double z1, double xiCell) const {
+        return a * z0 + b * z1 + sqrtV * xiCell;
     }
 };
 } // anon namespace
@@ -144,8 +168,9 @@ void PatternEngine::reset() {
 
     // (Step 4c: removed A/B init -- no stored A/B arrays under the scrub model.)
 
-    rhythmSlewLatched=melodySlewLatched=qmixSlewLatched=0.f;   // bipolar: 0 = independent
-    rhythmSlewApplied=melodySlewApplied=qmixSlewApplied=-1.f;   // force first recompute
+    rhythmWin_.seed(0.f); melodyWin_.seed(0.f); qmixWin_.seed(0.f);
+    rhythmWin_.seedDepth(redDot::scrub::COPULA_K); melodyWin_.seedDepth(redDot::scrub::COPULA_K); qmixWin_.seedDepth(redDot::scrub::COPULA_K);   // Part B: full MA depth by default   // bipolar: 0 = independent (seed pending+committed)
+    rhythmSlewApplied=melodySlewApplied=qmixSlewApplied=-2.f;   // force first recompute (-2 sentinel: -1 is a legal knob value)
     rhythmFirstDraw=melodyFirstDraw=qmixFirstDraw=true;
     sandsActive=false;
     // Mirror defaults into slewedDraw too (final == slewed at reset) — RING-bounded
@@ -461,7 +486,8 @@ void PatternEngine::redrawRhythm(const PatternInput& in) {
     // the old promote-A<-B + step()=a+slew*(unit()-a) population; slew is now the FIR smoothing
     // width in patternRhythmAt, not a roll-time B-shaping step.)
     (void)first;   // first-draw no longer special-cased: infinite-line, patternAt(N) is self-contained
-    rhythmSlewApplied = -1.f;       // force recompute of slewedDraw
+    rhythmWin_.consume();           // THE ROLL: consume the pending slew into the phrase (Part A)
+    rhythmSlewApplied = -2.f;       // force recompute of slewedDraw (-2 sentinel: -1 is a legal knob value)
     recomputeEffectiveRhythm();
     // Cache source from the SLEWED draw (canonical draw; final may be rewritten
     // by Sands later this cycle). UI pattern previews the no-Sands final.
@@ -484,50 +510,66 @@ void PatternEngine::recomputeEffectiveRhythm() {
     // once) — blending the uniform outputs would be a linear blend of uniforms (the distortion
     // Phase 2 eliminates). At r==0 (slew knob=0) the old linear blend of raw draws is kept, so
     // bit-identity at scrub=0 is preserved.
-    const float s = rack::math::clamp(rhythmMixLatched, 0.f, 1.f) * 6.f;
-    const int   f    = (int)s;
-    const float frac = s - (float)f;
+    // Part B: the latched value IS the signed draw offset (offset-direct). ONE split path
+    // for all six sites (scrubSplit: clamp to the active budget, then FLOOR-split via
+    // ScrubOffsetCore — truncation would corrupt the bridge at negative offsets).
+    const int   kAct = rhythmWin_.phraseDepth();   // Part B: DRAW-FIXED MA depth (budget-couples the scrub range)
+    const auto  sp   = scrubSplit(rhythmMixLatched, kAct);
+    const int   f    = sp.f;
+    const float frac = sp.frac;
     const int64_t N  = rhythmDrawCtr;
     pruneDrawCache_(rhythmDrawCache_, N);   // bound the draw cache to the live window (before any cache ref)
-    const float slew = rack::math::clamp(rhythmSlewLatched, -1.f, 1.f);
+    const float slew = rack::math::clamp(rhythmWin_.phraseSlew(), -1.f, 1.f);  // DRAW-FIXED (Part A)
     const float r    = slewKnobToR(slew);
     constexpr std::size_t K = redDot::MovingAverageCopula::K;
     if (r != 0.f) {
         // Weight-cache: r is phrase-fixed, so weights(r) is the same for every sumZ call in
         // this recompute (16 steps x lanes x voices x 2 windows).  Compute once, reuse.
-        if (!rhythmWeightCache_.matches(r)) rhythmWeightCache_.update(r);
+        if (!rhythmWeightCache_.matches(r, kAct)) rhythmWeightCache_.update(r, kAct);
         const double* wc = rhythmWeightCache_.w;
         // z0/z1 cache: within a phrase (r fixed) + same integer position f, the two window
         // sumZ results depend ONLY on position -> cache and reuse on frac-only changes (scrub
         // within a position-pair).  Invalidate on roll (ctr), position-cross (f), or r change.
-        const bool cacheHit = rhythmZCache_.hit(N, f, r);
+        ZWindowCache& rhythmZCache_ = selectZSlot(rhythmZSlots_, rhythmZMru_, N, f, r, kAct);   // 2-slot: dither stays hit
+    const bool cacheHit = rhythmZCache_.hit(N, f, r, kAct);
         // B2: OU-bridge coefficients — computed once per (r, frac, pair). Three branches:
         // r>0 (OU with ξ), r=0 (fresh ξ), r<0 (variance-normalized, no ξ).
         OUBridgeCoeffs ouBC;
         ouBC.compute(r, frac, bridgeRhythmPhilox, N - f - 1);
+        const bool needXi = ouBC.needXi();                  // frac==0: no bridge draw at all
+        const bool xiHit  = cacheHit && rhythmZCache_.xiValid;  // per-cell ξ memoised beside z0/z1
         const CachedRhythmDraw* w0[K];
         const CachedRhythmDraw* w1[K];
         if (!cacheHit) {
-            for (std::size_t j = 0; j < K; ++j) {
+            // Part B: fetch only kAct taps — beyond them the weights are ZERO, so the
+            // z values are never read; not fetching keeps the cache inside the budget
+            // law (K + scrub + margin <= half-span) at deep offsets with small K.
+            for (std::size_t j = 0; j < (std::size_t)kAct; ++j) {
                 w0[j] = &cachedRhythmDraw(N - f     - (int64_t)j);
                 w1[j] = &cachedRhythmDraw(N - f - 1 - (int64_t)j);
             }
         }
         double zw[K];
+        for (std::size_t j = (std::size_t)kAct; j < K; ++j) zw[j] = 0.0;   // zero tail: bit-exact no-op in the full-K dot product
         auto blend = [&](int i, auto field, int fi) -> float {
             double z0, z1;
             if (cacheHit) {
                 z0 = rhythmZCache_.z0[fi];
                 z1 = rhythmZCache_.z1[fi];
             } else {
-                for (std::size_t j = 0; j < K; ++j) zw[j] = field(w0[j], i);
+                for (std::size_t j = 0; j < (std::size_t)kAct; ++j) zw[j] = field(w0[j], i);
                 z0 = redDot::MovingAverageCopula::sumZ(zw, wc);
-                for (std::size_t j = 0; j < K; ++j) zw[j] = field(w1[j], i);
+                for (std::size_t j = 0; j < (std::size_t)kAct; ++j) zw[j] = field(w1[j], i);
                 z1 = redDot::MovingAverageCopula::sumZ(zw, wc);
                 rhythmZCache_.z0[fi] = z0;
                 rhythmZCache_.z1[fi] = z1;
             }
-            return (float)redDot::copula::PhiFast(ouBC.blend(z0, z1));
+            double xiC = 0.0;
+            if (needXi) {
+                if (xiHit) xiC = rhythmZCache_.xi[fi];
+                else { xiC = ouBC.drawXi(fi); rhythmZCache_.xi[fi] = xiC; }
+            }
+            return (float)redDot::copula::PhiFast(ouBC.blend(z0, z1, xiC));
         };
         int fi = 0;
         for (int i = 0; i < kPatternLengthCap; ++i) {   // the ring (copula compute)
@@ -543,8 +585,11 @@ void PatternEngine::recomputeEffectiveRhythm() {
             }
         }
         if (!cacheHit) {
-            rhythmZCache_.cachedCtr = N; rhythmZCache_.cachedF = f;
+            rhythmZCache_.cachedCtr = N; rhythmZCache_.cachedF = f; rhythmZCache_.cachedK = kAct;
             rhythmZCache_.cachedR = r;  rhythmZCache_.valid = true;
+            rhythmZCache_.xiValid = needXi;   // ξ filled only when drawn (frac!=0)
+        } else if (needXi && !xiHit) {
+            rhythmZCache_.xiValid = true;     // lazy ξ fill on a z-hit completed the full pass
         }
     } else {
         // r==0: old linear blend of raw draws (bit-identity at frac=0).
@@ -596,48 +641,64 @@ void PatternEngine::recomputeEffectiveRhythm() {
         rebuildWarpMirrorAll();
     }
     publishSlewedRhythm();   // publish coherent snapshot for the UI thread
-    rhythmMixApplied = rhythmMixLatched; rhythmSlewApplied = slew; rhythmCtrApplied = N;
+    rhythmMixApplied = rhythmMixLatched; rhythmSlewApplied = slew; rhythmCtrApplied = N; rhythmDepthApplied = kAct;
 }
 
 void PatternEngine::recomputeEffectiveMelody() {
 
     // Phase 2: normal-space scrub blend (mirror of recomputeEffectiveRhythm).
-    const float s = rack::math::clamp(melodyMixLatched, 0.f, 1.f) * 6.f;
-    const int   f    = (int)s;
-    const float frac = s - (float)f;
+    // Part B: the latched value IS the signed draw offset (offset-direct). ONE split path
+    // for all six sites (scrubSplit: clamp to the active budget, then FLOOR-split via
+    // ScrubOffsetCore — truncation would corrupt the bridge at negative offsets).
+    const int   kAct = melodyWin_.phraseDepth();   // Part B: DRAW-FIXED MA depth (budget-couples the scrub range)
+    const auto  sp   = scrubSplit(melodyMixLatched, kAct);
+    const int   f    = sp.f;
+    const float frac = sp.frac;
     const int64_t N  = melodyDrawCtr;
     pruneDrawCache_(melodyDrawCache_, N);   // bound the draw cache to the live window (before any cache ref)
-    const float slew = rack::math::clamp(melodySlewLatched, -1.f, 1.f);
+    const float slew = rack::math::clamp(melodyWin_.phraseSlew(), -1.f, 1.f);  // DRAW-FIXED (Part A)
     const float r    = slewKnobToR(slew);
     constexpr std::size_t K = redDot::MovingAverageCopula::K;
     if (r != 0.f) {
-        if (!melodyWeightCache_.matches(r)) melodyWeightCache_.update(r);
+        if (!melodyWeightCache_.matches(r, kAct)) melodyWeightCache_.update(r, kAct);
         const double* wc = melodyWeightCache_.w;
-        const bool cacheHit = melodyZCache_.hit(N, f, r);
+        ZWindowCache& melodyZCache_ = selectZSlot(melodyZSlots_, melodyZMru_, N, f, r, kAct);   // 2-slot: dither stays hit
+    const bool cacheHit = melodyZCache_.hit(N, f, r, kAct);
         OUBridgeCoeffs ouBC; ouBC.compute(r, frac, bridgeMelodyPhilox, N - f - 1);
+        const bool needXi = ouBC.needXi();                  // frac==0: no bridge draw at all
+        const bool xiHit  = cacheHit && melodyZCache_.xiValid;  // per-cell ξ memoised beside z0/z1
         const CachedMelodyDraw* w0[K];
         const CachedMelodyDraw* w1[K];
         if (!cacheHit) {
-            for (std::size_t j = 0; j < K; ++j) {
+            // Part B: fetch only kAct taps — beyond them the weights are ZERO, so the
+            // z values are never read; not fetching keeps the cache inside the budget
+            // law (K + scrub + margin <= half-span) at deep offsets with small K.
+            for (std::size_t j = 0; j < (std::size_t)kAct; ++j) {
                 w0[j] = &cachedMelodyDraw(N - f     - (int64_t)j);
                 w1[j] = &cachedMelodyDraw(N - f - 1 - (int64_t)j);
             }
         }
         double zw[K];
+        for (std::size_t j = (std::size_t)kAct; j < K; ++j) zw[j] = 0.0;   // zero tail: bit-exact no-op in the full-K dot product
         auto blend = [&](int i, auto field, int fi) -> float {
             double z0, z1;
             if (cacheHit) {
                 z0 = melodyZCache_.z0[fi];
                 z1 = melodyZCache_.z1[fi];
             } else {
-                for (std::size_t j = 0; j < K; ++j) zw[j] = field(w0[j], i);
+                for (std::size_t j = 0; j < (std::size_t)kAct; ++j) zw[j] = field(w0[j], i);
                 z0 = redDot::MovingAverageCopula::sumZ(zw, wc);
-                for (std::size_t j = 0; j < K; ++j) zw[j] = field(w1[j], i);
+                for (std::size_t j = 0; j < (std::size_t)kAct; ++j) zw[j] = field(w1[j], i);
                 z1 = redDot::MovingAverageCopula::sumZ(zw, wc);
                 melodyZCache_.z0[fi] = z0;
                 melodyZCache_.z1[fi] = z1;
             }
-            return (float)redDot::copula::PhiFast(ouBC.blend(z0, z1));
+            double xiC = 0.0;
+            if (needXi) {
+                if (xiHit) xiC = melodyZCache_.xi[fi];
+                else { xiC = ouBC.drawXi(fi); melodyZCache_.xi[fi] = xiC; }
+            }
+            return (float)redDot::copula::PhiFast(ouBC.blend(z0, z1, xiC));
         };
         int fi = 0;
         for (int i = 0; i < kPatternLengthCap; ++i) {   // the ring (copula compute)
@@ -649,8 +710,11 @@ void PatternEngine::recomputeEffectiveMelody() {
             }
         }
         if (!cacheHit) {
-            melodyZCache_.cachedCtr = N; melodyZCache_.cachedF = f;
+            melodyZCache_.cachedCtr = N; melodyZCache_.cachedF = f; melodyZCache_.cachedK = kAct;
             melodyZCache_.cachedR = r;  melodyZCache_.valid = true;
+            melodyZCache_.xiValid = needXi;   // ξ filled only when drawn (frac!=0)
+        } else if (needXi && !xiHit) {
+            melodyZCache_.xiValid = true;     // lazy ξ fill on a z-hit completed the full pass
         }
     } else {
         MelodyDraw d0, d1;
@@ -683,48 +747,64 @@ void PatternEngine::recomputeEffectiveMelody() {
         rebuildWarpMirrorAll();
     }
     publishSlewedMelody();
-    melodyMixApplied = melodyMixLatched; melodySlewApplied = slew; melodyCtrApplied = N;
+    melodyMixApplied = melodyMixLatched; melodySlewApplied = slew; melodyCtrApplied = N; melodyDepthApplied = kAct;
 }
 
 void PatternEngine::recomputeEffectiveQmix() {
 
     // Phase 2: normal-space scrub blend (mirror, q-mix stream).
-    const float s = rack::math::clamp(qmixMixLatched, 0.f, 1.f) * 6.f;
-    const int   f    = (int)s;
-    const float frac = s - (float)f;
+    // Part B: the latched value IS the signed draw offset (offset-direct). ONE split path
+    // for all six sites (scrubSplit: clamp to the active budget, then FLOOR-split via
+    // ScrubOffsetCore — truncation would corrupt the bridge at negative offsets).
+    const int   kAct = qmixWin_.phraseDepth();   // Part B: DRAW-FIXED MA depth (budget-couples the scrub range)
+    const auto  sp   = scrubSplit(qmixMixLatched, kAct);
+    const int   f    = sp.f;
+    const float frac = sp.frac;
     const int64_t N  = qmixDrawCtr;
     pruneDrawCache_(qmixDrawCache_, N);   // bound the draw cache to the live window (before any cache ref)
-    const float slew = rack::math::clamp(qmixSlewLatched, -1.f, 1.f);
+    const float slew = rack::math::clamp(qmixWin_.phraseSlew(), -1.f, 1.f);  // DRAW-FIXED (Part A)
     const float r    = slewKnobToR(slew);
     constexpr std::size_t K = redDot::MovingAverageCopula::K;
     if (r != 0.f) {
-        if (!qmixWeightCache_.matches(r)) qmixWeightCache_.update(r);
+        if (!qmixWeightCache_.matches(r, kAct)) qmixWeightCache_.update(r, kAct);
         const double* wc = qmixWeightCache_.w;
-        const bool cacheHit = qmixZCache_.hit(N, f, r);
+        ZWindowCache& qmixZCache_ = selectZSlot(qmixZSlots_, qmixZMru_, N, f, r, kAct);   // 2-slot: dither stays hit
+    const bool cacheHit = qmixZCache_.hit(N, f, r, kAct);
         OUBridgeCoeffs ouBC; ouBC.compute(r, frac, bridgeQmixPhilox, N - f - 1);
+        const bool needXi = ouBC.needXi();                  // frac==0: no bridge draw at all
+        const bool xiHit  = cacheHit && qmixZCache_.xiValid;  // per-cell ξ memoised beside z0/z1
         const CachedQmixDraw* w0[K];
         const CachedQmixDraw* w1[K];
         if (!cacheHit) {
-            for (std::size_t j = 0; j < K; ++j) {
+            // Part B: fetch only kAct taps — beyond them the weights are ZERO, so the
+            // z values are never read; not fetching keeps the cache inside the budget
+            // law (K + scrub + margin <= half-span) at deep offsets with small K.
+            for (std::size_t j = 0; j < (std::size_t)kAct; ++j) {
                 w0[j] = &cachedQmixDraw(N - f     - (int64_t)j);
                 w1[j] = &cachedQmixDraw(N - f - 1 - (int64_t)j);
             }
         }
         double zw[K];
+        for (std::size_t j = (std::size_t)kAct; j < K; ++j) zw[j] = 0.0;   // zero tail: bit-exact no-op in the full-K dot product
         auto blend = [&](int i, auto field, int fi) -> float {
             double z0, z1;
             if (cacheHit) {
                 z0 = qmixZCache_.z0[fi];
                 z1 = qmixZCache_.z1[fi];
             } else {
-                for (std::size_t j = 0; j < K; ++j) zw[j] = field(w0[j], i);
+                for (std::size_t j = 0; j < (std::size_t)kAct; ++j) zw[j] = field(w0[j], i);
                 z0 = redDot::MovingAverageCopula::sumZ(zw, wc);
-                for (std::size_t j = 0; j < K; ++j) zw[j] = field(w1[j], i);
+                for (std::size_t j = 0; j < (std::size_t)kAct; ++j) zw[j] = field(w1[j], i);
                 z1 = redDot::MovingAverageCopula::sumZ(zw, wc);
                 qmixZCache_.z0[fi] = z0;
                 qmixZCache_.z1[fi] = z1;
             }
-            return (float)redDot::copula::PhiFast(ouBC.blend(z0, z1));
+            double xiC = 0.0;
+            if (needXi) {
+                if (xiHit) xiC = qmixZCache_.xi[fi];
+                else { xiC = ouBC.drawXi(fi); qmixZCache_.xi[fi] = xiC; }
+            }
+            return (float)redDot::copula::PhiFast(ouBC.blend(z0, z1, xiC));
         };
         int fi = 0;
         for (int i = 0; i < kPatternLengthCap; ++i) {   // the ring (copula compute)
@@ -734,8 +814,11 @@ void PatternEngine::recomputeEffectiveQmix() {
             }
         }
         if (!cacheHit) {
-            qmixZCache_.cachedCtr = N; qmixZCache_.cachedF = f;
+            qmixZCache_.cachedCtr = N; qmixZCache_.cachedF = f; qmixZCache_.cachedK = kAct;
             qmixZCache_.cachedR = r;  qmixZCache_.valid = true;
+            qmixZCache_.xiValid = needXi;   // ξ filled only when drawn (frac!=0)
+        } else if (needXi && !xiHit) {
+            qmixZCache_.xiValid = true;     // lazy ξ fill on a z-hit completed the full pass
         }
     } else {
         QmixDraw d0, d1;
@@ -762,27 +845,39 @@ void PatternEngine::recomputeEffectiveQmix() {
         rebuildWarpMirrorAll();
     }
     publishSlewedQmix();
-    qmixMixApplied = qmixMixLatched; qmixSlewApplied = slew; qmixCtrApplied = N;
+    qmixMixApplied = qmixMixLatched; qmixSlewApplied = slew; qmixCtrApplied = N; qmixDepthApplied = kAct;
 }
 
 // ── Voice-scoped recompute: blend only the given voice's 16 steps from cached z0/z1 ──
 // Called by refreshVisualCache for the DISPLAYED voice only (not all 15 poly voices).
 // ~16x less work than the full recomputeEffective*. Cache hit required (populated at roll).
 void PatternEngine::recomputeEffectiveRhythmForVoice(VoiceSlot voice) {
-    const float s = rack::math::clamp(rhythmMixLatched, 0.f, 1.f) * 6.f;
-    const int   f = (int)s;
-    const float frac = s - (float)f;
+    // Part B: the latched value IS the signed draw offset (offset-direct). ONE split path
+    // for all six sites (scrubSplit: clamp to the active budget, then FLOOR-split via
+    // ScrubOffsetCore — truncation would corrupt the bridge at negative offsets).
+    const int   kAct = rhythmWin_.phraseDepth();   // Part B: DRAW-FIXED MA depth (budget-couples the scrub range)
+    const auto  sp   = scrubSplit(rhythmMixLatched, kAct);
+    const int   f    = sp.f;
+    const float frac = sp.frac;
     const int64_t N  = rhythmDrawCtr;
     pruneDrawCache_(rhythmDrawCache_, N);   // bound the draw cache to the live window (before any cache ref)
-    const float slew = rack::math::clamp(rhythmSlewLatched, -1.f, 1.f);
+    const float slew = rack::math::clamp(rhythmWin_.phraseSlew(), -1.f, 1.f);  // DRAW-FIXED (Part A)
     const float r = slewKnobToR(slew);
-    if (r == 0.f) return;
-    if (!rhythmZCache_.hit(N, f, r)) { recomputeEffectiveRhythm(); return; }
+    if (r == 0.f) { recomputeEffectiveRhythm(); return; }   // slew=0: the scrub (mix) still moves the draw — the full path does the r==0 linear blend + sets mixApplied (the for-voice early-return left the scrub dead at slew=0)
+    ZWindowCache& rhythmZCache_ = selectZSlot(rhythmZSlots_, rhythmZMru_, N, f, r, kAct);   // 2-slot: dither stays hit
+    if (!rhythmZCache_.hit(N, f, r, kAct)) { recomputeEffectiveRhythm(); return; }
 
     const int stride = 4 + 4 * numPolyVoicesHint;
     OUBridgeCoeffs ouBC; ouBC.compute(r, frac, bridgeRhythmPhilox, N - f - 1);
+    const bool needXi = ouBC.needXi();
+    const bool xiHit  = rhythmZCache_.xiValid;   // never SET here: a voice-scoped pass fills only its own cells
     auto bl = [&](int fi) -> float {
-        return (float)redDot::copula::PhiFast(ouBC.blend(rhythmZCache_.z0[fi], rhythmZCache_.z1[fi]));
+        double xiC = 0.0;
+        if (needXi) {
+            if (xiHit) xiC = rhythmZCache_.xi[fi];
+            else { xiC = ouBC.drawXi(fi); rhythmZCache_.xi[fi] = xiC; }   // pure-function refill: identical values, partial coverage
+        }
+        return (float)redDot::copula::PhiFast(ouBC.blend(rhythmZCache_.z0[fi], rhythmZCache_.z1[fi], xiC));
     };
     if (voice == VoiceResolver::mono()) {
         for (int i = 0; i < kPatternLengthCap; ++i) {   // the ring (copula compute)
@@ -824,19 +919,31 @@ void PatternEngine::recomputeEffectiveRhythmForVoice(VoiceSlot voice) {
     rhythmMixApplied = rhythmMixLatched;
 }
 void PatternEngine::recomputeEffectiveMelodyForVoice(VoiceSlot voice) {
-    const float s = rack::math::clamp(melodyMixLatched, 0.f, 1.f) * 6.f;
-    const int   f = (int)s;
-    const float frac = s - (float)f;
+    // Part B: the latched value IS the signed draw offset (offset-direct). ONE split path
+    // for all six sites (scrubSplit: clamp to the active budget, then FLOOR-split via
+    // ScrubOffsetCore — truncation would corrupt the bridge at negative offsets).
+    const int   kAct = melodyWin_.phraseDepth();   // Part B: DRAW-FIXED MA depth (budget-couples the scrub range)
+    const auto  sp   = scrubSplit(melodyMixLatched, kAct);
+    const int   f    = sp.f;
+    const float frac = sp.frac;
     const int64_t N  = melodyDrawCtr;
     pruneDrawCache_(melodyDrawCache_, N);   // bound the draw cache to the live window (before any cache ref)
-    const float slew = rack::math::clamp(melodySlewLatched, -1.f, 1.f);
+    const float slew = rack::math::clamp(melodyWin_.phraseSlew(), -1.f, 1.f);  // DRAW-FIXED (Part A)
     const float r = slewKnobToR(slew);
-    if (r == 0.f) return;
-    if (!melodyZCache_.hit(N, f, r)) { recomputeEffectiveMelody(); return; }
+    if (r == 0.f) { recomputeEffectiveMelody(); return; }   // slew=0: scrub still moves the draw (see rhythm)
+    ZWindowCache& melodyZCache_ = selectZSlot(melodyZSlots_, melodyZMru_, N, f, r, kAct);   // 2-slot: dither stays hit
+    if (!melodyZCache_.hit(N, f, r, kAct)) { recomputeEffectiveMelody(); return; }
     const int stride = 2 + 2 * numPolyVoicesHint;
     OUBridgeCoeffs ouBC; ouBC.compute(r, frac, bridgeMelodyPhilox, N - f - 1);
+    const bool needXi = ouBC.needXi();
+    const bool xiHit  = melodyZCache_.xiValid;   // never SET here: a voice-scoped pass fills only its own cells
     auto bl = [&](int fi) -> float {
-        return (float)redDot::copula::PhiFast(ouBC.blend(melodyZCache_.z0[fi], melodyZCache_.z1[fi]));
+        double xiC = 0.0;
+        if (needXi) {
+            if (xiHit) xiC = melodyZCache_.xi[fi];
+            else { xiC = ouBC.drawXi(fi); melodyZCache_.xi[fi] = xiC; }   // pure-function refill: identical values, partial coverage
+        }
+        return (float)redDot::copula::PhiFast(ouBC.blend(melodyZCache_.z0[fi], melodyZCache_.z1[fi], xiC));
     };
     if (voice == VoiceResolver::mono()) {
         for (int i = 0; i < kPatternLengthCap; ++i) {   // the ring (copula compute)
@@ -869,19 +976,31 @@ void PatternEngine::recomputeEffectiveMelodyForVoice(VoiceSlot voice) {
     melodyMixApplied = melodyMixLatched;
 }
 void PatternEngine::recomputeEffectiveQmixForVoice(VoiceSlot voice) {
-    const float s = rack::math::clamp(qmixMixLatched, 0.f, 1.f) * 6.f;
-    const int   f = (int)s;
-    const float frac = s - (float)f;
+    // Part B: the latched value IS the signed draw offset (offset-direct). ONE split path
+    // for all six sites (scrubSplit: clamp to the active budget, then FLOOR-split via
+    // ScrubOffsetCore — truncation would corrupt the bridge at negative offsets).
+    const int   kAct = qmixWin_.phraseDepth();   // Part B: DRAW-FIXED MA depth (budget-couples the scrub range)
+    const auto  sp   = scrubSplit(qmixMixLatched, kAct);
+    const int   f    = sp.f;
+    const float frac = sp.frac;
     const int64_t N  = qmixDrawCtr;
     pruneDrawCache_(qmixDrawCache_, N);   // bound the draw cache to the live window (before any cache ref)
-    const float slew = rack::math::clamp(qmixSlewLatched, -1.f, 1.f);
+    const float slew = rack::math::clamp(qmixWin_.phraseSlew(), -1.f, 1.f);  // DRAW-FIXED (Part A)
     const float r = slewKnobToR(slew);
-    if (r == 0.f) return;
-    if (!qmixZCache_.hit(N, f, r)) { recomputeEffectiveQmix(); return; }
+    if (r == 0.f) { recomputeEffectiveQmix(); return; }   // slew=0: scrub still moves the draw (see rhythm)
+    ZWindowCache& qmixZCache_ = selectZSlot(qmixZSlots_, qmixZMru_, N, f, r, kAct);   // 2-slot: dither stays hit
+    if (!qmixZCache_.hit(N, f, r, kAct)) { recomputeEffectiveQmix(); return; }
     const int stride = 1 + numPolyVoicesHint;
     OUBridgeCoeffs ouBC; ouBC.compute(r, frac, bridgeQmixPhilox, N - f - 1);
+    const bool needXi = ouBC.needXi();
+    const bool xiHit  = qmixZCache_.xiValid;   // never SET here: a voice-scoped pass fills only its own cells
     auto bl = [&](int fi) -> float {
-        return (float)redDot::copula::PhiFast(ouBC.blend(qmixZCache_.z0[fi], qmixZCache_.z1[fi]));
+        double xiC = 0.0;
+        if (needXi) {
+            if (xiHit) xiC = qmixZCache_.xi[fi];
+            else { xiC = ouBC.drawXi(fi); qmixZCache_.xi[fi] = xiC; }   // pure-function refill: identical values, partial coverage
+        }
+        return (float)redDot::copula::PhiFast(ouBC.blend(qmixZCache_.z0[fi], qmixZCache_.z1[fi], xiC));
     };
     if (voice == VoiceResolver::mono()) {
         for (int i = 0; i < kPatternLengthCap; ++i) slewedQmix[0][i] = bl(i * stride);   // the ring (copula compute)
@@ -914,7 +1033,8 @@ void PatternEngine::redrawMelody(const PatternInput& in) {
     // Dice roll = advance the counter (done above); effective pattern re-derived by
     // recomputeEffectiveMelody (scrub/B2). No stored A/B walk. (Step 4a.)
     (void)first;
-    melodySlewApplied = -1.f;
+    melodyWin_.consume();           // THE ROLL: consume the pending slew into the phrase (Part A)
+    melodySlewApplied = -2.f;   // force recompute (-2 sentinel: -1 is a legal knob value)
     recomputeEffectiveMelody();
     for (int i = 0; i < kPatternLengthCap; ++i) {   // the ring (the pitch-compute term; the source copy is same-index — beyond-ring cells stay zero)
         melodySource[0][i]=slewedMelody[0][i]; octaveSource[0][i]=slewedOctave[0][i];
@@ -950,7 +1070,8 @@ void PatternEngine::redrawQmix(const PatternInput& in) {
     beginQmixDraw();
 
     (void)first;
-    qmixSlewApplied = -1.f;
+    qmixWin_.consume();             // THE ROLL: consume the pending slew into the phrase (Part A)
+    qmixSlewApplied = -2.f;   // force recompute (-2 sentinel: -1 is a legal knob value)
     recomputeEffectiveQmix();
     for (int i = 0; i < kStepStorage; ++i) {
         qmixSource[0][i]=slewedQmix[0][i];
@@ -974,9 +1095,17 @@ void PatternEngine::redrawQmix(const PatternInput& in) {
 // MIX holds (see latchMix). Freezing slew per-stream would need its OWN lock control —
 // out of scope; today slew is unlocked = always latches.
 void PatternEngine::latchSlew(float rhythmSlew, float melodySlew, float qmixSlew) {
-    rhythmSlewLatched = rhythmSlew;
-    melodySlewLatched = melodySlew;
-    qmixSlewLatched   = qmixSlew;
+    rhythmWin_.stageSlew(rhythmSlew);   // PENDING only — consumed at the draw boundary (Part A)
+    melodyWin_.stageSlew(melodySlew);
+    qmixWin_.stageSlew(qmixSlew);
+}
+
+// Part B: MA depth K — the OTHER copula-window parameter; same lifecycle as slew
+// (stage every control cycle, the ONE consume() commits both at the boundary).
+void PatternEngine::latchDepth(int rhythmK, int melodyK, int qmixK) {
+    rhythmWin_.stageDepth(rhythmK);
+    melodyWin_.stageDepth(melodyK);
+    qmixWin_.stageDepth(qmixK);
 }
 
 // MIX latch — the A<->B scrub position ONLY (slew lives in latchSlew).
@@ -1004,19 +1133,19 @@ void PatternEngine::refreshVisualCache(const PatternInput& in) {
     {
         if (rhythmDrawCtr != rhythmCtrApplied) {
             recomputeEffectiveRhythm();           // roll: full recompute (all voices)
-        } else if (rhythmMixLatched != rhythmMixApplied) {
+        } else if (mixMoved(rhythmMixLatched, rhythmMixApplied)) {
             recomputeEffectiveRhythmForVoice(displayedVoice_);  // mix: displayed voice only
         }
         if (melodyDrawCtr != melodyCtrApplied) {
             recomputeEffectiveMelody();
             melodyChanged = true;
-        } else if (melodyMixLatched != melodyMixApplied) {
+        } else if (mixMoved(melodyMixLatched, melodyMixApplied)) {
             recomputeEffectiveMelodyForVoice(displayedVoice_);
             melodyChanged = true;
         }
         if (qmixDrawCtr != qmixCtrApplied)
             recomputeEffectiveQmix();
-        else if (qmixMixLatched != qmixMixApplied)
+        else if (mixMoved(qmixMixLatched, qmixMixApplied))
             recomputeEffectiveQmixForVoice(displayedVoice_);
     }
     // (rhythmChanged + its rhythmPattern display writer RETIRED — ITEM 1: the LEDs read
@@ -1122,12 +1251,15 @@ void PatternEngine::applyPendingSeedsAndRedraw(const PatternInput& in) {
     // handled the blanket case; a dice-live stream consumes its queued slew exactly like it may
     // roll). Out-of-range latches re-fire idempotently each boundary (clamped compare) — cheap
     // and safe; NaN latches fail the range test inside slewKnobToR and land on the r==0 path.
-    // The SlewApplied != -1 guard keeps the INITIAL computation (the force-first-recompute
+    // The SlewApplied != -2 guard (sentinel; -1 is a legal knob value) keeps the INITIAL
+    // computation (the force-first-recompute
     // sentinel) owned by the existing paths (redraw / refreshVisualCache ctr-mix triggers) —
     // this branch consumes only genuine mid-life slew changes, so first-boundary semantics are
     // byte-identical to pre-fix (test_lock_behaviour's seed-on-unlock bit-identity pins this).
-    else if (drawAllowedR && rhythmSlewApplied != -1.f
-             && rack::math::clamp(rhythmSlewLatched, -1.f, 1.f) != rhythmSlewApplied) {
+    else if (drawAllowedR && rhythmSlewApplied != -2.f
+             && (rack::math::clamp(rhythmWin_.pendingSlew(), -1.f, 1.f) != rhythmSlewApplied
+                 || (rhythmDepthApplied != -1 && rhythmWin_.pendingDepth() != rhythmDepthApplied))) {   // Part B: depth is a window param — same consumer
+        rhythmWin_.consume();   // THE BOUNDARY: a genuine mid-life slew change is consumed here (Part A)
         recomputeEffectiveRhythm();
         // (the rhythmPattern preview writer that lived here is RETIRED — ITEM 1; the
         // recompute above is the substance, the LEDs read the live row now)
@@ -1147,8 +1279,10 @@ void PatternEngine::applyPendingSeedsAndRedraw(const PatternInput& in) {
     // Only consume the melody roll flags if melody was allowed to draw (see rhythm note above).
     if (drawAllowedM) { melodyRollPending = false; melodyReseedRollPending = false; }
     if (shouldRedrawM) redrawMelody(in);
-    else if (drawAllowedM && melodySlewApplied != -1.f
-             && rack::math::clamp(melodySlewLatched, -1.f, 1.f) != melodySlewApplied) {
+    else if (drawAllowedM && melodySlewApplied != -2.f
+             && (rack::math::clamp(melodyWin_.pendingSlew(), -1.f, 1.f) != melodySlewApplied
+                 || (melodyDepthApplied != -1 && melodyWin_.pendingDepth() != melodyDepthApplied))) {   // Part B: depth is a window param — same consumer
+        melodyWin_.consume();   // THE BOUNDARY: a genuine mid-life slew change is consumed here (Part A)
         recomputeEffectiveMelody();   // slew-boundary consumption (see rhythm block above)
         for (int i = 0; i < kPatternLengthCap; ++i) {   // the ring (pitch compute) — preview follows (refreshVisualCache's melodyChanged writer)
             float mVal = warpRow(displayedVoice_, LaneId{PL_MELODY})[i];
@@ -1173,10 +1307,13 @@ void PatternEngine::applyPendingSeedsAndRedraw(const PatternInput& in) {
     }
     if (drawAllowedQ) { qmixRollPending = false; qmixReseedRollPending = false; }
     if (shouldRedrawQ) redrawQmix(in);
-    else if (drawAllowedQ && qmixSlewApplied != -1.f
-             && rack::math::clamp(qmixSlewLatched, -1.f, 1.f) != qmixSlewApplied)
+    else if (drawAllowedQ && qmixSlewApplied != -2.f
+             && (rack::math::clamp(qmixWin_.pendingSlew(), -1.f, 1.f) != qmixSlewApplied
+                 || (qmixDepthApplied != -1 && qmixWin_.pendingDepth() != qmixDepthApplied))) {   // Part B: depth is a window param — same consumer
+        qmixWin_.consume();   // THE BOUNDARY: a genuine mid-life slew change is consumed here (Part A)
         recomputeEffectiveQmix();     // slew-boundary consumption (see rhythm block above; no
                                       // Monsoon-side preview — q-mix bars read pubSlewed* funnels)
+    }
     if (drawAllowedQ) qmixPendingLast = false;   // one-shot: consumed only if this stream drew (held otherwise)
 
     // ── Dice-undo capture (item 4): record the AFTER (seedFloat, counter) now that the roll's

@@ -29,10 +29,12 @@
 #include "../NoteValues.hpp"   // NUM_NOTE_VALUES + NOTE_VALUES (varyNoteIndex's index domain — DOTTED BUILD)
 #include <unordered_map>
 #include <utility>
+#include "../ScrubOffsetCore.hpp"   // Part B: the ONE scrub split path (offset-direct, floor-safe)
 #include "../PhiloxRng.hpp"
 #include "../LaneMapping.hpp"   // dotModular::STRAND_* for finalRandomByStrand
 #include "../VoiceLaneTypes.hpp"   // VoiceSlot/LaneId — strong per-voice/lane indices (typed overloads below)
 #include "../MovingAverageCopula.hpp"   // Phase 1: slew as normal-space moving-average copula (replaces L1 linear-uniform window)
+#include "../LatchCell.hpp"   // CC_PROMPT_SCRUB32 Part A: the draw-boundary latch lifecycle (CA1 skeleton)
 #include "../../tuning/TuningTable.hpp"   // dotModular::TuningTable — shared per-degree tuning (Sikit)
 #include "RingView.hpp"   // CA5 lane addressing: the wrapping-window storage read (the ring-mask row reads' ONE law)
 
@@ -615,9 +617,7 @@ struct PatternEngine {
         rhythmMixApplied = -999.f;   // invalidate so recompute* actually runs
         melodyMixApplied = -999.f;
         qmixMixApplied   = -999.f;
-        rhythmZCache_.invalidate();  // z0/z1 cache: force full recompute (not blend-only)
-        melodyZCache_.invalidate();
-        qmixZCache_.invalidate();
+        invalidateZSlots();          // z0/z1/xi slots: force full recompute (not blend-only)
         recomputeEffectiveRhythm();
         recomputeEffectiveMelody();
         recomputeEffectiveQmix();
@@ -654,9 +654,36 @@ struct PatternEngine {
     // public arrays unchanged.
     // Rhythm group: rhythm / variation / legato / accent (+ poly rhythm)
     // Melody group: melody / octave (+ poly melody / poly octave)
-    // Latched slew (sampled at step 0), and the last value we recomputed at.
-    float rhythmSlewLatched = 0.f, melodySlewLatched = 0.f, qmixSlewLatched = 0.f;
-    float rhythmSlewApplied =-1.f, melodySlewApplied =-1.f, qmixSlewApplied =-1.f;  // force first recompute
+    // CC_PROMPT_SCRUB32 Part A — the per-stream COPULA-WINDOW parameters are DRAW-FIXED. Slew r
+    // (and, in Part B, depth K) both define the copula window a draw's value is computed from, so
+    // both must be CONSTANT across a draw. The latch (CA1 skeleton) owns pending (the live knob,
+    // staged every control cycle by latchSlew) + committed (the draw-fixed value the recompute
+    // reads); consumed pending->committed ONLY at a draw boundary (the roll / the boundary slew-
+    // consumer). This is what stops a mid-phrase mix/scrub move from pulling the live slew into the
+    // buffers (the leak). ONE consume() path per stream — depth K joins it in Part B, not a second
+    // mechanism.
+    struct CopulaWindowLatch {
+        // Birth state: full MA depth (COPULA_K) — a raw-constructed engine (tests, hosts
+        // that never call the init path) must compute with the real window, not K=0.
+        CopulaWindowLatch() { depth.seed(redDot::scrub::COPULA_K); }
+        redDot::LatchCell<float> slew{};
+        redDot::LatchCell<int>   depth{};   // Part B: MA depth K (runtime, per stream); ONE consume commits both
+        void  stageSlew(float v)  { slew.stage(v); }            // latch the live knob (every cycle)
+        float pendingSlew() const { return slew.peek(); }       // the live latched value (persistence, guard)
+        float phraseSlew() const  { return slew.read(); }       // the DRAW-FIXED value (recompute reads this)
+        void  stageDepth(int k)   { depth.stage(k); }           // latch the live depth knob (every cycle)
+        int   pendingDepth() const{ return depth.peek(); }
+        int   phraseDepth() const { return depth.read(); }       // the DRAW-FIXED K (recompute + scrub budget)
+        void  consume()           { slew.commit(true, true, false); depth.commit(true, true, false); }  // boundary: BOTH window params
+        void  seedDepth(int k)    { depth.seed(k); }
+        void  seed(float v)       { slew.seed(v); }             // pending AND committed together (reset/load)
+    };
+    CopulaWindowLatch rhythmWin_, melodyWin_, qmixWin_;   // was rhythm/melody/qmixSlewLatched
+    // SENTINEL -2.f (NOT -1): the knob is bipolar, so -1 is a LEGAL committed slew — using it
+    // as the never-computed sentinel let a commit AT -1 permanently disable the boundary
+    // consumer (slew AND depth stopped committing until a roll). -2 is outside clamp range.
+    float rhythmSlewApplied =-2.f, melodySlewApplied =-2.f, qmixSlewApplied =-2.f;  // force first recompute (record of the slew the buffers were last built at)
+    int   rhythmDepthApplied = -1, melodyDepthApplied = -1, qmixDepthApplied = -1;   // Part B: the K the buffers were last built at (-1 forces)
     // Weight-cache: L2-normalised geometric weights w[K] per stream, keyed on r (= slewKnobToR(slew)).
     // Slew r is phrase-fixed, so weights() was recomputed every sumZ call with the same r — pure
     // waste.  Cache w[] per stream; invalidate when r changes (phrase boundary).  Bit-identical.
@@ -670,20 +697,70 @@ struct PatternEngine {
     // roll (drawCtr advances).  Key: (drawCtr, f, r).  forceRecomputeSlewed() sets invalid.
     // Max fields: rhythm=4*16=64, melody=2*16=32, qmix=1*16=16.  Use 64 for all. The 16 in the
         // buffer shape is the STEP dim -> kStepStorage (Stage 2a).
-    struct ZWindowCache {
+    // alignas(16) + the static_assert below: three ZWindowCache members sit IN FRONT of the
+    // big float engine buffers, so this struct's size decides every later member's offset
+    // mod 16. The per-cell xi member originally grew it by 16392 (== 8 mod 16), shifting the
+    // slewed*/pubSlewed* buffers by 8 mod 16 and surfacing a gcc-13 -O2 aligned-SSE fault in
+    // the publish copies (the real fix is the alignas(16) now spelled on those buffers —
+    // see the note there). Keeping sizeof a multiple of 16 here keeps member congruences
+    // stable under future cache-field churn instead of a layout lottery.
+    struct alignas(16) ZWindowCache {
         static constexpr int MAX_FIELDS = 4 * kVoiceSlots;  // 64 (rhythm max: 4 strands × 16 voices)
         std::array<double, kStepStorage * MAX_FIELDS> z0{};
         std::array<double, kStepStorage * MAX_FIELDS> z1{};
+        // feat/bridge-per-cell-xi: per-cell bridge innovations, memoised beside z0/z1.
+        // Pure function of (seed, pairIndex, fi) — the cache only saves the Philox+PhiInv
+        // on the hot path (z-hit, frac moving). pairIndex = cachedCtr - cachedF - 1 is
+        // pinned by the same key, so xi shares the z key; xiValid is false until a FULL
+        // pass has drawn every cell (a frac==0 fill draws none; ForVoice fills partially).
+        std::array<double, kStepStorage * MAX_FIELDS> xi{};
+        bool xiValid = false;
         int64_t cachedCtr = -999;
         int cachedF = -999;
         double cachedR = 999.0;
+        int cachedK = -1;        // Part B: a depth change at the same r is a DIFFERENT window
         bool valid = false;
-        bool hit(int64_t ctr, int f_, double r_) const {
-            return valid && cachedCtr == ctr && cachedF == f_ && cachedR == r_;
+        bool hit(int64_t ctr, int f_, double r_, int k_) const {
+            return valid && cachedCtr == ctr && cachedF == f_ && cachedR == r_ && cachedK == k_;
         }
-        void invalidate() { valid = false; }
+        void invalidate() { valid = false; xiValid = false; }
     };
-    ZWindowCache rhythmZCache_, melodyZCache_, qmixZCache_;
+    static_assert(sizeof(ZWindowCache) % 16 == 0, "keep later engine buffers 16-congruent (see alignas note above)");
+    // TWO-SLOT z/xi cache (perf): a scrub position DITHERING across one integer boundary
+    // (slow CV near an integer, back-and-forth jog) alternates between two adjacent window
+    // pairs; with one slot every alternation was a full z-MISS recompute (~0.4 ms at 16
+    // voices) at up to the frame rate. Two slots keep both pairs resident, so dithering is
+    // pure hits; a monotone sweep still misses once per NEW pair (new draws are new data).
+    // Slot count is VALUE-INVISIBLE by construction — the cache memoises a pure function of
+    // (seed, window key, cell) — so the bit-exactness suite is the acceptance test.
+    std::array<ZWindowCache, 2> rhythmZSlots_{}, melodyZSlots_{}, qmixZSlots_{};
+    int rhythmZMru_ = 0, melodyZMru_ = 0, qmixZMru_ = 0;
+    static ZWindowCache& selectZSlot(std::array<ZWindowCache, 2>& slots, int& mru,
+                                     int64_t ctr, int f, float r, int k) {
+        if (slots[mru].hit(ctr, f, r, k)) return slots[mru];
+        mru = 1 - mru;          // other slot either hits (dither) or is the LRU we evict into
+        return slots[mru];
+    }
+    // MRU views — tests and any single-cache reader
+    ZWindowCache&       rhythmZCacheMru()       { return rhythmZSlots_[rhythmZMru_]; }
+    const ZWindowCache& rhythmZCacheMru() const { return rhythmZSlots_[rhythmZMru_]; }
+    ZWindowCache&       melodyZCacheMru()       { return melodyZSlots_[melodyZMru_]; }
+    const ZWindowCache& melodyZCacheMru() const { return melodyZSlots_[melodyZMru_]; }
+    ZWindowCache&       qmixZCacheMru()         { return qmixZSlots_[qmixZMru_]; }
+    const ZWindowCache& qmixZCacheMru() const   { return qmixZSlots_[qmixZMru_]; }
+    void invalidateZSlots() {
+        for (int i = 0; i < 2; ++i) {
+            rhythmZSlots_[i].invalidate(); melodyZSlots_[i].invalidate(); qmixZSlots_[i].invalidate();
+        }
+    }
+    // MIX DEADBAND (perf): sub-audible CV ripple on a parked scrub offset re-blended the
+    // displayed voice every frame tick for nothing. Recompute only when the latched offset
+    // moved >= 1/512 draw from what the buffers were built at — 0.2% of one draw interval,
+    // far below audibility. A slow ramp still recomputes every ~eps of travel (Applied
+    // snaps to Latched at each recompute), so the morph quantizes, never stalls.
+    static bool mixMoved(float latched, float applied) {
+        return std::fabs(latched - applied) >= (1.f / 512.f);
+    }
     // Displayed voice for the Sands visual (set by the UI via setDisplayedVoice, read by
     // refreshVisualCache). Slot 0 = mono/V1, 1..15 = poly V2..V16. Used to scope the
     // display recompute to 1 voice. TYPED (CC_PROMPT_STRONG_TYPES): callers MINT via
@@ -732,9 +809,17 @@ struct PatternEngine {
     //   Sands     → Sands reads slewedDraw, applies spread at control rate, and
     //               writes the result into the public/final arrays itself.
     // COLLAPSE [15]+mono → [kVoiceSlots][16]: V1 at [0], V2..V16 at [1..15]. One array per strand.
-    std::array<std::array<float, kStepStorage>, kVoiceSlots> slewedRhythm  = {}, slewedVariation  = {}, slewedLegato  = {}, slewedAccent  = {};
-    std::array<std::array<float, kStepStorage>, kVoiceSlots> slewedMelody  = {}, slewedOctave  = {};
-    std::array<std::array<float, kStepStorage>, kVoiceSlots> slewedQmix  = {};   // q-mix twin of slewedMelody
+    // alignas(16) on the slewed*/pubSlewed* families: gcc 13 at -O2 vectorises the
+    // publishSlewed* copy loops with ALIGNED SSE (movaps) while the members sat at
+    // offsets == 8 (mod 16) — a GP fault the -O0 suite cannot see (observed when the
+    // per-cell-xi ZWindowCache growth changed the inlining context; clang and the
+    // -O3 -march=nehalem plugin flags happened not to trigger it). Spelling the
+    // alignment makes the vectoriser's assumption TRUE instead of lucky. Each row is
+    // 128 B and each array 2 KiB (both ==0 mod 16), so aligning the family costs at
+    // most one 8-byte pad. Caught by test_bridge_per_cell built at -O2 -msse4.1.
+    alignas(16) std::array<std::array<float, kStepStorage>, kVoiceSlots> slewedRhythm  = {}, slewedVariation  = {}, slewedLegato  = {}, slewedAccent  = {};
+    alignas(16) std::array<std::array<float, kStepStorage>, kVoiceSlots> slewedMelody  = {}, slewedOctave  = {};
+    alignas(16) std::array<std::array<float, kStepStorage>, kVoiceSlots> slewedQmix  = {};   // q-mix twin of slewedMelody
     // DELETED: slewedPoly* (15][16] arrays — V2..V16 now at slewed*[1..15].
     // Old: slewedRhythm[16] (mono/V1) + slewedPolyRhythm[15][16] (V2..V16, poly[0]=V2).
     // New: slewedRhythm[kVoiceSlots][16] — V1 at [0], V2 at [1], ..., V16 at [15].
@@ -746,9 +831,9 @@ struct PatternEngine {
     // floats), so the race window drops from ~116µs to ~1µs — practically eliminating flicker.
     // COLLAPSE: deleted 7 mono pubSlewed*[16] arrays — they were redundant twins of
     // pubSlewedPoly*[0]. Readers now use pubSlewedPoly*[0] for V1 directly.
-    std::array<std::array<float, kStepStorage>, kVoiceSlots> pubSlewedPolyRhythm  = {}, pubSlewedPolyMelody  = {}, pubSlewedPolyOctave  = {};
-    std::array<std::array<float, kStepStorage>, kVoiceSlots> pubSlewedPolyAccent  = {}, pubSlewedPolyQmix  = {};
-    std::array<std::array<float, kStepStorage>, kVoiceSlots> pubSlewedPolyVariation  = {}, pubSlewedPolyLegato  = {};
+    alignas(16) std::array<std::array<float, kStepStorage>, kVoiceSlots> pubSlewedPolyRhythm  = {}, pubSlewedPolyMelody  = {}, pubSlewedPolyOctave  = {};
+    alignas(16) std::array<std::array<float, kStepStorage>, kVoiceSlots> pubSlewedPolyAccent  = {}, pubSlewedPolyQmix  = {};
+    alignas(16) std::array<std::array<float, kStepStorage>, kVoiceSlots> pubSlewedPolyVariation  = {}, pubSlewedPolyLegato  = {};
     void publishSlewedRhythm() {
         for (int i=0;i<kStepStorage;++i){ for(int v=0;v<kVoiceSlots;++v){ pubSlewedPolyRhythm[v][i]=slewedRhythm[v][i];
             pubSlewedPolyAccent[v][i]=slewedAccent[v][i];
@@ -905,6 +990,19 @@ struct PatternEngine {
     // OU-bridge interpolation noise: SEPARATE keys per stream (S+4/5/6), position-index keyed.
     redDot::PhiloxRng bridgeRhythmPhilox, bridgeMelodyPhilox, bridgeQmixPhilox;
     int64_t   rhythmDrawCtr = 0, melodyDrawCtr = 0, qmixDrawCtr = 0;   // signed: can go negative on reverse
+
+    // ── Part B: scrub position (CC_PROMPT_SCRUB32) ────────────────────────────────
+    // The latched mix value IS the signed draw offset (offset-direct: param value =
+    // draws, integers exact in float). ONE split path for all six recompute sites so
+    // they cannot drift: clamp to the ACTIVE budget (maxScrubForK of the stream's
+    // moving-average depth; K is fixed at COPULA_K until the depth control lands),
+    // then FLOOR-split (ScrubOffsetCore — truncation corrupts negative offsets).
+    // f > 0 reads BEHIND the counter (window N-f), f < 0 reads AHEAD (Philox is
+    // addressable at any signed index, so future draws are computable).
+    static redDot::scrub::Split scrubSplit(float latchedOffset,
+                                           int kActive = redDot::scrub::COPULA_K) {
+        return redDot::scrub::splitScrubAt(latchedOffset, redDot::scrub::maxScrubForK(kActive));
+    }
     uint64_t  rhythmCursor  = 0, melodyCursor  = 0, qmixCursor  = 0;   // intra-draw position, reset per redraw
 
     // Reset the intra-draw cursor at the start of a redraw (called by redrawRhythm/
@@ -1378,6 +1476,9 @@ public:
     // rate), not here.
     void latchMix(float rhythmMix, float melodyMix, float qmixMix,
                   bool applyRhythm = true, bool applyMelody = true, bool applyQmix = true);
+    // Part B: stage the per-stream MA depth K (PENDING only; consumed at the draw boundary
+    // with slew — both are copula-window parameters, ONE boundary-consumption path).
+    void latchDepth(int rhythmK, int melodyK, int qmixK);
     void recomputeEffectiveRhythm();   // public[] = A + rhythmMixLatched*(B-A)
     void recomputeEffectiveMelody();   // public[] = A + melodyMixLatched*(B-A)
     void recomputeEffectiveQmix();     // q-mix twin of recomputeEffectiveMelody

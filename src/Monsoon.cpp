@@ -1223,7 +1223,13 @@ void Monsoon::process(const ProcessArgs& args) {
             // At 24 the two coincide bit-for-bit (p16 = 6 there); at 48 the step rate
             // doubles at the same BPM (a step is a 1/32 of the 48 grid).
             if (modeSelect == 0) return clock.stepEdge;            // clock origin (was A/C)
-            return phase.stepEdge;                                 // phase origin (was E/F)
+            // phase origin (was E/F): OR in the STARTUP DOWNBEAT — the held-at-start
+            // analogue for phase drive (see PhaseEngine::startupDownbeat). Without it a
+            // ramp seated at phase 0 misses beat 1 (the seed sample is contractually
+            // edge-less); with it the seated step gates once at the origin and a phase
+            // Monsoon starts step-synced with a clock Monsoon. One-shot: entering flips
+            // engine.started().
+            return phase.stepEdge || phase.startupDownbeat(engine.started());
         }();
         rateManager.advance(redDot::Rate::PPQN,
                             (modeSelect == 2) ? phase.pulseEdge : clock.pulseEdge);   // phase origin vs clock
@@ -1240,6 +1246,13 @@ void Monsoon::process(const ProcessArgs& args) {
         }
 
         if (rateManager.ticked(redDot::Rate::Step)) {
+            // PARKED SEAT-BEHIND (see PhaseEngine::parkedSeatBehind): a phase-drive
+            // execute from the park would enter at col 0 regardless of where the ramp
+            // sits — seat one pulse behind the ramp first, so the execute advances onto
+            // the crossed/seated step. No-op at pulsePos 0 (the sync origin) and in
+            // relative-origin mode (seed pulse is always 0).
+            if (modeSelect == 2 && phase.parkedSeatBehind(engine.started()))
+                engine.snapToPhaseStep((phase.pulsePos / PULSES_PER_STEP) * PULSES_PER_STEP - 1, PULSES_PER_STEP);
             mc.executeMode(modeSelect, input, tc.getGate2High());
 
             // Latch each poly voice's sounding decision (Mode B poly gate-width follow).  In Mode B

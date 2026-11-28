@@ -29,7 +29,7 @@ import math, os, sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-W_MM, H_MM = 228.6, 128.5          # 45HP (was 203.2 / 40HP)
+W_MM, H_MM = 259.08, 128.5         # 51HP (was 228.6 / 45HP; +6HP right strip: Part B depth knobs + scrub readouts — geometry PROVISIONAL, ids frozen)
 # The whole RIGHT-HAND CLUSTER shifts by this so its internal spacing is unchanged; the extra
 # width opens up on the right (6.4mm gap between the new 6th Big-Five ring and the Flyer). Applied
 # to FLYER_C, PHASE_X0, MODE_PARAM_XY, MODE_LIGHT_X and STATUS_DOT. The lower-right rail drops and
@@ -324,6 +324,11 @@ ROW = [
     ("MUTE_PARAM",         185.0,  "util"),
     ("RESET_BUTTON_PARAM", 200.0,  "util"),
     ("RUN_GATE_PARAM",     215.0,  "util"),
+    # Part B (CC_PROMPT_SCRUB32): per-stream MA DEPTH on the +6HP right strip. Positions are
+    # PROVISIONAL (the panel rework will re-home them); the param IDs are frozen either way.
+    ("DEPTH_R_PARAM",      227.0,  "trim"),
+    ("DEPTH_M_PARAM",      239.0,  "trim"),
+    ("DEPTH_Q_PARAM",      251.0,  "trim"),
 ]
 
 # Dice lamps sit INLINE at y=87, between each stream's NEXT and LAST buttons: (light id, x_mm).

@@ -39,7 +39,7 @@ int main(){
         pe.latchSlew(/*rSlew=*/0.f, /*mSlew=*/0.f, /*qSlew=*/0.f);
         pe.latchMix(/*rMix=*/0.f, /*mMix=*/0.f, /*qMix=*/0.f,
                     /*applyRhythm=*/true, /*applyMelody=*/false, /*applyQmix=*/false);
-        pe.recomputeEffectiveRhythm();
+        pe.rhythmWin_.consume(); pe.recomputeEffectiveRhythm();
         // The raw draw at N (what r=0 must reproduce).
         PatternEngine::RhythmDraw raw;
         pe.rawDrawRhythmPatternAt(N, raw);
@@ -55,7 +55,7 @@ int main(){
         const int64_t N = pe.melodyDrawCtr;
         pe.latchSlew(0.f,0.f,0.f);
         pe.latchMix(0.f,0.f,0.f, /*R=*/false, /*M=*/true, /*Q=*/false);
-        pe.recomputeEffectiveMelody();
+        pe.melodyWin_.consume(); pe.recomputeEffectiveMelody();
         PatternEngine::MelodyDraw raw;
         pe.rawDrawMelodyPatternAt(N, raw);
         for (int i=0;i<16;++i) {
@@ -72,7 +72,7 @@ int main(){
         const int64_t N = pe.qmixDrawCtr;
         pe.latchSlew(0.f,0.f,0.f);
         pe.latchMix(0.f,0.f,0.f, /*R=*/false, /*M=*/false, /*Q=*/true);
-        pe.recomputeEffectiveQmix();
+        pe.qmixWin_.consume(); pe.recomputeEffectiveQmix();
         PatternEngine::QmixDraw raw;
         pe.rawDrawQmixPatternAt(N, raw);
         for (int i=0;i<16;++i)
@@ -168,7 +168,7 @@ int main(){
                     if ((p & 63) == 63) pe.rhythmDrawCache_.clear();
                     pe.latchSlew(slewKnob, 0.f, 0.f);
                     pe.latchMix(mixVal, 0.f, 0.f, true, false, false);
-                    pe.recomputeEffectiveRhythm();
+                    pe.rhythmWin_.consume(); pe.recomputeEffectiveRhythm();
                     const double v = pe.slewedRhythm[0][0];
                     sum += v; sumsq += v*v; ++n;
                 }
@@ -192,7 +192,7 @@ int main(){
         const int64_t N = pe.rhythmDrawCtr;
         pe.latchSlew(slew, 0.f, 0.f);
         pe.latchMix(mixVal, 0.f, 0.f, true, false, false);
-        pe.recomputeEffectiveRhythm();
+        pe.rhythmWin_.consume(); pe.recomputeEffectiveRhythm();
         float fwd[16]; for (int i=0;i<16;++i) fwd[i] = pe.slewedRhythm[0][i];
         // Walk backward past N then forward to N again
         for (int k=0;k<3;++k) pe.advanceRhythmDraw(-1);
@@ -200,7 +200,7 @@ int main(){
         EXPECT(pe.rhythmDrawCtr == N);
         pe.latchSlew(slew, 0.f, 0.f);
         pe.latchMix(mixVal, 0.f, 0.f, true, false, false);
-        pe.recomputeEffectiveRhythm();
+        pe.rhythmWin_.consume(); pe.recomputeEffectiveRhythm();
         for (int i=0;i<16;++i)
             EXPECT(std::memcmp(&fwd[i], &pe.slewedRhythm[0][i], sizeof(float)) == 0);
     });
@@ -217,7 +217,7 @@ int main(){
         // mix=0 -> s=0, f=0, frac=0 -> OU-bridge gives X=z0 exactly (a=1, b=0, v=0).
         pe.latchSlew(slew, 0.f, 0.f);
         pe.latchMix(0.f, 0.f, 0.f, true, false, false);
-        pe.recomputeEffectiveRhythm();
+        pe.rhythmWin_.consume(); pe.recomputeEffectiveRhythm();
         // z0 = sumZ(window@N, r). patternRhythmAt(N, slew) = PhiFast(sumZ(window@N, r)) = PhiFast(z0).
         PatternEngine::RhythmDraw raw;
         pe.patternRhythmAt(N, slew, raw);

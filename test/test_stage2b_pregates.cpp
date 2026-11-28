@@ -586,9 +586,9 @@ static const char* walkBeyondRing(const SequencerEngine& eng, char* msg) {
     // The z0/z1 window caches (RING × MAX_FIELDS active cells).
     for (int i = dotModular::kPatternLengthCap * PatternEngine::ZWindowCache::MAX_FIELDS;
              i < dotModular::kStepStorage  * PatternEngine::ZWindowCache::MAX_FIELDS; ++i) {
-        if (pe.rhythmZCache_.z0[i] != 0.0 || pe.rhythmZCache_.z1[i] != 0.0) { std::snprintf(msg, 256, "rhythmZCache z0/z1[%d] nonzero", i); return msg; }
-        if (pe.melodyZCache_.z0[i] != 0.0 || pe.melodyZCache_.z1[i] != 0.0) { std::snprintf(msg, 256, "melodyZCache z0/z1[%d] nonzero", i); return msg; }
-        if (pe.qmixZCache_.z0[i]   != 0.0 || pe.qmixZCache_.z1[i]   != 0.0) { std::snprintf(msg, 256, "qmixZCache z0/z1[%d] nonzero", i); return msg; }
+        if (pe.rhythmZCacheMru().z0[i] != 0.0 || pe.rhythmZCacheMru().z1[i] != 0.0) { std::snprintf(msg, 256, "rhythmZCache z0/z1[%d] nonzero", i); return msg; }
+        if (pe.melodyZCacheMru().z0[i] != 0.0 || pe.melodyZCacheMru().z1[i] != 0.0) { std::snprintf(msg, 256, "melodyZCache z0/z1[%d] nonzero", i); return msg; }
+        if (pe.qmixZCacheMru().z0[i]   != 0.0 || pe.qmixZCacheMru().z1[i]   != 0.0) { std::snprintf(msg, 256, "qmixZCache z0/z1[%d] nonzero", i); return msg; }
     }
     // The widened uint64 mask planes: bits ≥ the RING must stay clear (the DECIDED
     // length-masked law; post-flip this is the 64-headroom bite).
