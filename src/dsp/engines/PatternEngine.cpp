@@ -144,7 +144,7 @@ void PatternEngine::reset() {
 
     // (Step 4c: removed A/B init -- no stored A/B arrays under the scrub model.)
 
-    rhythmSlewLatched=melodySlewLatched=qmixSlewLatched=0.f;   // bipolar: 0 = independent
+    rhythmWin_.seed(0.f); melodyWin_.seed(0.f); qmixWin_.seed(0.f);   // bipolar: 0 = independent (seed pending+committed)
     rhythmSlewApplied=melodySlewApplied=qmixSlewApplied=-1.f;   // force first recompute
     rhythmFirstDraw=melodyFirstDraw=qmixFirstDraw=true;
     sandsActive=false;
@@ -461,6 +461,7 @@ void PatternEngine::redrawRhythm(const PatternInput& in) {
     // the old promote-A<-B + step()=a+slew*(unit()-a) population; slew is now the FIR smoothing
     // width in patternRhythmAt, not a roll-time B-shaping step.)
     (void)first;   // first-draw no longer special-cased: infinite-line, patternAt(N) is self-contained
+    rhythmWin_.consume();           // THE ROLL: consume the pending slew into the phrase (Part A)
     rhythmSlewApplied = -1.f;       // force recompute of slewedDraw
     recomputeEffectiveRhythm();
     // Cache source from the SLEWED draw (canonical draw; final may be rewritten
@@ -489,7 +490,7 @@ void PatternEngine::recomputeEffectiveRhythm() {
     const float frac = s - (float)f;
     const int64_t N  = rhythmDrawCtr;
     pruneDrawCache_(rhythmDrawCache_, N);   // bound the draw cache to the live window (before any cache ref)
-    const float slew = rack::math::clamp(rhythmSlewLatched, -1.f, 1.f);
+    const float slew = rack::math::clamp(rhythmWin_.phraseSlew(), -1.f, 1.f);  // DRAW-FIXED (Part A)
     const float r    = slewKnobToR(slew);
     constexpr std::size_t K = redDot::MovingAverageCopula::K;
     if (r != 0.f) {
@@ -607,7 +608,7 @@ void PatternEngine::recomputeEffectiveMelody() {
     const float frac = s - (float)f;
     const int64_t N  = melodyDrawCtr;
     pruneDrawCache_(melodyDrawCache_, N);   // bound the draw cache to the live window (before any cache ref)
-    const float slew = rack::math::clamp(melodySlewLatched, -1.f, 1.f);
+    const float slew = rack::math::clamp(melodyWin_.phraseSlew(), -1.f, 1.f);  // DRAW-FIXED (Part A)
     const float r    = slewKnobToR(slew);
     constexpr std::size_t K = redDot::MovingAverageCopula::K;
     if (r != 0.f) {
@@ -694,7 +695,7 @@ void PatternEngine::recomputeEffectiveQmix() {
     const float frac = s - (float)f;
     const int64_t N  = qmixDrawCtr;
     pruneDrawCache_(qmixDrawCache_, N);   // bound the draw cache to the live window (before any cache ref)
-    const float slew = rack::math::clamp(qmixSlewLatched, -1.f, 1.f);
+    const float slew = rack::math::clamp(qmixWin_.phraseSlew(), -1.f, 1.f);  // DRAW-FIXED (Part A)
     const float r    = slewKnobToR(slew);
     constexpr std::size_t K = redDot::MovingAverageCopula::K;
     if (r != 0.f) {
@@ -774,9 +775,9 @@ void PatternEngine::recomputeEffectiveRhythmForVoice(VoiceSlot voice) {
     const float frac = s - (float)f;
     const int64_t N  = rhythmDrawCtr;
     pruneDrawCache_(rhythmDrawCache_, N);   // bound the draw cache to the live window (before any cache ref)
-    const float slew = rack::math::clamp(rhythmSlewLatched, -1.f, 1.f);
+    const float slew = rack::math::clamp(rhythmWin_.phraseSlew(), -1.f, 1.f);  // DRAW-FIXED (Part A)
     const float r = slewKnobToR(slew);
-    if (r == 0.f) return;
+    if (r == 0.f) { recomputeEffectiveRhythm(); return; }   // slew=0: the scrub (mix) still moves the draw — the full path does the r==0 linear blend + sets mixApplied (the for-voice early-return left the scrub dead at slew=0)
     if (!rhythmZCache_.hit(N, f, r)) { recomputeEffectiveRhythm(); return; }
 
     const int stride = 4 + 4 * numPolyVoicesHint;
@@ -829,9 +830,9 @@ void PatternEngine::recomputeEffectiveMelodyForVoice(VoiceSlot voice) {
     const float frac = s - (float)f;
     const int64_t N  = melodyDrawCtr;
     pruneDrawCache_(melodyDrawCache_, N);   // bound the draw cache to the live window (before any cache ref)
-    const float slew = rack::math::clamp(melodySlewLatched, -1.f, 1.f);
+    const float slew = rack::math::clamp(melodyWin_.phraseSlew(), -1.f, 1.f);  // DRAW-FIXED (Part A)
     const float r = slewKnobToR(slew);
-    if (r == 0.f) return;
+    if (r == 0.f) { recomputeEffectiveMelody(); return; }   // slew=0: scrub still moves the draw (see rhythm)
     if (!melodyZCache_.hit(N, f, r)) { recomputeEffectiveMelody(); return; }
     const int stride = 2 + 2 * numPolyVoicesHint;
     OUBridgeCoeffs ouBC; ouBC.compute(r, frac, bridgeMelodyPhilox, N - f - 1);
@@ -874,9 +875,9 @@ void PatternEngine::recomputeEffectiveQmixForVoice(VoiceSlot voice) {
     const float frac = s - (float)f;
     const int64_t N  = qmixDrawCtr;
     pruneDrawCache_(qmixDrawCache_, N);   // bound the draw cache to the live window (before any cache ref)
-    const float slew = rack::math::clamp(qmixSlewLatched, -1.f, 1.f);
+    const float slew = rack::math::clamp(qmixWin_.phraseSlew(), -1.f, 1.f);  // DRAW-FIXED (Part A)
     const float r = slewKnobToR(slew);
-    if (r == 0.f) return;
+    if (r == 0.f) { recomputeEffectiveQmix(); return; }   // slew=0: scrub still moves the draw (see rhythm)
     if (!qmixZCache_.hit(N, f, r)) { recomputeEffectiveQmix(); return; }
     const int stride = 1 + numPolyVoicesHint;
     OUBridgeCoeffs ouBC; ouBC.compute(r, frac, bridgeQmixPhilox, N - f - 1);
@@ -914,6 +915,7 @@ void PatternEngine::redrawMelody(const PatternInput& in) {
     // Dice roll = advance the counter (done above); effective pattern re-derived by
     // recomputeEffectiveMelody (scrub/B2). No stored A/B walk. (Step 4a.)
     (void)first;
+    melodyWin_.consume();           // THE ROLL: consume the pending slew into the phrase (Part A)
     melodySlewApplied = -1.f;
     recomputeEffectiveMelody();
     for (int i = 0; i < kPatternLengthCap; ++i) {   // the ring (the pitch-compute term; the source copy is same-index — beyond-ring cells stay zero)
@@ -950,6 +952,7 @@ void PatternEngine::redrawQmix(const PatternInput& in) {
     beginQmixDraw();
 
     (void)first;
+    qmixWin_.consume();             // THE ROLL: consume the pending slew into the phrase (Part A)
     qmixSlewApplied = -1.f;
     recomputeEffectiveQmix();
     for (int i = 0; i < kStepStorage; ++i) {
@@ -974,9 +977,9 @@ void PatternEngine::redrawQmix(const PatternInput& in) {
 // MIX holds (see latchMix). Freezing slew per-stream would need its OWN lock control —
 // out of scope; today slew is unlocked = always latches.
 void PatternEngine::latchSlew(float rhythmSlew, float melodySlew, float qmixSlew) {
-    rhythmSlewLatched = rhythmSlew;
-    melodySlewLatched = melodySlew;
-    qmixSlewLatched   = qmixSlew;
+    rhythmWin_.stageSlew(rhythmSlew);   // PENDING only — consumed at the draw boundary (Part A)
+    melodyWin_.stageSlew(melodySlew);
+    qmixWin_.stageSlew(qmixSlew);
 }
 
 // MIX latch — the A<->B scrub position ONLY (slew lives in latchSlew).
@@ -1127,7 +1130,8 @@ void PatternEngine::applyPendingSeedsAndRedraw(const PatternInput& in) {
     // this branch consumes only genuine mid-life slew changes, so first-boundary semantics are
     // byte-identical to pre-fix (test_lock_behaviour's seed-on-unlock bit-identity pins this).
     else if (drawAllowedR && rhythmSlewApplied != -1.f
-             && rack::math::clamp(rhythmSlewLatched, -1.f, 1.f) != rhythmSlewApplied) {
+             && rack::math::clamp(rhythmWin_.pendingSlew(), -1.f, 1.f) != rhythmSlewApplied) {
+        rhythmWin_.consume();   // THE BOUNDARY: a genuine mid-life slew change is consumed here (Part A)
         recomputeEffectiveRhythm();
         // (the rhythmPattern preview writer that lived here is RETIRED — ITEM 1; the
         // recompute above is the substance, the LEDs read the live row now)
@@ -1148,7 +1152,8 @@ void PatternEngine::applyPendingSeedsAndRedraw(const PatternInput& in) {
     if (drawAllowedM) { melodyRollPending = false; melodyReseedRollPending = false; }
     if (shouldRedrawM) redrawMelody(in);
     else if (drawAllowedM && melodySlewApplied != -1.f
-             && rack::math::clamp(melodySlewLatched, -1.f, 1.f) != melodySlewApplied) {
+             && rack::math::clamp(melodyWin_.pendingSlew(), -1.f, 1.f) != melodySlewApplied) {
+        melodyWin_.consume();   // THE BOUNDARY: a genuine mid-life slew change is consumed here (Part A)
         recomputeEffectiveMelody();   // slew-boundary consumption (see rhythm block above)
         for (int i = 0; i < kPatternLengthCap; ++i) {   // the ring (pitch compute) — preview follows (refreshVisualCache's melodyChanged writer)
             float mVal = warpRow(displayedVoice_, LaneId{PL_MELODY})[i];
@@ -1174,9 +1179,11 @@ void PatternEngine::applyPendingSeedsAndRedraw(const PatternInput& in) {
     if (drawAllowedQ) { qmixRollPending = false; qmixReseedRollPending = false; }
     if (shouldRedrawQ) redrawQmix(in);
     else if (drawAllowedQ && qmixSlewApplied != -1.f
-             && rack::math::clamp(qmixSlewLatched, -1.f, 1.f) != qmixSlewApplied)
+             && rack::math::clamp(qmixWin_.pendingSlew(), -1.f, 1.f) != qmixSlewApplied) {
+        qmixWin_.consume();   // THE BOUNDARY: a genuine mid-life slew change is consumed here (Part A)
         recomputeEffectiveQmix();     // slew-boundary consumption (see rhythm block above; no
                                       // Monsoon-side preview — q-mix bars read pubSlewed* funnels)
+    }
     if (drawAllowedQ) qmixPendingLast = false;   // one-shot: consumed only if this stream drew (held otherwise)
 
     // ── Dice-undo capture (item 4): record the AFTER (seedFloat, counter) now that the roll's

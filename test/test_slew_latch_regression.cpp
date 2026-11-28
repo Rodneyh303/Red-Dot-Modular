@@ -81,9 +81,9 @@ static void rollStream(PatternEngine& pe, Stream s, const PatternInput& in) {
 }
 static float slewLatched(const PatternEngine& pe, Stream s) {
     switch (s) {
-    case S_RHYTHM: return pe.rhythmSlewLatched;
-    case S_MELODY: return pe.melodySlewLatched;
-    default:       return pe.qmixSlewLatched;
+    case S_RHYTHM: return pe.rhythmWin_.pendingSlew();   // the latched (live) value — Part A
+    case S_MELODY: return pe.melodyWin_.pendingSlew();
+    default:       return pe.qmixWin_.pendingSlew();
     }
 }
 // Voice-0 effective (slewed) buffers for one stream — the drawn probabilities the roll
@@ -211,9 +211,9 @@ static void mixLatchSemantics(bool abR, bool abM, bool abQ) {
     EXPECT(pe.rhythmMixLatched == (abR ? 0.70f : 0.25f));
     EXPECT(pe.melodyMixLatched == (abM ? 0.75f : 0.30f));
     EXPECT(pe.qmixMixLatched   == (abQ ? 0.80f : 0.35f));
-    EXPECT(pe.rhythmSlewLatched == 0.9f);
-    EXPECT(pe.melodySlewLatched == 0.9f);
-    EXPECT(pe.qmixSlewLatched   == 0.9f);
+    EXPECT(pe.rhythmWin_.pendingSlew() == 0.9f);
+    EXPECT(pe.melodyWin_.pendingSlew() == 0.9f);
+    EXPECT(pe.qmixWin_.pendingSlew()   == 0.9f);
 }
 
 int main(){
