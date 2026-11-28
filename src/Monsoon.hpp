@@ -1699,6 +1699,10 @@ struct Monsoon : Module {
 
     int& activeSemiCount = engine.activeSemiCount;
     float (&faderCache)[dotModular::TuningTable::MAXN] = engine.faderCache;
+    // Membership signature behind the quantiser-cache rebuild trigger (fallback-ladder ruling): the
+    // no-preference fallback set follows the governing scale membership, which can change with no
+    // fader movement. 0xFFFFFFFF = "never computed" so the first block always rebuilds.
+    uint32_t lastMembershipSig_ = 0xFFFFFFFFu;
 
     // --- Audio-rate parameter caches (updated in controlDivider) ---
     float cachedBpmParam = 120.f;
@@ -1752,6 +1756,12 @@ struct Monsoon : Module {
     // base + Causeway CV × att, clamped. Voice-1/mono q-mix level is QMIX_LEVEL_PARAM (getEffectiveMonoQmix).
     float getBasePolyQmix(int voiceIdx);
     float getEffectivePolyQmix(int voiceIdx);
+    // QUANTISER_WEIGHTED_PARTITION §"unpatched = pure generated": is THIS voice's quantiser
+    // pitch source actually patched (PORT presence, per channel — never the value)? The octave
+    // axis uses this to generate when unpatched, closing the leak where an octave-subpanel
+    // own/global claim (which bypasses the degree's patched-detection) pins a generated degree
+    // to octave 0 on an unplugged input. storageSlot 0 = mono (ch0); i>=1 = poly channel i.
+    bool qmixSourcePatched(int storageSlot);
     // Per-voice VARIATION/LEGATO, mirroring rest/accent. No Causeway VAR/LEG CV inputs yet.
     // VAR is BIPOLAR (CC_FIX_PER_VOICE_ADVANCE_WANDER — the same formula shape as the
     // mono gate-mode write: (2*knob - 1) under ONE clamp [-1,+1]; centre = stutter,

@@ -1,6 +1,9 @@
 #include "SequencerEngine.hpp"
 #include "../SpreadInterp.hpp"   // Stage 2a: refreshPolyRandomCell -> applyPoly
 #include "../VoiceResolver.hpp"  // CC_PROMPT_STRONG_TYPES: VoiceSlot minting (mono/slot) for the typed accessors
+#include "../QuantiserPartitionCore.hpp"   // redDot::weightedQuantize — the weighted-partition quantiser
+#include "../NoPreferenceFallbackCore.hpp" // redDot::buildActiveDegreeSet — no-preference (all-faders-down) fallback
+#include <array>
 #include <cmath>
 #include <algorithm>
 #include <cstdio>
@@ -1707,21 +1710,25 @@ int SequencerEngine::getNoteLenIdx(float baseNoteParam, const PatternInput& inpu
     return pe.varyNoteIndex(baseIdx, input, r);
 }
 
-void SequencerEngine::rebuildScaleCache(const float weights[], int n) {
+void SequencerEngine::rebuildScaleCache(const float weights[], int n, const bool members[]) {
     // The quantize() one-entry memo (lastQuantIn/Out) is keyed on the INPUT VOLTAGE only, so it must die
     // with the active-degree set: a held CV (a chord-pad / Scaler note) kept returning a degree whose
     // weight had just been zeroed — the quantised note (and its green flash) landed on a muted fader.
     lastQuantIn = -100.f;
-    activeSemiCount = 0;
+    // faderCache keeps the RAW (clamped) weights for the module-side dirty check — the no-preference
+    // substitution below never leaks back into it (faders are the STORE; this cache mirrors them).
+    std::array<float, dotModular::TuningTable::MAXN> clamped{};
     for (int s = 0; s < n; ++s) {
-        float w = pe_clamp<float>(weights[s], 0.f, 1.f);
-        faderCache[s] = w;
-        if (w > 0.f) {
-            activeSemiList[activeSemiCount] = s;
-            activeSemiWeight[activeSemiCount] = w;
-            ++activeSemiCount;
-        }
+        clamped[(size_t)s] = pe_clamp<float>(weights[s], 0.f, 1.f);
+        faderCache[s] = clamped[(size_t)s];
     }
+    // Weighted regime when any weight is up (byte-identical to the legacy w>0 filter); otherwise the
+    // no-preference fallback: uniform weight 1 over the MEMBERSHIP set (the selected scale / enabled[]
+    // mask), so quantizeResolve snaps to the nearest note of the selected scale through the same
+    // pairwise partition (uniform ⇒ midpoint boundaries ⇒ exact nearest-note). members == nullptr
+    // means all n degrees; an all-false members[] degrades to all n (FB6) — see NoPreferenceFallbackCore.
+    activeSemiCount = redDot::buildActiveDegreeSet(clamped.data(), members, n,
+                                                   activeSemiList, activeSemiWeight);
 }
 
 float SequencerEngine::getStepLightBrightness(int lightIdx) const {
@@ -3165,63 +3172,48 @@ int SequencerEngine::degreeOf(float pitchV) const {
 // high Vermona logic. The quantiser is now the q-mix axis (engaged per-step in the dispatch), so these
 // are gone.
 
+// The quantiser is now a WEIGHTED PARTITION of the input axis (the Vermona Mode-C
+// "fader = quantization range" semantics; docs/design/QUANTISER_WEIGHTED_PARTITION.md).
+// The old fixed-radius + weight-ignoring nearest fallback let a 1%-fader degree win every
+// CV for which it was merely nearest (~half a full sweep under qmix). The partition gives
+// each active degree a slice proportional to its fader, so a 1% degree sounds ~1%. For
+// UNIFORM weights every boundary is the midpoint => plain nearest-degree snapping, byte-
+// identical to the old quantize for the default 12-TET / equal-weight case (the goldens'
+// regime); only non-uniform weights change.
+SequencerEngine::QuantPick SequencerEngine::quantizeResolve(float vIn) {
+    QuantPick out;
+    // DEFENSIVE-ONLY cold path: rebuildScaleCache's no-preference fallback guarantees at least one
+    // active degree (uniform over the scale/tuning membership when all faders are down — the
+    // fallback-ladder ruling), so this is reachable only on a fresh/reset engine before the first
+    // rebuild. Raw clamp, never musical policy — that lives in the fallback set construction.
+    if (activeSemiCount == 0) {
+        out.volts    = pe_clamp<float>(vIn, 0.f, 5.f);
+        out.octave   = (int)std::floor(out.volts);
+        out.semitone = 0;
+        return out;
+    }
+    // Within-octave voltage of each active degree: the EXACT legacy s/12 at the 12-TET default
+    // (byte-identical), else the tuning's degreeVolts(s) so quantize snaps to the ACTUAL degrees.
+    std::array<float, dotModular::TuningTable::MAXN> pos{};
+    std::array<float, dotModular::TuningTable::MAXN> wt{};
+    for (int ai = 0; ai < activeSemiCount; ++ai) {
+        const int s = activeSemiList[ai];
+        pos[(size_t)ai] = pe.tuning.isDefault12TET ? (s / 12.f) : pe.tuning.degreeVolts(s);
+        wt [(size_t)ai] = activeSemiWeight[ai];
+    }
+    const redDot::QuantResult r = redDot::weightedQuantize(pos.data(), wt.data(), activeSemiCount,
+                                                           vIn, 0.f, 5.f);
+    out.semitone  = activeSemiList[r.index];
+    out.octave    = r.octave;
+    out.volts     = r.volts;   // already within [0,5] by construction
+    out.wrapDelta = r.wrapDelta;
+    return out;
+}
+
 float SequencerEngine::quantize(float vIn) {
     if (std::abs(vIn - lastQuantIn) < 1e-6f) return lastQuantOut;
-    lastQuantIn = vIn;
-
-    // Cold/empty-scale path (no active degrees — a fresh or reset engine before a scale is
-    // set; effectively unreachable live, where a scale is always active). It MUST write
-    // lastQuantOut too, or the top-of-function memo (keyed on lastQuantIn, set just above)
-    // serves the stale reset value (0.0) to a repeated same input instead of the clamp.
-    if (activeSemiCount == 0) { lastQuantOut = pe_clamp(vIn, 0.f, 5.f); return lastQuantOut; }
-    int octave = (int)vIn;
-    float bestScore = -1.f;
-    float bestV = vIn;
-
-    // Within-octave voltage of a cached ACTIVE degree. At the 12-TET default (isDefault12TET) this is
-    // the EXACT legacy s/12 (byte-identical — the whole Mode C/D quantizer is unchanged for N=12,
-    // any Sikit-at-default, and Monsoon standalone). Under a custom tuning (Micro publishing non-
-    // default cents, or a Micro-24) it becomes the table's degreeVolts(s) so quantize snaps to the
-    // ACTUAL tuning degrees, not 12-TET semitone slots.
-    auto degV = [&](int s) -> float {
-        return pe.tuning.isDefault12TET ? (s / 12.f) : pe.tuning.degreeVolts(s);
-    };
-
-    for (int ai = 0; ai < activeSemiCount; ++ai) {
-        int s = activeSemiList[ai];
-        float w = activeSemiWeight[ai];
-        float radius = w * (1.f / 12.f);
-        for (int o = octave - 1; o <= octave + 1; ++o) {
-            float cand = o + degV(s);
-            // The output is clamped to [0,5] V below, so a candidate OUTSIDE that range is unreachable: if it won
-            // (e.g. B of octave -1 for a 0 V input) the clamp turned it into 0 V = degree C even with C muted —
-            // a muted C lit green for every voice on an unpatched (0 V) poly channel.
-            if (cand < 0.f || cand > 5.f) continue;
-            float dist = std::fabs(vIn - cand);
-            if (dist <= radius + 1e-4f) {
-                // Score = weight over (distance + one semitone). The old 1e-4 floor made an EXACT hit score ~w/1e-4,
-                // so a degree at weight 0.005 still beat a full-weight neighbour one semitone away for any CV sitting
-                // on it (every scale-quantised source, every 0 V channel). With the semitone floor the weight decides
-                // between claimants (a faint degree loses to a strong neighbour), distance only breaks near-ties, and
-                // uniform weights still pick the nearest degree exactly as before.
-                float score = w / (dist + 1.f / 12.f);
-                if (score > bestScore) { bestScore = score; bestV = cand; }
-            }
-        }
-    }
-    if (bestScore < 0.f) {
-        float minDist = 1e9f;
-        for (int ai = 0; ai < activeSemiCount; ++ai) {
-            int s = activeSemiList[ai];
-            for (int o = octave - 1; o <= octave + 1; ++o) {
-                float cand = o + degV(s);
-                if (cand < 0.f || cand > 5.f) continue;   // see above: only reachable (clamp-range) candidates
-                float dist = std::fabs(vIn - cand);
-                if (dist < minDist) { minDist = dist; bestV = cand; }
-            }
-        }
-    }
-    lastQuantOut = pe_clamp<float>(bestV, 0.f, 5.f);
+    lastQuantIn  = vIn;
+    lastQuantOut = quantizeResolve(vIn).volts;
     return lastQuantOut;
 }
 // Shared base index calculation with strand-specific phase and windowing

@@ -455,6 +455,26 @@ float Monsoon::getEffectivePolyQmix(int voiceIdx) {
 }
 // Voice-1 / MONO q-mix — apply the Causeway MONO_QMIX_ATT (+ global) to CV channel 0 of the q-mix
 // CV input, added onto the mono base (QMIX_LEVEL_PARAM). Mirrors getEffectiveMonoRest/Accent.
+// Is this voice's quantiser pitch SOURCE patched (port presence, per channel — never the
+// value; 0 V is a valid pitch)? Mirrors the degree's patched-detection exactly so the octave
+// axis generates when unpatched, the SAME way the degree already does. storageSlot 0 = mono
+// (ch0, always within a patched source); i>=1 = poly channel i (ch = voiceIdx+1 = i).
+bool Monsoon::qmixSourcePatched(int storageSlot) {
+    auto* straits = expanderManager.cachedPolyVoiceExpander;
+    const bool straitsOn = straits && straits->inputs[StraitsIds::QUANT_CV_INPUT].isConnected();
+    if (storageSlot <= 0) {
+        // mono: mirror getEffectiveMonoQmix's pitchPatched (Straits ch0, or CV2 only in mode 5)
+        return straitsOn || (cv2Mode == 5 && cachedCv2Connected);
+    }
+    // poly: mirror getEffectivePolyQmix — channel storageSlot < channel count, else CV2 broadcast
+    if (straitsOn) {
+        int n = std::max(1, straits->inputs[StraitsIds::QUANT_CV_INPUT].getChannels());
+        return storageSlot < n;
+    }
+    if (cachedCv2Connected) return true;   // CV2 is mono → broadcasts to every voice
+    return false;                          // nothing patched → generate
+}
+
 float Monsoon::getEffectiveMonoQmix(float base) {
     auto* cway = expanderManager.cachedCausewayPolyExpander;
     if (cway) {
@@ -594,16 +614,28 @@ float Monsoon::semitoneToVolts(int semitone) {
         //     loudness now, enabled is the mask). So the quantizer snaps only to in-scale degrees, and an
         //     in-scale weight-0 degree stays a legitimate snap target.
         //   • otherwise → Monsoon's own 12 ScaleManager-gated faders (byte-identical to legacy).
+        // MEMBERSHIP (fallback-ladder ruling): beside the weights, pass the governing SCALE SET so the
+        // engine's no-preference fallback (all faders down ⇒ uniform over members ⇒ nearest-note snap)
+        // has a target set independent of the weights. Micro path: enabled[] (dmtune/authored scale
+        // within the tuning; all-true default = whole tuning). Host path: the ScaleManager mask (the
+        // context-menu scale; Chromatic/all-12 arbiter fall-through when none selected). Lock does NOT
+        // enter the fallback: the menu scale is the user's declared preference whether or not it is
+        // being enforced on the faders.
         if (engine.pe.tuning.maskAuthored) {
             float masked[dotModular::TuningTable::MAXN];
             const int nD = engine.pe.tuning.N;
             for (int i = 0; i < nD; ++i)
                 masked[i] = engine.pe.tuning.enabled[i] ? engine.pe.tuning.weight[i] : 0.f;
-            engine.rebuildScaleCache(masked, nD);
+            engine.rebuildScaleCache(masked, nD, engine.pe.tuning.enabled);
         } else {
             float weights[12];
-            for (int i = 0; i < 12; ++i) weights[i] = scaleManager->getSemitoneWeight(i, *paramManager);
-            engine.rebuildScaleCache(weights, 12);
+            bool  members[12];
+            const uint16_t mask = scaleManager ? scaleManager->activeScaleMask : 0x0FFF;
+            for (int i = 0; i < 12; ++i) {
+                weights[i] = scaleManager->getSemitoneWeight(i, *paramManager);
+                members[i] = ((mask >> i) & 1u) != 0;
+            }
+            engine.rebuildScaleCache(weights, 12, members);
         }
     }
 
@@ -1763,7 +1795,25 @@ void Monsoon::process(const ProcessArgs& args) {
                     faderCache[i] = w; // Update the cache!
                 }
             }
-            if (faderDirty || activeSemiCount == 0) rebuildSemiCache_();
+            // MEMBERSHIP dirty check (fallback-ladder ruling): the no-preference fallback set depends on
+            // the governing scale membership, which can change with NO fader movement (menu scale change
+            // with lock off, Shophouse override push, a Micro's enabled[] edit while all faders are
+            // down). Fold a membership signature into the rebuild trigger so the fallback set follows.
+            // Signature: host path = the 12-bit activeScaleMask; Micro path = bit 31 + N in bits 24..28
+            // + enabled[] in bits 0..23 (MAXN = 24, so it fits).
+            uint32_t membershipSig;
+            if (engine.pe.tuning.maskAuthored) {
+                membershipSig = 0x80000000u | ((uint32_t)engine.pe.tuning.N << 24);
+                const int nD = engine.pe.tuning.N < 24 ? engine.pe.tuning.N : 24;
+                for (int i = 0; i < nD; ++i)
+                    if (engine.pe.tuning.enabled[i]) membershipSig |= (1u << i);
+            } else {
+                membershipSig = scaleManager ? scaleManager->activeScaleMask : 0x0FFFu;
+            }
+            if (faderDirty || activeSemiCount == 0 || membershipSig != lastMembershipSig_) {
+                lastMembershipSig_ = membershipSig;
+                rebuildSemiCache_();
+            }
         }
 
         engine.pe.refreshVisualCache(modeController->currentPatternInput);

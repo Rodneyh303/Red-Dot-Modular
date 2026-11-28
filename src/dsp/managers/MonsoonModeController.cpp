@@ -22,6 +22,7 @@ static_assert((uint32_t)dotModular::SB_SANDS_Q == (1u << 13), "SB_SANDS_Q bit ou
 #include "../../MonsoonStraitsExpander.hpp"   // Q2: poly quantiser CV-in (StraitsIds::QUANT_CV_INPUT)
 #include "MonsoonExpanderManager.hpp"
 #include "../VoiceResolver.hpp"   // CC_PROMPT_STRONG_TYPES: VoiceSlot minting (mono/slot)
+#include "../NoPreferenceFallbackCore.hpp"   // redDot::substituteUniformWeights — all-faders-down fallback
 
 using namespace rack;
 
@@ -63,7 +64,13 @@ void ModeController::updatePolyVoiceRest_() {
         // the degree decision, today's behaviour). Same BigFive latch class as the main
         // probs (the early-return above gates the whole loop). The qmixOctLive flip is the
         // Stage 1 gate opening: from here the engine's second read consumes THIS value.
-        engine.voices[vs].qmixOctLevel = mainModule->qmixOctaveThreshold(i);
+        // QUANTISER_WEIGHTED_PARTITION §"unpatched = pure generated": force the octave axis to
+        // GENERATE when this voice's quantiser source is unpatched, the SAME per-channel port
+        // check the degree uses — so an octave-subpanel own/global claim (which bypasses the
+        // follow-degree inheritance) can't pin a generated degree to octave 0 on an unplugged
+        // input. Unpatched ⇒ both thresholds 0 ⇒ voicePitch falls through to genPitchLive.
+        engine.voices[vs].qmixOctLevel = mainModule->qmixSourcePatched(i)
+                                             ? mainModule->qmixOctaveThreshold(i) : 0.f;
         engine.voices[vs].qmixOctLive  = true;
         // VAR/LEG per-voice knobs — mirror rest/accent/q-mix. The engine reads these in
         // executePolyVoice to threshold the per-voice VAR/LEG draws (which already exist
@@ -143,6 +150,26 @@ void ModeController::updatePatternInput() {
             for (int i = 12; i < dotModular::TuningTable::MAXN; ++i)
                 currentPatternInput.semiWeights[i] = 0.f;
         }
+        // No-preference fallback, GENERATED path (fallback-ladder ruling, 2026-11-28): all faders
+        // down = "no preference" = equal faders over the governing scale set — the SAME degenerate
+        // rule as the quantiser, substituted HERE, upstream of the pick, so warp / distribution
+        // distortion of the draw r still shapes the uniform pick exactly as it would shape real
+        // equal faders. The fader params themselves are never written (faders are the STORE); the
+        // substitution lands only in this per-block engine snapshot, and it latches with the rest
+        // of the pitch axis under lock. Membership: Micro path = enabled[] (dmtune/authored scale
+        // within the tuning); host path = the ScaleManager mask (context-menu scale; Chromatic /
+        // all-12 fall-through). The monotone-C degenerate drone (pickSemitone sum<=eps -> fixed C)
+        // is dead: the pick now always has a live distribution.
+        {
+            const int nD = micro ? engine.pe.tuning.N : 12;
+            std::array<bool, dotModular::TuningTable::MAXN> members{};
+            const uint16_t hostMask = (mainModule && mainModule->scaleManager)
+                                          ? mainModule->scaleManager->activeScaleMask : (uint16_t)0x0FFF;
+            for (int i = 0; i < nD; ++i)
+                members[(size_t)i] = micro ? engine.pe.tuning.enabled[i]
+                                           : (((hostMask >> i) & 1u) != 0);
+            redDot::substituteUniformWeights(currentPatternInput.semiWeights, members.data(), nD);
+        }
     }
     if (rhythmLive) {   // BigFive LATCH — hold REST/VARIATION/NOTE_VALUE under lock
         // MONO rest: use the Causeway-modulated effective value (mirrors the poly idiom
@@ -172,7 +199,9 @@ void ModeController::updatePatternInput() {
         // written (exactly what the resolver would return with nothing authored — the Stage 1
         // gate stays closed, Monsoon alone plays exactly as before).
         if (mainModule) {
-            monoVoice.qmixOctLevel = mainModule->qmixOctaveThreshold(0);
+            // unpatched mono source ⇒ octave generates too (see the poly note above).
+            monoVoice.qmixOctLevel = mainModule->qmixSourcePatched(0)
+                                         ? mainModule->qmixOctaveThreshold(0) : 0.f;
             monoVoice.qmixOctLive  = true;
         }
         // STEP-ADVANCE VALUE (CC_PROMPT_STEP_ADVANCE_CONSUMPTION Stage 2; the rectified
