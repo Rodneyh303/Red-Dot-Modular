@@ -83,11 +83,11 @@ int main() {
     TEST("mix-frac-only mid-phrase change leaves a non-displayed voice's buffer untouched", {
         PatternEngine pe; PatternInput in;
         pe.numPolyVoicesHint = 2;                 // V1(displayed, mono)=0, plus V2
-        bake(pe, 0.60f, 0.20f);                   // mix 0.20 -> s=1.2 -> f=1
+        bake(pe, 0.60f, 1.30f);                   // offset 1.30 -> f=1 (Part B offset-direct units)
         pe.recomputeEffectiveRhythm();            // warm all voices + the z-cache at (N, f=1, r)
         float before[16];
         for (int i = 0; i < 16; ++i) before[i] = pe.slewedRhythm[1][i];   // V2 == slot 1
-        pe.latchMix(0.28f, 0.f, 0.f, true, false, false);  // 0.28 -> s=1.68 -> f=1 (same f, frac only)
+        pe.latchMix(1.90f, 0.f, 0.f, true, false, false);  // 1.90 -> f=1 still (same f, frac only)
         pe.refreshVisualCache(in);                         // z-cache HIT -> for-voice(mono) only
         for (int i = 0; i < 16; ++i)
             EXPECT(std::memcmp(&pe.slewedRhythm[1][i], &before[i], sizeof(float)) == 0);
@@ -104,11 +104,12 @@ int main() {
     TEST("differential: mid-phrase slew latches never perturb any voice's buffers (hit + miss paths)", {
         PatternEngine A, B; PatternInput in;
         A.numPolyVoicesHint = 3; B.numPolyVoicesHint = 3;
-        bake(A, 0.60f, 0.20f); bake(B, 0.60f, 0.20f);
+        bake(A, 0.60f, 1.30f); bake(B, 0.60f, 1.30f);
         A.recomputeEffectiveRhythm(); B.recomputeEffectiveRhythm();
-        // mix walk: frac-only moves (f=1 throughout: 0.20->0.28), then integer crossings
-        // (0.35 -> f=2, 0.05 -> f=0), then back between — cache hits AND misses.
-        const float walk[7] = {0.24f, 0.28f, 0.35f, 0.05f, 0.33f, 0.21f, 0.30f};
+        // offset walk (Part B units: the value IS the draw offset): frac-only moves
+        // (f=1: 1.3->1.9), integer crossings (2.5 -> f=2, 0.3 -> f=0, -1.6 -> f=-2:
+        // the BIDIRECTIONAL side), and back — z-cache hits AND misses, both signs.
+        const float walk[7] = {1.4f, 1.9f, 2.5f, 0.3f, -1.6f, 1.1f, 1.9f};
         for (int k = 0; k < 7; ++k) {
             A.latchSlew(slews[k], 0.f, 0.f);                      // A's live latch MOVES
             A.latchMix(walk[k], 0.f, 0.f, true, false, false);
@@ -167,6 +168,38 @@ int main() {
                         r, worst, worstStep, ksCrit);
             EXPECT(worst < ksCrit);
         }
+    });
+
+    // T6 — THE -1 SENTINEL COLLISION (regression): -1 is a LEGAL bipolar knob value, but the
+    // boundary consumer's "ever computed" guard used *SlewApplied != -1.f. Commit slew == -1
+    // and the guard reads the real value as the never-computed sentinel: the consumer disables
+    // itself PERMANENTLY — every later slew (and depth, same guard) change stages but never
+    // commits until some roll redraws. RED on the -1 sentinel; GREEN with an out-of-range one.
+    TEST("slew committed at -1 does not disable the boundary consumer (sentinel collision)", {
+        PatternEngine pe;
+        pe.numPolyVoicesHint = 2;
+        pe.seedRhythmPhilox(0.42f); pe.seedMelodyPhilox(0.43f); pe.seedQmixPhilox(0.44f);
+        PatternInput in;
+        for (int i=0;i<12;++i) in.semiWeights[i]=1.f;
+        in.octaveLo=3.f; in.octaveHi=5.f; in.restProb=0.f;
+        in.variationAmount=0.5f; in.transpose=0.f;
+        in.noteVariationMask=0b111; in.locked=false;
+        pe.latchSlew(0.6f, 0.f, 0.f); pe.rhythmWin_.consume();
+        pe.latchMix(0.f, 0.f, 0.f, true, true, true);
+        pe.recomputeEffectiveRhythm();
+        auto boundary = [&](float s){ pe.latchSlew(s, 0.f, 0.f); pe.applyPendingSeedsAndRedraw(in); };
+        boundary(-1.f);                                   // commit the knob's hard end
+        EXPECT(pe.rhythmSlewApplied == -1.f);             // -1 really is the committed slew
+        boundary(-0.3f);                                  // now turn back up: MUST commit
+        EXPECT(pe.rhythmSlewApplied == -0.3f);
+        EXPECT(pe.rhythmWin_.phraseSlew() == -0.3f);
+        boundary(0.7f);                                   // and keep tracking
+        EXPECT(pe.rhythmSlewApplied == 0.7f);
+        // depth rides the same consumer guard: it must also still commit after a -1 visit
+        boundary(-1.f);
+        pe.latchDepth(16, 64, 64);
+        pe.applyPendingSeedsAndRedraw(in);
+        EXPECT(pe.rhythmWin_.phraseDepth() == 16);
     });
 
     std::cout << std::string(50, '=') << "\n"

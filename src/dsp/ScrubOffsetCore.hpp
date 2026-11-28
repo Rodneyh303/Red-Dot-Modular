@@ -59,10 +59,15 @@ inline float snapToIntegerPosition(float v) {
 // fraction that corrupts the brownian-bridge blend. This is the whole reason the core
 // exists.
 struct Split { int f = 0; float frac = 0.f; };
-inline Split splitScrub(float s) {
+// The limit-parameterised split (Part B depth work): the usable range moves with the
+// stream's MA depth (maxScrubForK), so the clamp must take the ACTIVE limit — the old
+// fixed +/-SCRUB_K clamp silently capped a K=16 stream's legal +/-80 offset at 32.
+inline Split splitScrubAt(float s, int limit) {
     Split out;
     if (!std::isfinite(s)) return out;                         // {0, 0}
-    float c = std::min(std::max(s, (float)-SCRUB_K), (float)SCRUB_K);
+    if (limit < 0) limit = 0;
+    if (limit > kMaxScrubEver) limit = kMaxScrubEver;
+    float c = std::min(std::max(s, (float)-limit), (float)limit);
     float ff = std::floor(c);
     out.f    = (int)ff;
     out.frac = c - ff;                                         // in [0, 1)
@@ -70,6 +75,7 @@ inline Split splitScrub(float s) {
     if (out.frac >= 1.f) out.frac = 0.f;                       // (c==integer): frac exactly 0
     return out;
 }
+inline Split splitScrub(float s) { return splitScrubAt(s, SCRUB_K); }   // the default +/-32 range
 
 // Map a normalized mix/CV value [-1, 1] to a continuous scrub position. `range` is the CURRENT
 // jog limit (maxScrubForK of the stream's K), NOT the configured param bound — full CV = full
