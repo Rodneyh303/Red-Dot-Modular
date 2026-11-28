@@ -41,6 +41,7 @@ json_t* PersistenceManager::toJson(Monsoon* m) {
     json_object_set_new(root, "modVizMacro", json_boolean(m->modVizMacro));
     json_object_set_new(root, "modVizMono",  json_boolean(m->modVizMono));
     json_object_set_new(root, "restartOnUnmute", json_boolean(m->restartOnUnmute));
+    json_object_set_new(root, "phaseRelativeOrigin", json_boolean(m->phase.relativeOrigin));
     json_object_set_new(root, "reseedOnRestart", json_boolean(m->reseedOnRestart));
     json_object_set_new(root, "noteVariationMask", json_integer(m->noteVariationMask));
     // DOTTED BUILD: the schema marker — its ABSENCE on load means a pre-dotted save,
@@ -352,6 +353,7 @@ void PersistenceManager::fromJson(Monsoon* m, json_t* root) {
     if (auto j = json_object_get(root, "modVizMacro")) m->modVizMacro = (bool)json_boolean_value(j);
     if (auto j = json_object_get(root, "modVizMono"))  m->modVizMono  = (bool)json_boolean_value(j);
     if (auto j = json_object_get(root, "restartOnUnmute")) m->restartOnUnmute = (bool)json_boolean_value(j);
+    if (auto j = json_object_get(root, "phaseRelativeOrigin")) m->phase.relativeOrigin = (bool)json_boolean_value(j);
     if (auto j = json_object_get(root, "reseedOnRestart")) m->reseedOnRestart = (bool)json_boolean_value(j);
     if (auto j = json_object_get(root, "noteVariationMask")) m->noteVariationMask = (int)json_integer_value(j);
     // DOTTED BUILD — the note-value table grew 8 → 12 (dotted values interleaved at
