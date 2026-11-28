@@ -225,6 +225,46 @@ int main() {
                     "%zu raw walk sites remain outside the lookup authority", residuals.size());
     });
 
+    // ── L6: DELETION IS THE EVENT onExpanderChange CANNOT SEE (grep-gate) ──────────
+    // Removing a module with NO adjacent neighbour fires no slot-change handler
+    // anywhere (Rack dispatches onExpanderChange only to modules whose immediate
+    // slot changed), so an event-only epoch goes stale and every memoized pointer
+    // to the removed module dangles — a deterministic use-after-free for global
+    // id-scan resolvers (resolveFollowedT) the moment the follower next resolves.
+    // onRemove is the missing bump: every file that bumps the epoch in
+    // onExpanderChange must also bump it in an onRemove override.
+    TEST("L6 STRUCTURAL grep-gate: every onExpanderChange epoch bump has an onRemove twin (deletion fires no slot event on isolated modules)", {
+        auto slurp = [](const std::filesystem::path& p) {
+            std::ifstream f(p, std::ios::binary);
+            std::ostringstream ss; ss << f.rdbuf();
+            return ss.str();
+        };
+        const std::filesystem::path root = std::filesystem::current_path();
+        std::vector<std::string> missing;
+        for (const auto& entry : std::filesystem::recursive_directory_iterator(root / "src")) {
+            if (!entry.is_regular_file()) continue;
+            const std::string ext = entry.path().extension().string();
+            if (ext != ".cpp" && ext != ".hpp") continue;
+            const std::string rel = std::filesystem::relative(entry.path(), root).generic_string();
+            if (rel == "src/ui/ModuleLookupCore.hpp") continue;   // the definition, not a module
+            if (rel.rfind("src/deprecated/", 0) == 0) continue;
+            const std::string src = slurp(entry.path());
+            if (src.find("bumpTopologyEpoch") == std::string::npos) continue;
+            if (src.find("onExpanderChange") == std::string::npos) continue;
+            // the file participates in the event contract: require the onRemove twin —
+            // an onRemove override present AND a second bump call (one per handler).
+            const bool hasOnRemove = src.find("onRemove") != std::string::npos;
+            size_t bumps = 0, pos = 0;
+            while ((pos = src.find("bumpTopologyEpoch()", pos)) != std::string::npos) { ++bumps; pos += 10; }
+            if (!hasOnRemove || bumps < 2) missing.push_back(rel);
+        }
+        std::cout << "      files bumping in onExpanderChange but not onRemove: " << missing.size()
+                  << " (expect 0)\n";
+        for (size_t i = 0; i < missing.size() && i < 30; ++i)
+            std::cout << "        " << missing[i] << "\n";
+        EXPECTF(missing.empty(), "%zu module file(s) lack the onRemove epoch bump", missing.size());
+    });
+
     std::cout << std::string(70, '=') << "\n" << s_pass << " passed, " << s_fail << " failed\n";
     return s_fail == 0 ? 0 : 1;
 }

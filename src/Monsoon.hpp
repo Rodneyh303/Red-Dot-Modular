@@ -1805,6 +1805,7 @@ struct Monsoon : Module {
     void onReset() override;
     void onSampleRateChange(const SampleRateChangeEvent& e) override;
     int getNoteLenIdx_();
+    void onRemove(const RemoveEvent& e) override;   // epoch bump — deletion fires no slot event (L6)
     void onExpanderChange(const ExpanderChangeEvent& e) override;
     int computeNoteLengthIdx(int requestedIdx, int ppqnMask);
     void updateStepLEDs_(float sampleTime);
