@@ -341,6 +341,14 @@ struct StraitsSandsMacroVisual : Module {
     // the global topology epoch — this module's adjacency (the lookupMonsoon memo)
     // re-resolves on the next read, from BOTH threads (engine process + widget
     // lambdas). The old /8 divider poll is deleted; a static rack walks zero times.
+    // Deletion is the event onExpanderChange cannot see: removing a module with no
+    // adjacent neighbour fires no slot-change handler anywhere, so an event-only
+    // epoch keeps every memoized pointer to the removed module alive after free
+    // (ModuleLookupCore). onRemove is the missing bump (L6 grep-gate pins this).
+    void onRemove(const RemoveEvent& e) override {
+        rack::Module::onRemove(e);
+        redDot::bumpTopologyEpoch();
+    }
     void onExpanderChange(const ExpanderChangeEvent& e) override {
         redDot::bumpTopologyEpoch();
         snap.topologyDirty.store(true, std::memory_order_relaxed);   // the subpanel fast path

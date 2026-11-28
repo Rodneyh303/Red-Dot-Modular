@@ -239,6 +239,14 @@ struct Intertropical : Module {
 
     // LOOKUP AUTHORITY: the event is THE trigger — bump the global topology epoch so this module's
     // adjacency (the lookup* memos) re-resolves on the next read, engine + widget threads.
+    // Deletion is the event onExpanderChange cannot see: removing a module with no
+    // adjacent neighbour fires no slot-change handler anywhere, so an event-only
+    // epoch keeps every memoized pointer to the removed module alive after free
+    // (ModuleLookupCore). onRemove is the missing bump (L6 grep-gate pins this).
+    void onRemove(const RemoveEvent& e) override {
+        rack::Module::onRemove(e);
+        redDot::bumpTopologyEpoch();
+    }
     void onExpanderChange(const ExpanderChangeEvent& e) override {
         redDot::bumpTopologyEpoch();
     }

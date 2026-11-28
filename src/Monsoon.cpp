@@ -771,6 +771,15 @@ void Monsoon::onPhraseBoundary_() {
 // PolyVoice.  If DNA is present, PolyVoice is expected to the right of DNA
 // and is reached by walking one step further.  If no DNA is present,
 // PolyVoice may attach directly to Monsoon's right.
+// Deletion is the event onExpanderChange cannot see: removing a module with no
+// adjacent neighbour fires no slot-change handler anywhere, so an event-only
+// epoch keeps every memoized pointer to the removed Monsoon alive after free
+// (ModuleLookupCore). onRemove is the missing bump (L6 grep-gate pins this).
+void Monsoon::onRemove(const RemoveEvent& e) {
+    Module::onRemove(e);
+    redDot::bumpTopologyEpoch();
+}
+
 void Monsoon::onExpanderChange(const ExpanderChangeEvent& e) {
     // THE LOOKUP AUTHORITY (CC_PROMPT_MODULE_LOOKUP_AUTHORITY_START): the event is
     // the sole trigger — it bumps the global topology epoch (every consumer's memo

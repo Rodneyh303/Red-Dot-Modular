@@ -67,6 +67,14 @@ struct MonsoonChangiT3Expander : Module {
     }
     // THE LOOKUP AUTHORITY: the event bumps the global topology epoch — this module's
     // adjacency (the lookupIntertropical memo) re-resolves on the next read.
+    // Deletion is the event onExpanderChange cannot see: removing a module with no
+    // adjacent neighbour fires no slot-change handler anywhere, so an event-only
+    // epoch keeps every memoized pointer to the removed module alive after free
+    // (ModuleLookupCore). onRemove is the missing bump (L6 grep-gate pins this).
+    void onRemove(const RemoveEvent& e) override {
+        rack::Module::onRemove(e);
+        redDot::bumpTopologyEpoch();
+    }
     void onExpanderChange(const ExpanderChangeEvent& e) override {
         redDot::bumpTopologyEpoch();
     }
