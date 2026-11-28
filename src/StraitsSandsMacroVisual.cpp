@@ -644,28 +644,40 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
             // window only); Cycle confines the read. The painted overlay is NOT a
             // base — it composes on either; returning to Cycle with a pattern painted
             // keeps the overlay (kind 2 = cycle + overlay).
+            // CC_PROMPT_UAS_CYCLE_PHRASE_MODE (names: Rodney 2026-11-24) — ONE 3-way base-mode choice:
+            //   Global   (default): the voice window follows the GLOBAL phrase — O=0, R=transport
+            //            offset, L=transport length. A Cycle-type read whose window IS the phrase, so
+            //            the pattern repeats every global lap (fixes the old 16-over-32 bug).
+            //   Cycle:   the read cycles within the row's OWN authored LOR window (polymeter).
+            //   Absolute: full-phrase read, plays the LOR only (abs1 — the existing base).
+            // Global and Cycle share the mask kind (0, or 2 when a pattern is painted); they differ
+            // ONLY by the phrase flag. Absolute is mask kind 1. The three are mutually exclusive;
+            // this macro selector drives the Macro row + every voice together (the global default).
             menu->addChild(createSubmenuItem("Base mode", "",
                 [m](Menu* sub) {
-                    static const char* const baseNames[2] =
-                        { "Cycle — read cycles within the LOR",
-                          "Absolute-1 — full-phrase read, plays the LOR only" };
-                    for (int k = 0; k < 2; ++k) {
-                        const bool abs1 = (k == 1);
-                        sub->addChild(createCheckMenuItem(baseNames[k], "",
-                            [m, abs1]() {
-                                const int cur = (int)std::lround(m->getMaskMacroKind());
-                                return abs1 ? (cur == 1) : (cur != 1);
-                            },
-                            [m, abs1]() {
-                                const float oldK = m->getMaskMacroKind();
-                                const float newK = abs1 ? 1.f
-                                    : (m->getMaskMacroPatternBits() == dotModular::kMaskLenMask) ? 0.f : 2.f;
-                                if (oldK == newK) return;
-                                m->setMaskMacroKind(newK);
-                                redDot::applyAndPushStoreEdit<Monsoon>(m, "Global mask kind",
-                                    [](Monsoon& m2, float kk) { m2.setMaskMacroKind(kk); }, oldK, newK);
-                            }));
-                    }
+                    auto cycleKind = [m]() -> float {
+                        return (m->getMaskMacroPatternBits() == dotModular::kMaskLenMask) ? 0.f : 2.f;
+                    };
+                    auto setAll = [m](bool phrase, float kind) {
+                        m->engine.setMacroCyclePhrase(phrase);
+                        for (int v = 0; v < SequencerEngine::kVoiceSlots; ++v) m->engine.setVoiceCyclePhrase(v, phrase);
+                        const float oldK = m->getMaskMacroKind();
+                        if (oldK != kind) {
+                            m->setMaskMacroKind(kind);
+                            redDot::applyAndPushStoreEdit<Monsoon>(m, "Global mask kind",
+                                [](Monsoon& m2, float kk) { m2.setMaskMacroKind(kk); }, oldK, kind);
+                        }
+                    };
+                    const int kind = (int)std::lround(m->getMaskMacroKind());
+                    sub->addChild(createCheckMenuItem("Global — window follows the global phrase", "",
+                        [m, kind]() { return m->engine.macroCyclePhrase() && kind != 1; },
+                        [setAll, cycleKind]() { setAll(true, cycleKind()); }));
+                    sub->addChild(createCheckMenuItem("Cycle — read cycles within the LOR", "",
+                        [m, kind]() { return !m->engine.macroCyclePhrase() && kind != 1; },
+                        [setAll, cycleKind]() { setAll(false, cycleKind()); }));
+                    sub->addChild(createCheckMenuItem("Absolute — full-phrase read, plays the LOR only", "",
+                        [kind]() { return kind == 1; },
+                        [setAll]() { setAll(false, 1.f); }));
                 }));
             // (follow-R retired 2026-11-21: the painted pattern is static in global-step space)
             menu->addChild(new MenuSeparator);
