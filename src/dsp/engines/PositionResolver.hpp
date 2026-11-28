@@ -78,6 +78,14 @@ struct PositionResolver {
     int  phraseOverride_    = 0;
     bool phraseOverridden_  = false;
 
+    // (NET-STEPS MODEL — Rodney 2026-11-25) a candidate single coordinate: netSteps_ is the net
+    // signed displacement since reset (+1/-1 per step, 0 on hold); netEntered_ makes the first
+    // motion the entry (read at netSteps_==0). The read is (netSteps_ + R) mod L — no second
+    // coordinate, no re-park. Parallel to col_ for now; pinned against the engine in
+    // test_netsteps_model. See CC_PROMPT_POSITION_RESOLVER_C3_UNIT_OF_ABSOLUTENESS.
+    int64_t netSteps_   = 0;
+    bool    netEntered_ = false;
+
     static int wrapRing(int v) { return ((v % kMaskRing) + kMaskRing) % kMaskRing; }
     // Negative-safe mod (mirrors SequencerEngine::wrapMod's body verbatim — unreachable
     // from here by include order; the identity harness pins the equality).
@@ -99,6 +107,7 @@ struct PositionResolver {
         col_ = -1;   // the pre-start park (mirrors stepIndex)
         entryDir_ = 0;
         phraseOverridden_ = false;   // the traversal owns the phrase from here
+        netSteps_ = 0; netEntered_ = false;   // (NET-STEPS MODEL) reset is the natural boundary — reverse is not carried across it
     }
     void setWindow(int length, int offset) {
         if (offset != startStep_ || ((length < 1) ? 1 : length) != len_) entryDir_ = 0;   // a REAL window change re-anchors the read coordinate
@@ -119,6 +128,11 @@ struct PositionResolver {
     void advance(int motion) {
         if (motion != 0) phraseOverridden_ = false;   // the traversal re-derives the phrase (a held event keeps it)
         if (motion != 0 && entryDir_ == 0) entryDir_ = (motion < 0) ? -1 : +1;
+        // (NET-STEPS MODEL — Rodney 2026-11-25) a single signed counter: the FIRST motion since
+        // reset only enters (the read lands at the entry, netSteps_==0); every later motion
+        // displaces it. No seed/skip/re-park and no re-arm on a window change — the whole point:
+        // it stays drift-free across a mid-run window re-author. read = (netSteps_ + R) mod L.
+        if (motion != 0) { if (!netEntered_) netEntered_ = true; else netSteps_ += motion; }
         if (motion < 0) {
             dir_ = -1;
             if (col_ == -1) col_ = (endStep_ + 1) & (kMaskRing - 1);
@@ -152,6 +166,7 @@ struct PositionResolver {
     // ── the PURE views ──
     int playedColumn() const { return col_; }
     int direction() const { return dir_; }
+    int64_t netSteps() const { return netSteps_; }   // (NET-STEPS MODEL) the single signed counter; read = (netSteps()+R) mod L
     int phrasePos() const {
         if (phraseOverridden_) return phraseOverride_;   // the phase snap's raw phrase
         if (col_ < 0) return 0;   // the pre-start park: no phrase yet
